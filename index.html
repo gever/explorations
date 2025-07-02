@@ -3,10 +3,166 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>My Awesome Website</title>
+    <title>Explorations</title>
+    
+    <style>
+        body {
+            background-color: #1a1a1a; /* Dark background */
+            color: #d4d4d4; /* Off-white text */
+            font-family: 'Courier New', Courier, monospace;
+            padding: 2rem;
+            font-size: 16px;
+        }
+
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+        }
+
+        /* Title Styling */
+        h1 {
+            font-size: 2.5rem;
+            font-weight: bold;
+            color: #f0f0f0;
+            text-transform: uppercase;
+            margin-bottom: 2rem;
+            text-align: center;
+        }
+
+        /* Typewriter Text Block Styling */
+        .typewriter-text {
+            border-right: 2px solid rgba(255,255,255,.75); /* Blinking cursor */
+            white-space: pre-wrap; /* Respects newlines and spaces */
+            overflow: hidden;
+            font-family: 'Courier New', Courier, monospace; /* Standard Courier */
+            line-height: 1.6;
+        }
+        
+        /* Distressed font effect class */
+        .distressed {
+             /* A more "worn" courier look */
+            font-family: 'American Typewriter', 'Courier New', Courier, monospace;
+            opacity: 0.95;
+        }
+
+        /* Blinking cursor animation */
+        .blinking-cursor {
+            animation: blink-caret .75s step-end infinite;
+        }
+
+        @keyframes blink-caret {
+            from, to { border-color: transparent }
+            50% { border-color: rgba(255,255,255,.75); }
+        }
+
+        /* Table Styling */
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 3rem;
+            border: 1px solid #555;
+        }
+
+        th, td {
+            border: 1px solid #555;
+            padding: 12px;
+            text-align: left;
+        }
+
+        th {
+            background-color: #333;
+            color: #f0f0f0;
+            font-weight: bold;
+        }
+        
+        td a {
+            color: #76c7c0; /* A nice teal for links */
+            text-decoration: none;
+        }
+
+        td a:hover {
+            text-decoration: underline;
+        }
+
+        .thumbnail {
+            width: 100px;
+            height: auto;
+            display: block;
+        }
+
+        .thumbnail-placeholder {
+            width: 100px;
+            height: 75px;
+            background-color: #444;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 0.8rem;
+            color: #888;
+        }
+
+    </style>
 </head>
 <body>
-    <h1>Welcome to my website!</h1>
-    <p>This is my new GitHub Pages site.</p>
+
+    <div class="container">
+        <h1>Explorations</h1>
+
+        <div id="text-block" class="typewriter-text distressed"></div>
+
+        <table>
+            <thead>
+                <tr>
+                    <th>Link</th>
+                    <th>Description</th>
+                    <th>Thumbnail</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr>
+                    <td><a href="#" target="_blank">Project One</a></td>
+                    <td>A brief and interesting description of what this project is about.</td>
+                    <td>
+                        <div class="thumbnail-placeholder">100x75</div>
+                    </td>
+                </tr>
+                <tr>
+                    <td><a href="#" target="_blank">Another Link</a></td>
+                    <td>Details about another one of your explorations or a link to an interesting article.</td>
+                    <td>
+                        <div class="thumbnail-placeholder">100x75</div>
+                    </td>
+                </tr>
+                </tbody>
+        </table>
+    </div>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            const textBlockElement = document.getElementById('text-block');
+            
+            // EDIT THIS TEXT to change the content that gets typed out.
+            // Use `\n` for new lines.
+            const textToType = `This is a space for my thoughts, projects, and digital experiments. A journal of sorts, chronicling my journey through code and design.\n\nHere, I'll document what I'm learning, share what I've built, and link to things that inspire me.`;
+            
+            let i = 0;
+            
+            function typeWriter() {
+                if (i < textToType.length) {
+                    textBlockElement.innerHTML += textToType.charAt(i);
+                    i++;
+                    // Adjust timeout for faster/slower typing speed
+                    setTimeout(typeWriter, 50); // 50ms delay between characters
+                } else {
+                    // When typing is done, add a persistent blinking cursor
+                    textBlockElement.classList.add('blinking-cursor');
+                }
+            }
+            
+            // Start the effect
+            typeWriter();
+        });
+    </script>
+
 </body>
 </html>

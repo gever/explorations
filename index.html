@@ -125,46 +125,49 @@
     </div>
 
     <script>
-        /**
-         * Adds a new row to the specified table's tbody.
-         *
-         * @param {string} id - The ID of the table element.
-         * @param {string} relative_url - The relative URL for the link (e.g., 'project.html').
-         * @param {string} thumbnail - The relative path to the thumbnail image.
-         * @param {string} description - The text content for the description cell.
-         */
-        function addRow(id, relative_url, thumbnail, description) {
-          // Find the table's tbody element
-          const tableBody = document.getElementById(id)?.querySelector('tbody');
-        
-          // Guard clause to exit if the table or tbody isn't found
-          if (!tableBody) {
-            console.error(`Error: Table with id "${id}" or its tbody not found.`);
-            return;
-          }
-        
-          // Create a new table row element
-          const newRow = document.createElement('tr');
-        
-          // Create a user-friendly text for the link from the URL
-          // 'binary_playground.html' becomes 'Binary Playground'
-          const linkText = relative_url
-            .replace('.html', '')
-            .replace(/_/g, ' ')
-            .replace(/\b\w/g, char => char.toUpperCase());
-        
-          // Set the inner HTML of the row using a template literal
-          newRow.innerHTML = `
-            <td><a href="${relative_url}" target="_blank">${linkText}</a></td>
-            <td>${description}</td>
-            <td>
-              <div style="background-image: url('${thumbnail}'); width: 150px; height: 100px; background-size: cover; background-position: center;"></div>
-            </td>
-          `;
-        
-          // Append the new row to the table body
-          tableBody.appendChild(newRow);
-        }
+   /**
+     * Adds a new row to the specified table's tbody.
+     *
+     * @param {string} id - The ID of the table element.
+     * @param {string} relative_url - The relative URL for the link (e.g., 'project.html').
+     * @param {string} thumbnail - The relative path to the thumbnail image.
+     * @param {string} description - The text content for the description cell.
+     * @param {string} [attribution] - Optional attribution text for the description.
+     */
+    function addRow(id, relative_url, thumbnail, description, attribution) {
+      const tableBody = document.getElementById(id)?.querySelector('tbody');
+    
+      if (!tableBody) {
+        console.error(`Error: Table with id "${id}" or its tbody not found.`);
+        return;
+      }
+    
+      const newRow = document.createElement('tr');
+    
+      const linkText = relative_url
+        .replace('.html', '')
+        .replace(/_/g, ' ')
+        .replace(/\b\w/g, char => char.toUpperCase());
+    
+      // Conditionally create the attribution HTML only if the parameter is provided
+      const attributionHTML = attribution 
+        ? `<span style="position: absolute; bottom: 8px; right: 12px; font-size: 0.8em; color: #666;">${attribution}</span>` 
+        : '';
+    
+      // Set the inner HTML. The description cell now has relative positioning.
+      newRow.innerHTML = `
+        <td><a href="${relative_url}" target="_blank">${linkText}</a></td>
+        <td style="position: relative; padding-right: 30px;">
+          ${description}
+          ${attributionHTML}
+        </td>
+        <td>
+          <div style="background-image: url('${thumbnail}'); width: 150px; height: 100px; background-size: cover; background-position: center;"></div>
+        </td>
+      `;
+    
+      tableBody.appendChild(newRow);
+    }
         
         document.addEventListener('DOMContentLoaded', function() {
             // add the rows to the links table
@@ -172,7 +175,8 @@
                 'projects-table',
                 'binary_playground.html',
                 'binary_playground_th.png',
-                'Particles, set in circular motion, collide and agglomerate, often producing binary pairs of super-massive "stars".'
+                'Particles, set in circular motion, collide and agglomerate, often producing binary pairs of super-massive "stars".',
+                'gever + gemini'
             );
             
             const textBlockElement = document.getElementById('text-block');

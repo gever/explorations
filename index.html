@@ -111,22 +111,8 @@
 
         <div id="text-block" class="typewriter-text distressed"></div>
 
-        <table>
-            <thead>
-                <tr>
-                    <th>Link</th>
-                    <th>Description</th>
-                    <th>Thumbnail</th>
-                </tr>
-            </thead>
+        <table id="projects-table">
             <tbody>
-                <tr>
-                    <td><a href="binary_playground.html" target="_blank">Binary Star Playground</a></td>
-                    <td>particles, set in circular motion, collide and aglomerate, often producing binary pairs of super-massive "stars"</td>
-                    <td>
-                        <div style="background-image: url('binary_playground_th.png'); width: 150px; height: 100px; background-size: cover; background-position: center;"></div>
-                    </td>
-                </tr>
                 <tr>
                     <td><a href="#" target="_blank">Another Link</a></td>
                     <td>Details about another one of your explorations or a link to an interesting article.</td>
@@ -134,12 +120,61 @@
                         <div class="thumbnail-placeholder">100x75</div>
                     </td>
                 </tr>
-                </tbody>
+            </tbody>
         </table>
     </div>
 
     <script>
+        /**
+         * Adds a new row to the specified table's tbody.
+         *
+         * @param {string} id - The ID of the table element.
+         * @param {string} relative_url - The relative URL for the link (e.g., 'project.html').
+         * @param {string} thumbnail - The relative path to the thumbnail image.
+         * @param {string} description - The text content for the description cell.
+         */
+        function addRow(id, relative_url, thumbnail, description) {
+          // Find the table's tbody element
+          const tableBody = document.getElementById(id)?.querySelector('tbody');
+        
+          // Guard clause to exit if the table or tbody isn't found
+          if (!tableBody) {
+            console.error(`Error: Table with id "${id}" or its tbody not found.`);
+            return;
+          }
+        
+          // Create a new table row element
+          const newRow = document.createElement('tr');
+        
+          // Create a user-friendly text for the link from the URL
+          // 'binary_playground.html' becomes 'Binary Playground'
+          const linkText = relative_url
+            .replace('.html', '')
+            .replace(/_/g, ' ')
+            .replace(/\b\w/g, char => char.toUpperCase());
+        
+          // Set the inner HTML of the row using a template literal
+          newRow.innerHTML = `
+            <td><a href="${relative_url}" target="_blank">${linkText}</a></td>
+            <td>${description}</td>
+            <td>
+              <div style="background-image: url('${thumbnail}'); width: 150px; height: 100px; background-size: cover; background-position: center;"></div>
+            </td>
+          `;
+        
+          // Append the new row to the table body
+          tableBody.appendChild(newRow);
+        }
+        
         document.addEventListener('DOMContentLoaded', function() {
+            // add the rows to the links table
+            addRow(
+                'projects-table',
+                'binary_playground.html',
+                'binary_playground_th.png',
+                'Particles, set in circular motion, collide and agglomerate, often producing binary pairs of super-massive "stars".'
+            );
+            
             const textBlockElement = document.getElementById('text-block');
             
             // EDIT THIS TEXT to change the content that gets typed out.

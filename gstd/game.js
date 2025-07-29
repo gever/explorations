@@ -2,6 +2,7 @@
 // a large language model from Google, on Mon Jul 28 11:02:56 2025
 //
 // This code was created based on user prompts from Gever Tulley.
+// Refactored on Tue Jul 29 06:18:03 2025.
 
 (function() {
     'use strict';
@@ -15,6 +16,8 @@
         const ROCKET_MULTIPLIER = 2;
         const PAR_MULTIPLIER = 1.25;
         const STAR_COUNT = 200;
+        const MAX_TRAIL_POINTS = 10000;
+        const UI_AREA_HEIGHT = 50; // Added constant for UI height
 
         // Player movement constants
         const MIN_MOVE = 2;
@@ -23,6 +26,19 @@
         const PARTICLE_COUNT = 10;
         const PARTICLE_DURATION_MS = 750;
         const ROUND_END_DELAY_MS = 1000;
+        
+        const LCARS_COLORS = {
+            ORANGE: '#ff9900',
+            BLUE: '#9999ff',
+            RED_WARNING: '#cc3333',
+            TEXT: '#000000'
+        };
+
+        const PLANET_STATUS = {
+            INFECTED: 'infected',
+            CURED: 'cured',
+            HEALTHY: 'healthy'
+        };
 
         let lastTime = 0;
         let planets = [];
@@ -47,6 +63,60 @@
             size: 25,
             color: '#66aaff'
         };
+
+        class Rocket {
+            constructor(x, y) {
+                this.x = x;
+                this.y = y;
+                this.vx = 200;
+                this.vy = 0;
+                this.color = player.color;
+                this.life = ROCKET_LIFESPAN_MS;
+                this.exploded = false;
+            }
+
+            update(dt, planets) {
+                this.life -= dt * 1000;
+                if (this.life <= 0) {
+                    if (!this.exploded && this.x > 0 && this.x < canvas.width && this.y > 0 && this.y < canvas.height) {
+                        createExplosion(this.x, this.y, '#ffff00');
+                        this.exploded = true;
+                    }
+                    return;
+                }
+
+                planets.forEach(p => {
+                    if (this.life <= 0) return;
+                    const dx = p.x - this.x;
+                    const dy = p.y - this.y;
+                    const distSq = dx * dx + dy * dy;
+
+                    if (distSq < (p.radius * p.radius)) {
+                        if (p.status === PLANET_STATUS.INFECTED) {
+                            p.status = PLANET_STATUS.CURED;
+                            createExplosion(this.x, this.y, '#66aaff');
+                        } else if (p.status === PLANET_STATUS.HEALTHY) {
+                            createExplosion(this.x, this.y, '#ff4444');
+                        }
+                        this.life = 0;
+                        return;
+                    }
+
+                    const force = G * p.mass / distSq;
+                    const dist = Math.sqrt(distSq);
+                    this.vx += (force * (dx / dist)) * dt;
+                    this.vy += (force * (dy / dist)) * dt;
+                });
+
+                this.x += this.vx * dt;
+                this.y += this.vy * dt;
+            }
+
+            draw(ctx) {
+                ctx.fillStyle = this.color;
+                ctx.fillRect(this.x, this.y, 2, 2);
+            }
+        }
         
         function createStars() {
             stars = [];
@@ -67,7 +137,7 @@
                 y: canvas.height * 0.1 + Math.random() * canvas.height * 0.8,
                 mass: mass,
                 radius: mass / 7,
-                status: status // 'infected', 'cured', 'healthy'
+                status: status
             };
         }
 
@@ -101,13 +171,13 @@
             particles = [];
 
             for (let i = 0; i < infectedPlanetCount; i++) {
-                planets.push(createPlanet('infected'));
+                planets.push(createPlanet(PLANET_STATUS.INFECTED));
             }
 
             if (roundNumber > 3) {
-                const healthyPlanetCount = Math.floor(Math.random() * 3); // 0, 1, or 2
+                const healthyPlanetCount = Math.floor(Math.random() * 3);
                 for (let i = 0; i < healthyPlanetCount; i++) {
-                    planets.push(createPlanet('healthy'));
+                    planets.push(createPlanet(PLANET_STATUS.HEALTHY));
                 }
             }
             gameState = 'playing';
@@ -116,18 +186,11 @@
         function launchRocket() {
             if (rocketsLeft <= 0 || gameState !== 'playing') return;
             rocketsLeft--;
-            rockets.push({
-                x: player.x + player.size,
-                y: player.y,
-                vx: 200,
-                vy: 0,
-                color: player.color,
-                life: ROCKET_LIFESPAN_MS
-            });
+            rockets.push(new Rocket(player.x + player.size, player.y));
         }
 
         function checkRoundStatus() {
-            const stillInfected = planets.filter(p => p.status === 'infected').length;
+            const stillInfected = planets.filter(p => p.status === PLANET_STATUS.INFECTED).length;
 
             if (stillInfected === 0) {
                 const rocketsUsed = initialRockets - rocketsLeft;
@@ -169,40 +232,13 @@
             if (gameState !== 'playing') return;
 
             rockets.forEach(r => {
-                r.life -= deltaTime;
-                if (r.life <= 0) {
-                    if (!r.exploded && r.x > 0 && r.x < canvas.width && r.y > 0 && r.y < canvas.height) {
-                        createExplosion(r.x, r.y, '#ffff00'); // Yellow sparks for timeout
-                        r.exploded = true; 
-                    }
-                    return;
-                }
-
-                planets.forEach(p => {
-                    const dx = p.x - r.x;
-                    const dy = p.y - r.y;
-                    const distSq = dx * dx + dy * dy;
-
-                    if (distSq < (p.radius * p.radius)) {
-                        if (p.status === 'infected') {
-                            p.status = 'cured';
-                            createExplosion(r.x, r.y, '#66aaff'); // Blue sparks for vaccination
-                        } else if (p.status === 'healthy') {
-                            createExplosion(r.x, r.y, '#ff4444'); // Red sparks for hitting healthy planet
-                        }
-                        r.life = 0; // Expire rocket on any hit
-                        return;
-                    }
-
-                    const force = G * p.mass / distSq;
-                    const dist = Math.sqrt(distSq);
-                    r.vx += (force * (dx / dist)) * dt;
-                    r.vy += (force * (dy / dist)) * dt;
-                });
-                r.x += r.vx * dt;
-                r.y += r.vy * dt;
+                r.update(dt, planets);
                 trailPoints.push({ x: r.x, y: r.y, color: r.color });
             });
+            
+            while (trailPoints.length > MAX_TRAIL_POINTS) {
+                trailPoints.shift();
+            }
             
             rockets = rockets.filter(r => r.life > 0);
             checkRoundStatus();
@@ -222,19 +258,89 @@
                 ctx.fillText(line, canvas.width / 2, canvas.height / 2 - 40 + (i * 35));
             });
         }
+        
+        function drawLcarsUI() {
+            const barHeight = 30;
+            const cornerRadius = 15;
+            const padding = 10;
+            
+            // --- Left element ---
+            ctx.fillStyle = LCARS_COLORS.ORANGE;
+            ctx.beginPath();
+            ctx.moveTo(0, 0);
+            ctx.lineTo(420, 0);
+            ctx.lineTo(420, barHeight);
+            ctx.lineTo(padding, barHeight);
+            ctx.arcTo(0, barHeight, 0, barHeight + padding, cornerRadius);
+            ctx.lineTo(0, barHeight + cornerRadius);
+            ctx.closePath();
+            ctx.fill();
+
+            // --- UPDATED: Split right-side bar into two sections ---
+
+            // 1. ROCKETS section background
+            let rocketBgColor = LCARS_COLORS.BLUE;
+            if (rocketsLeft === 2) {
+                rocketBgColor = '#dddd00';
+            } else if (rocketsLeft < 2) {
+                rocketBgColor = LCARS_COLORS.RED_WARNING;
+            }
+            ctx.fillStyle = rocketBgColor;
+            ctx.fillRect(canvas.width - 240, 0, 120, barHeight);
+
+            // 2. INFECTED section background (always blue)
+            ctx.fillStyle = LCARS_COLORS.BLUE;
+            const infectedBarX = canvas.width - 120;
+            ctx.beginPath();
+            ctx.moveTo(infectedBarX, 0);
+            ctx.lineTo(canvas.width - cornerRadius, 0);
+            ctx.arcTo(canvas.width, 0, canvas.width, cornerRadius, cornerRadius);
+            ctx.lineTo(canvas.width, barHeight);
+            ctx.lineTo(infectedBarX, barHeight);
+            ctx.closePath();
+            ctx.fill();
+
+            // --- Draw Text on UI elements ---
+            ctx.font = 'bold 16px "Courier New"';
+            let scoreDisplay = totalScore > 0 ? `+${totalScore}` : (totalScore === 0 ? 'E' : totalScore);
+
+            // Left side text
+            ctx.fillStyle = LCARS_COLORS.TEXT;
+            ctx.textAlign = 'left';
+            ctx.fillText(`ROUND: ${roundNumber}`, padding * 2, 20);
+            ctx.fillText(`PAR: ${currentPar}`, 170, 20);
+            ctx.fillText(`SCORE: ${scoreDisplay}`, 300, 20);
+
+            // Right side text
+            ctx.textAlign = 'right';
+            const stillInfectedCount = planets.filter(p => p.status === PLANET_STATUS.INFECTED).length;
+            
+            // --- UPDATED: Text color logic for rocket count ---
+            let rocketTextColor = LCARS_COLORS.TEXT; // Default black
+            if (rocketsLeft === 0) {
+                rocketTextColor = '#ffffff'; // White when 0
+            }
+            ctx.fillStyle = rocketTextColor;
+            ctx.fillText(`ROCKETS: ${rocketsLeft}`, canvas.width - padding - 120, 20);
+            
+            // Reset to default for other text
+            ctx.fillStyle = LCARS_COLORS.TEXT; 
+            ctx.fillText(`INFECTED: ${stillInfectedCount}`, canvas.width - padding, 20);
+        }
 
         function render() {
             ctx.fillStyle = '#080810';
             ctx.fillRect(0, 0, canvas.width, canvas.height);
             
-            // Draw Stars
             stars.forEach(s => {
                 ctx.fillStyle = `rgba(255, 255, 255, ${s.alpha})`;
                 ctx.fillRect(s.x, s.y, s.size, s.size);
             });
 
-            ctx.fillStyle = "#0000ff";
-            trailPoints.forEach(p => ctx.fillRect(p.x, p.y, 4, 4));
+            ctx.fillStyle = '#0000ff';
+            trailPoints.forEach(p => {
+                ctx.fillRect(p.x, p.y, 4, 4);
+            });
 
             ctx.fillStyle = player.color;
             ctx.beginPath();
@@ -246,19 +352,16 @@
 
             planets.forEach(p => {
                 switch (p.status) {
-                    case 'infected': ctx.fillStyle = '#ffaa66'; break;
-                    case 'cured':    ctx.fillStyle = '#66ffaa'; break;
-                    case 'healthy':  ctx.fillStyle = '#88ddff'; break;
+                    case PLANET_STATUS.INFECTED: ctx.fillStyle = '#ffaa66'; break;
+                    case PLANET_STATUS.CURED:    ctx.fillStyle = '#66ffaa'; break;
+                    case PLANET_STATUS.HEALTHY:  ctx.fillStyle = '#88ddff'; break;
                 }
                 ctx.beginPath();
                 ctx.arc(p.x, p.y, p.radius, 0, Math.PI * 2);
                 ctx.fill();
             });
 
-            rockets.forEach(r => {
-                ctx.fillStyle = r.color;
-                ctx.fillRect(r.x, r.y, 2, 2);
-            });
+            rockets.forEach(r => r.draw(ctx));
 
             particles.forEach(p => {
                 ctx.fillStyle = p.color;
@@ -267,60 +370,7 @@
                 ctx.globalAlpha = 1;
             });
             
-            // --- UI Rendering ---
-            const stillInfectedCount = planets.filter(p => p.status === 'infected').length;
-            let scoreDisplay;
-            if (totalScore === 0) {
-                scoreDisplay = 'E';
-            } else if (totalScore > 0) {
-                scoreDisplay = `+${totalScore}`;
-            } else {
-                scoreDisplay = totalScore;
-            }
-
-            const defaultFont = '16px "Courier New"';
-            const boldFont = 'bold 16px "Courier New"';
-
-            // Top-left UI
-            ctx.font = defaultFont;
-            ctx.fillStyle = 'white';
-            ctx.textAlign = 'left';
-            ctx.fillText(`Total Score: ${scoreDisplay}`, 10, 40);
-            
-            // Top-right UI
-            ctx.textAlign = 'right';
-            const rocketText = `Rockets: ${rocketsLeft}`;
-            if (rocketsLeft === 0) {
-                ctx.font = boldFont;
-                const textWidth = ctx.measureText(rocketText).width;
-                const padding = 4;
-                ctx.fillStyle = '#cc3333';
-                ctx.fillRect(canvas.width - 10 - textWidth - padding, 20 - 16, textWidth + (padding * 2), 16 + padding);
-                ctx.fillStyle = 'white';
-                ctx.fillText(rocketText, canvas.width - 10, 20);
-            } else if (rocketsLeft === 1) {
-                ctx.font = boldFont;
-                ctx.fillStyle = '#ff4444';
-                ctx.fillText(rocketText, canvas.width - 10, 20);
-            } else if (rocketsLeft < 3) {
-                ctx.font = boldFont;
-                ctx.fillStyle = '#ffff66';
-                ctx.fillText(rocketText, canvas.width - 10, 20);
-            } else {
-                ctx.font = defaultFont;
-                ctx.fillStyle = 'white';
-                ctx.fillText(rocketText, canvas.width - 10, 20);
-            }
-            
-            ctx.font = defaultFont;
-            ctx.fillStyle = 'white';
-            ctx.fillText(`Infected: ${stillInfectedCount}`, canvas.width - 10, 40);
-            
-            // Top-center UI
-            ctx.font = '20px "Courier New"';
-            ctx.textAlign = 'center';
-            ctx.fillText(`Round: ${roundNumber} | Par: ${currentPar}`, canvas.width / 2, 30);
-
+            drawLcarsUI();
 
             if (gameState === 'round_over') {
                 const rocketsUsed = initialRockets - rocketsLeft;
@@ -335,6 +385,7 @@
                     '', 
                     'Click or press Space to continue...');
             } else if (gameState === 'game_over') {
+                const scoreDisplay = totalScore > 0 ? `+${totalScore}` : (totalScore === 0 ? 'E' : totalScore);
                 drawOverlay('Game Over', `You reached Round ${roundNumber}.`, `Final Score: ${scoreDisplay}`, '', 'Click or press Space to play again.');
             }
         }
@@ -380,7 +431,7 @@
                 e.preventDefault();
                 const moveDistance = e.shiftKey ? MAX_MOVE : MIN_MOVE;
                 player.y += (e.key === 'ArrowUp' ? -moveDistance : moveDistance);
-                player.y = Math.max(player.size / 2, Math.min(canvas.height - player.size / 2, player.y));
+                player.y = Math.max(UI_AREA_HEIGHT + player.size / 2, Math.min(canvas.height - player.size / 2, player.y));
             }
         });
 

@@ -18,6 +18,7 @@
         const STAR_COUNT = 200;
         const MAX_TRAIL_POINTS = 10000;
         const UI_AREA_HEIGHT = 50; // Added constant for UI height
+        const GAP_BETWEEN_PLANETS = 15; // Defines the minimum pixel gap
 
         // Player movement constants
         const MIN_MOVE = 2;
@@ -160,29 +161,55 @@
         function newRound() {
             const baseProgression = 2 + Math.floor((roundNumber - 1) / 3);
             infectedPlanetCount = (baseProgression >= 6) ? (3 + Math.floor(Math.random() * 4)) : baseProgression;
-
+        
+            let healthyPlanetCount = 0;
+            if (roundNumber > 3) {
+                healthyPlanetCount = Math.floor(Math.random() * 3);
+            }
+            const totalPlanetsToCreate = infectedPlanetCount + healthyPlanetCount;
+        
             initialRockets = ROCKET_MULTIPLIER * infectedPlanetCount;
             currentPar = Math.ceil(PAR_MULTIPLIER * infectedPlanetCount);
             rocketsLeft = initialRockets;
-
+        
             rockets = [];
             planets = [];
             trailPoints = [];
             particles = [];
-
-            for (let i = 0; i < infectedPlanetCount; i++) {
-                planets.push(createPlanet(PLANET_STATUS.INFECTED));
-            }
-
-            if (roundNumber > 3) {
-                const healthyPlanetCount = Math.floor(Math.random() * 3);
-                for (let i = 0; i < healthyPlanetCount; i++) {
-                    planets.push(createPlanet(PLANET_STATUS.HEALTHY));
+        
+            for (let i = 0; i < totalPlanetsToCreate; i++) {
+                let newPlanet;
+                let isValidPosition = false;
+                let attempts = 0;
+                const maxAttempts = 100; // Failsafe to prevent infinite loops
+        
+                while (!isValidPosition && attempts < maxAttempts) {
+                    attempts++;
+                    const status = (i < infectedPlanetCount) ? PLANET_STATUS.INFECTED : PLANET_STATUS.HEALTHY;
+                    newPlanet = createPlanet(status);
+                    isValidPosition = true; // Assume valid until a collision is found
+        
+                    // Check against all previously placed planets
+                    for (const existingPlanet of planets) {
+                        const dx = newPlanet.x - existingPlanet.x;
+                        const dy = newPlanet.y - existingPlanet.y;
+                        const distanceSquared = dx * dx + dy * dy;
+        
+                        const sumOfRadii = newPlanet.radius + existingPlanet.radius + GAP_BETWEEN_PLANETS;
+                        const minDistanceSquared = sumOfRadii * sumOfRadii;
+        
+                        if (distanceSquared < minDistanceSquared) {
+                            isValidPosition = false;
+                            break; // Collision found, break inner loop to try a new position
+                        }
+                    }
                 }
+                planets.push(newPlanet); // Add the validated (or last-attempt) planet
             }
+        
             gameState = 'playing';
         }
-
+        
         function launchRocket() {
             if (rocketsLeft <= 0 || gameState !== 'playing') return;
             rocketsLeft--;
@@ -263,6 +290,9 @@
             const barHeight = 30;
             const cornerRadius = 15;
             const padding = 10;
+            const FONT_LABEL = '100 16px Roboto';
+            const FONT_VALUE = '500 16px Roboto';
+            const LCARS_FIELD_GAP = 5; // The width of the black separator
             
             // --- Left element ---
             ctx.fillStyle = LCARS_COLORS.ORANGE;
@@ -276,8 +306,7 @@
             ctx.closePath();
             ctx.fill();
 
-            // --- UPDATED: Split right-side bar into two sections ---
-
+            // --- Right-side info bar (split into two sections) ---
             // 1. ROCKETS section background
             let rocketBgColor = LCARS_COLORS.BLUE;
             if (rocketsLeft === 2) {
@@ -300,32 +329,61 @@
             ctx.closePath();
             ctx.fill();
 
+            // --- NEW: Draw black separator bars on top ---
+            ctx.fillStyle = '#000000';
+            // Left bar separators
+            ctx.fillRect(155, 0, LCARS_FIELD_GAP, barHeight);
+            ctx.fillRect(285, 0, LCARS_FIELD_GAP, barHeight);
+            // Right bar separator
+            ctx.fillRect(canvas.width - 120 - (LCARS_FIELD_GAP / 2), 0, LCARS_FIELD_GAP, barHeight);
+
+
             // --- Draw Text on UI elements ---
-            ctx.font = 'bold 16px "Courier New"';
             let scoreDisplay = totalScore > 0 ? `+${totalScore}` : (totalScore === 0 ? 'E' : totalScore);
-
-            // Left side text
-            ctx.fillStyle = LCARS_COLORS.TEXT;
-            ctx.textAlign = 'left';
-            ctx.fillText(`ROUND: ${roundNumber}`, padding * 2, 20);
-            ctx.fillText(`PAR: ${currentPar}`, 170, 20);
-            ctx.fillText(`SCORE: ${scoreDisplay}`, 300, 20);
-
-            // Right side text
-            ctx.textAlign = 'right';
             const stillInfectedCount = planets.filter(p => p.status === PLANET_STATUS.INFECTED).length;
+
+            // -- Left side text --
+            ctx.textAlign = 'left';
+            ctx.fillStyle = LCARS_COLORS.TEXT;
+
+            // ROUND
+            ctx.font = FONT_LABEL;
+            ctx.fillText('ROUND: ', padding * 2, 20);
+            ctx.font = FONT_VALUE;
+            ctx.fillText(roundNumber, (padding * 2) + ctx.measureText('ROUND: ').width, 20);
             
-            // --- UPDATED: Text color logic for rocket count ---
-            let rocketTextColor = LCARS_COLORS.TEXT; // Default black
+            // PAR
+            ctx.font = FONT_LABEL;
+            ctx.fillText('PAR: ', 170, 20);
+            ctx.font = FONT_VALUE;
+            ctx.fillText(currentPar, 170 + ctx.measureText('PAR: ').width, 20);
+            
+            // SCORE
+            ctx.font = FONT_LABEL;
+            ctx.fillText('SCORE: ', 300, 20);
+            ctx.font = FONT_VALUE;
+            ctx.fillText(scoreDisplay, 300 + ctx.measureText('SCORE: ').width, 20);
+
+            // -- Right side text --
+            ctx.textAlign = 'right';
+
+            // INFECTED
+            ctx.fillStyle = LCARS_COLORS.TEXT;
+            ctx.font = FONT_VALUE;
+            ctx.fillText(stillInfectedCount, canvas.width - padding, 20);
+            ctx.font = FONT_LABEL;
+            ctx.fillText('INFECTED: ', canvas.width - padding - ctx.measureText(stillInfectedCount).width, 20);
+
+            // ROCKETS
+            let rocketTextColor = LCARS_COLORS.TEXT;
             if (rocketsLeft === 0) {
-                rocketTextColor = '#ffffff'; // White when 0
+                rocketTextColor = '#ffffff';
             }
             ctx.fillStyle = rocketTextColor;
-            ctx.fillText(`ROCKETS: ${rocketsLeft}`, canvas.width - padding - 120, 20);
-            
-            // Reset to default for other text
-            ctx.fillStyle = LCARS_COLORS.TEXT; 
-            ctx.fillText(`INFECTED: ${stillInfectedCount}`, canvas.width - padding, 20);
+            ctx.font = FONT_VALUE;
+            ctx.fillText(rocketsLeft, canvas.width - padding - 120, 20);
+            ctx.font = FONT_LABEL;
+            ctx.fillText('ROCKETS: ', canvas.width - padding - 120 - ctx.measureText(rocketsLeft).width, 20);
         }
 
         function render() {

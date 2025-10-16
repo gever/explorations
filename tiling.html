@@ -1,0 +1,457 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>Image Cropper & Tile Rotator</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 100vh;
+            margin: 0;
+            background-color: #f0f0f0;
+            color: #333;
+            overflow: hidden; /* Prevent scroll on mobile during drag */
+        }
+        h1 {
+            margin-top: 0;
+            color: #2c3e50;
+        }
+        #canvasContainer {
+            text-align: center;
+            background-color: #fff;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 4px 10px rgba(0, 0, 0, 0.1);
+        }
+        #imageCanvas {
+            border: 3px dashed #a0a0a0;
+            background-color: #e0e0e0;
+            touch-action: none; /* Crucial for preventing default touch behaviors like scrolling/zooming */
+            display: block; /* Remove extra space below canvas */
+            margin: 0 auto;
+        }
+        #cropButton {
+            display: none; /* Hidden by default */
+            margin-top: 20px;
+            padding: 12px 25px;
+            font-size: 17px;
+            cursor: pointer;
+            border: none;
+            background-color: #28a745; /* Green */
+            color: white;
+            border-radius: 6px;
+            box-shadow: 0 2px 5px rgba(0, 0, 0, 0.2);
+            transition: background-color 0.2s ease;
+        }
+        #cropButton:hover {
+            background-color: #218838;
+        }
+        p {
+            margin-bottom: 15px;
+            color: #555;
+        }
+    </style>
+</head>
+<body>
+
+    <div id="canvasContainer">
+        <h1>Image Cropper & Tile Rotator</h1>
+        <p id="instructionText">Drop an image onto the canvas below.</p>
+        <canvas id="imageCanvas" width="600" height="600"></canvas>
+        <button id="cropButton">Apply Crop</button>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('imageCanvas');
+        const ctx = canvas.getContext('2d');
+        const cropButton = document.getElementById('cropButton');
+        const instructionText = document.getElementById('instructionText');
+
+        const TILE_SIZE = 100; // Size of each tile in the tiling stage
+        let originalImage = null; // The full, original dropped image
+        let tiledImage = null; // The cropped, square image for tiling
+        let rotations = []; // Stores rotation state for each tile
+
+        // --- App State ---
+        let appState = 'idle'; // 'idle', 'cropping', 'tiling'
+
+        // --- Cropping State ---
+        const HANDLE_SIZE = 20; // Size of the draggable corner handles
+        let imageDrawArgs = { x: 0, y: 0, width: 0, height: 0 }; // How the original image is drawn on canvas
+        let cropBox = { x: 50, y: 50, size: 200 }; // Current crop box position and size
+        let draggingState = {
+            active: false,
+            target: null, // 'box', 'topLeft', 'topRight', 'bottomLeft', 'bottomRight'
+            startX: 0, // Mouse/touch start X
+            startY: 0, // Mouse/touch start Y
+            initialBox: null // Crop box state at start of drag
+        };
+
+        const numCols = canvas.width / TILE_SIZE;
+        const numRows = canvas.height / TILE_SIZE;
+
+        /**
+         * Get mouse or touch position relative to the canvas.
+         * @param {Event} evt - MouseEvent or TouchEvent
+         */
+        function getCanvasPos(evt) {
+            const rect = canvas.getBoundingClientRect();
+            let clientX, clientY;
+
+            if (evt.touches && evt.touches.length > 0) {
+                clientX = evt.touches[0].clientX;
+                clientY = evt.touches[0].clientY;
+            } else {
+                clientX = evt.clientX;
+                clientY = evt.clientY;
+            }
+
+            return {
+                x: clientX - rect.left,
+                y: clientY - rect.top
+            };
+        }
+
+        /**
+         * Checks if a point is within a given rectangle.
+         */
+        function isPointInRect(px, py, rect) {
+            return px >= rect.x && px <= rect.x + rect.w && py >= rect.y && py <= rect.y + rect.h;
+        }
+
+        /**
+         * Determines which part of the crop UI (handle or box) is being dragged.
+         */
+        function getDragTarget(pos) {
+            // Define handle hit areas
+            const handles = {
+                topLeft: { x: cropBox.x - HANDLE_SIZE / 2, y: cropBox.y - HANDLE_SIZE / 2, w: HANDLE_SIZE, h: HANDLE_SIZE },
+                topRight: { x: cropBox.x + cropBox.size - HANDLE_SIZE / 2, y: cropBox.y - HANDLE_SIZE / 2, w: HANDLE_SIZE, h: HANDLE_SIZE },
+                bottomLeft: { x: cropBox.x - HANDLE_SIZE / 2, y: cropBox.y + cropBox.size - HANDLE_SIZE / 2, w: HANDLE_SIZE, h: HANDLE_SIZE },
+                bottomRight: { x: cropBox.x + cropBox.size - HANDLE_SIZE / 2, y: cropBox.y + cropBox.size - HANDLE_SIZE / 2, w: HANDLE_SIZE, h: HANDLE_SIZE }
+            };
+            for (const [name, rect] of Object.entries(handles)) {
+                if (isPointInRect(pos.x, pos.y, rect)) return name;
+            }
+            // Check if the point is inside the crop box (for moving the entire box)
+            if (isPointInRect(pos.x, pos.y, {x: cropBox.x, y: cropBox.y, w: cropBox.size, h: cropBox.size})) return 'box';
+            return null;
+        }
+
+        // --- Drawing Functions ---
+
+        /**
+         * Draws the cropping UI (image, overlay, crop box, handles).
+         */
+        function drawCropUI() {
+            if (appState !== 'cropping' || !originalImage) return;
+
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            
+            // Draw the scaled source image (fit to canvas)
+            ctx.drawImage(originalImage, imageDrawArgs.x, imageDrawArgs.y, imageDrawArgs.width, imageDrawArgs.height);
+
+            // Draw the dark overlay outside the crop box
+            ctx.fillStyle = 'rgba(0, 0, 0, 0.6)';
+            ctx.fillRect(0, 0, canvas.width, canvas.height); // Full canvas overlay
+            
+            // "Cut out" the crop box from the overlay
+            ctx.clearRect(cropBox.x, cropBox.y, cropBox.size, cropBox.size);
+
+            // Redraw the original image content inside the crop box area
+            // This creates the effect of the image being visible only inside the box
+            // Calculate source coordinates on original image that map to current cropBox
+            const scaleX = originalImage.width / imageDrawArgs.width;
+            const scaleY = originalImage.height / imageDrawArgs.height;
+
+            const sx = (cropBox.x - imageDrawArgs.x) * scaleX;
+            const sy = (cropBox.y - imageDrawArgs.y) * scaleY;
+            const sWidth = cropBox.size * scaleX;
+            const sHeight = cropBox.size * scaleY;
+
+            ctx.drawImage(originalImage, sx, sy, sWidth, sHeight, cropBox.x, cropBox.y, cropBox.size, cropBox.size);
+
+
+            // Draw the crop box border
+            ctx.strokeStyle = 'white';
+            ctx.lineWidth = 2;
+            ctx.strokeRect(cropBox.x, cropBox.y, cropBox.size, cropBox.size);
+
+            // Draw handles
+            ctx.fillStyle = 'white';
+            ctx.strokeStyle = '#333';
+            ctx.lineWidth = 1;
+            
+            // Top-left
+            ctx.fillRect(cropBox.x - HANDLE_SIZE / 2, cropBox.y - HANDLE_SIZE / 2, HANDLE_SIZE, HANDLE_SIZE);
+            ctx.strokeRect(cropBox.x - HANDLE_SIZE / 2, cropBox.y - HANDLE_SIZE / 2, HANDLE_SIZE, HANDLE_SIZE);
+            // Top-right
+            ctx.fillRect(cropBox.x + cropBox.size - HANDLE_SIZE / 2, cropBox.y - HANDLE_SIZE / 2, HANDLE_SIZE, HANDLE_SIZE);
+            ctx.strokeRect(cropBox.x + cropBox.size - HANDLE_SIZE / 2, cropBox.y - HANDLE_SIZE / 2, HANDLE_SIZE, HANDLE_SIZE);
+            // Bottom-left
+            ctx.fillRect(cropBox.x - HANDLE_SIZE / 2, cropBox.y + cropBox.size - HANDLE_SIZE / 2, HANDLE_SIZE, HANDLE_SIZE);
+            ctx.strokeRect(cropBox.x - HANDLE_SIZE / 2, cropBox.y + cropBox.size - HANDLE_SIZE / 2, HANDLE_SIZE, HANDLE_SIZE);
+            // Bottom-right
+            ctx.fillRect(cropBox.x + cropBox.size - HANDLE_SIZE / 2, cropBox.y + cropBox.size - HANDLE_SIZE / 2, HANDLE_SIZE, HANDLE_SIZE);
+            ctx.strokeRect(cropBox.x + cropBox.size - HANDLE_SIZE / 2, cropBox.y + cropBox.size - HANDLE_SIZE / 2, HANDLE_SIZE, HANDLE_SIZE);
+        }
+
+        /**
+         * Draws the tiled image grid with rotations.
+         */
+        function drawTiles() {
+            if (!tiledImage) return;
+            ctx.clearRect(0, 0, canvas.width, canvas.height); // Clear entire canvas for tiling
+            for (let r = 0; r < numRows; r++) {
+                for (let c = 0; c < numCols; c++) {
+                    const x = c * TILE_SIZE;
+                    const y = r * TILE_SIZE;
+                    const angle = (rotations[r][c] || 0) * (Math.PI / 2); // Convert rotation step to radians
+                    ctx.save();
+                    ctx.translate(x + TILE_SIZE / 2, y + TILE_SIZE / 2); // Move origin to tile center
+                    ctx.rotate(angle); // Rotate
+                    ctx.drawImage(tiledImage, -TILE_SIZE / 2, -TILE_SIZE / 2, TILE_SIZE, TILE_SIZE); // Draw image centered
+                    ctx.restore(); // Restore canvas state
+                }
+            }
+        }
+
+        // --- Logic and Event Handlers ---
+
+        /**
+         * Initializes the rotation state for all tiles to 0.
+         */
+        function initializeRotations() {
+            rotations = Array(numRows).fill(0).map(() => Array(numCols).fill(0));
+        }
+
+        /**
+         * Sets up the cropping stage after an image is loaded.
+         */
+        function startCropping() {
+            // Calculate how to fit the original image inside the canvas, maintaining aspect ratio
+            const canvasAspect = canvas.width / canvas.height;
+            const imageAspect = originalImage.width / originalImage.height;
+
+            if (imageAspect > canvasAspect) { // Image is wider relative to canvas
+                imageDrawArgs.width = canvas.width;
+                imageDrawArgs.height = canvas.width / imageAspect;
+                imageDrawArgs.x = 0;
+                imageDrawArgs.y = (canvas.height - imageDrawArgs.height) / 2;
+            } else { // Image is taller or has same aspect ratio
+                imageDrawArgs.height = canvas.height;
+                imageDrawArgs.width = canvas.height * imageAspect;
+                imageDrawArgs.y = 0;
+                imageDrawArgs.x = (canvas.width - imageDrawArgs.width) / 2;
+            }
+
+            // Initialize crop box to be a square in the center, fitting within imageDrawArgs
+            const minImageDimension = Math.min(imageDrawArgs.width, imageDrawArgs.height);
+            const initialCropSize = minImageDimension * 0.8; // Start with 80% of the smaller dimension
+            
+            cropBox.size = initialCropSize;
+            cropBox.x = imageDrawArgs.x + (imageDrawArgs.width - initialCropSize) / 2;
+            cropBox.y = imageDrawArgs.y + (imageDrawArgs.height - initialCropSize) / 2;
+            
+            appState = 'cropping';
+            instructionText.textContent = "Drag the box or its corners to crop. Then click 'Apply Crop'.";
+            cropButton.style.display = 'block';
+            drawCropUI();
+        }
+
+        /**
+         * Applies the current crop, creating a new square image for tiling.
+         */
+        function applyCrop() {
+            if (!originalImage || appState !== 'cropping') return;
+
+            // Calculate source coordinates and size on the ORIGINAL image
+            // This translates the crop box position/size from the canvas drawing to the original image pixels
+            const scaleX = originalImage.width / imageDrawArgs.width;
+            const scaleY = originalImage.height / imageDrawArgs.height;
+
+            const sx = (cropBox.x - imageDrawArgs.x) * scaleX;
+            const sy = (cropBox.y - imageDrawArgs.y) * scaleY;
+            const sSize = cropBox.size * scaleX; // Since it's a square, width and height are the same
+
+            // Create a temporary canvas to draw the cropped portion
+            const tempCanvas = document.createElement('canvas');
+            tempCanvas.width = TILE_SIZE; // The final tiled image should be TILE_SIZE x TILE_SIZE
+            tempCanvas.height = TILE_SIZE;
+            const tempCtx = tempCanvas.getContext('2d');
+            
+            // Draw the cropped portion of the original image onto the temporary canvas
+            tempCtx.drawImage(originalImage, sx, sy, sSize, sSize, 0, 0, TILE_SIZE, TILE_SIZE);
+
+            // Create a new Image object from the temporary canvas's content
+            tiledImage = new Image();
+            tiledImage.onload = () => {
+                appState = 'tiling';
+                cropButton.style.display = 'none';
+                instructionText.textContent = "Tap a tile to rotate it. Drop a new image to start over.";
+                initializeRotations();
+                drawTiles();
+            };
+            tiledImage.src = tempCanvas.toDataURL(); // Get data URL of the cropped image
+        }
+
+        /**
+         * Handles dropping of image files onto the canvas.
+         */
+        function handleFileDrop(event) {
+            event.preventDefault();
+            event.stopPropagation();
+            const file = event.dataTransfer.files[0];
+            if (file && file.type.startsWith('image/')) {
+                const reader = new FileReader();
+                reader.onload = (e) => {
+                    originalImage = new Image();
+                    originalImage.onload = startCropping;
+                    originalImage.src = e.target.result;
+                };
+                reader.readAsDataURL(file);
+            } else {
+                alert('Please drop a valid image file!');
+            }
+        }
+        
+        /**
+         * Handles the start of a drag interaction (mouse down or touch start).
+         */
+        function handleInteractionStart(event) {
+            if (appState !== 'cropping') return;
+            event.preventDefault(); // Prevent default browser actions (like scrolling/zooming on touch)
+
+            const pos = getCanvasPos(event);
+            const target = getDragTarget(pos);
+
+            if (target) {
+                draggingState.active = true;
+                draggingState.target = target;
+                draggingState.startX = pos.x;
+                draggingState.startY = pos.y;
+                draggingState.initialBox = { ...cropBox }; // Store initial state for delta calculations
+            }
+        }
+        
+        /**
+         * Handles drag movement (mouse move or touch move).
+         */
+        function handleInteractionMove(event) {
+            if (!draggingState.active || appState !== 'cropping') return;
+            event.preventDefault(); // Prevent default browser actions
+
+            const pos = getCanvasPos(event);
+            const dx = pos.x - draggingState.startX;
+            const dy = pos.y - draggingState.startY;
+
+            let { x, y, size } = draggingState.initialBox; // Start from the initial box position
+
+            const minAllowedSize = TILE_SIZE / 2; // Minimum crop box size
+            const maxAllowedSize = Math.min(imageDrawArgs.width, imageDrawArgs.height);
+
+            if (draggingState.target === 'box') {
+                x += dx;
+                y += dy;
+            } else if (draggingState.target === 'topLeft') {
+                const d = Math.min(dx, dy); // Maintain square aspect ratio
+                x += d;
+                y += d;
+                size -= d;
+            } else if (draggingState.target === 'topRight') {
+                const d = Math.max(-dx, dy);
+                y += d;
+                size -= d;
+                // Adjust x if size changes too much to keep right edge stable
+                x = draggingState.initialBox.x + (draggingState.initialBox.size - size);
+            } else if (draggingState.target === 'bottomLeft') {
+                const d = Math.max(dx, -dy);
+                x += d;
+                size -= d;
+                // Adjust y if size changes too much to keep bottom edge stable
+                y = draggingState.initialBox.y + (draggingState.initialBox.size - size);
+            } else if (draggingState.target === 'bottomRight') {
+                const d = Math.min(dx, dy); // Maintain square aspect ratio
+                size += d;
+            }
+            
+            // --- Size and Position Constraints ---
+            
+            // Ensure crop box doesn't go below min size or above max allowed size
+            size = Math.max(minAllowedSize, Math.min(size, maxAllowedSize));
+            
+            // Ensure crop box stays within the displayed image boundaries (imageDrawArgs)
+            x = Math.max(imageDrawArgs.x, x);
+            y = Math.max(imageDrawArgs.y, y);
+
+            // Adjust x/y if resizing pushed it out of bounds
+            if (x + size > imageDrawArgs.x + imageDrawArgs.width) {
+                x = imageDrawArgs.x + imageDrawArgs.width - size;
+            }
+            if (y + size > imageDrawArgs.y + imageDrawArgs.height) {
+                y = imageDrawArgs.y + imageDrawArgs.height - size;
+            }
+
+            // Ensure x/y don't go below imageDrawArgs.x/y after being adjusted by size (can happen with small sizes)
+            x = Math.max(imageDrawArgs.x, x);
+            y = Math.max(imageDrawArgs.y, y);
+
+
+            cropBox = { x, y, size };
+            drawCropUI();
+        }
+        
+        /**
+         * Handles the end of a drag interaction (mouse up or touch end).
+         */
+        function handleInteractionEnd() {
+            draggingState.active = false;
+        }
+
+        /**
+         * Handles clicks/taps on the canvas during the tiling stage to rotate tiles.
+         */
+        function handleCanvasClick(event) {
+            // Only respond to clicks when in 'tiling' state
+            if (appState !== 'tiling' || !tiledImage) return;
+
+            const pos = getCanvasPos(event);
+            const col = Math.floor(pos.x / TILE_SIZE);
+            const row = Math.floor(pos.y / TILE_SIZE);
+
+            if (row >= 0 && row < numRows && col >= 0 && col < numCols) {
+                rotations[row][col] = (rotations[row][col] + 1) % 4; // Cycle 0, 1, 2, 3 (0, 90, 180, 270 degrees)
+                drawTiles(); // Redraw with the updated tile rotation
+            }
+        }
+
+        // --- Event Listeners ---
+        
+        // Prevent default dragover behavior to allow drop
+        canvas.addEventListener('dragover', (e) => e.preventDefault());
+        canvas.addEventListener('drop', handleFileDrop);
+
+        // Mouse Events for Cropping
+        canvas.addEventListener('mousedown', handleInteractionStart);
+        canvas.addEventListener('mousemove', handleInteractionMove);
+        window.addEventListener('mouseup', handleInteractionEnd); // Use window for mouseup in case drag goes off canvas
+
+        // Touch Events for Cropping
+        canvas.addEventListener('touchstart', handleInteractionStart, { passive: false });
+        canvas.addEventListener('touchmove', handleInteractionMove, { passive: false });
+        window.addEventListener('touchend', handleInteractionEnd); // Use window for touchend in case drag goes off canvas
+
+        // Click Event for Tiling (separate to avoid conflict with drag for cropping)
+        canvas.addEventListener('click', handleCanvasClick);
+        
+        // Button for applying crop
+        cropButton.addEventListener('click', applyCrop);
+
+    </script>
+</body>
+</html>

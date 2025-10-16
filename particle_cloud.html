@@ -1,0 +1,200 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Optimized Accreting Gravity Cloud</title>
+    <style>
+        body, html { margin: 0; padding: 0; overflow: hidden; background-color: #000; }
+        canvas { display: block; }
+    </style>
+</head>
+<body>
+    <canvas id="simulationCanvas"></canvas>
+
+    <script>
+        // --- Setup and Configuration ---
+        const canvas = document.getElementById('simulationCanvas');
+        const ctx = canvas.getContext('2d');
+        let width = canvas.width = window.innerWidth;
+        let height = canvas.height = window.innerHeight;
+
+        // Simulation parameters
+        let NUM_PARTICLES = 5000;
+        const G = 1.2;
+        const SOFTENING = 15;
+        const INITIAL_SPIN = 0.003;
+        const PARTICLE_SIZE = 1;
+        const TRAIL_ALPHA = 0.08;
+        const MERGE_DISTANCE = 2.5;
+
+        // Color mapping
+        const MIN_MASS_COLOR = { r: 100, g: 150, b: 255 }; // Light Blue
+        const MAX_MASS_COLOR = { r: 255, g: 255, b: 0 };   // Yellow
+        const MAX_MASS_FOR_COLOR = 50;
+
+        // --- Performance Optimization: Spatial Grid ---
+        const GRID_CELL_SIZE = 50; // In pixels. Tune this for performance.
+        let grid;
+        let gridCols, gridRows;
+        
+        let particles = [];
+        let nextParticleId = 0; // Counter for unique particle IDs
+
+        // --- Particle Initialization ---
+        function initializeParticles() {
+            const centerX = width / 2;
+            const centerY = height / 2;
+            const radius = Math.min(width, height) * 0.3;
+
+            for (let i = 0; i < NUM_PARTICLES; i++) {
+                const r = radius * Math.sqrt(Math.random());
+                const angle = Math.random() * 2 * Math.PI;
+                const x = centerX + r * Math.cos(angle);
+                const y = centerY + r * Math.sin(angle);
+                const vx = -(y - centerY) * INITIAL_SPIN;
+                const vy = (x - centerX) * INITIAL_SPIN;
+
+                particles.push({
+                    id: nextParticleId++, // Assign a unique ID
+                    x: x, y: y, vx: vx, vy: vy, ax: 0, ay: 0,
+                    mass: 1, merged: false
+                });
+            }
+        }
+
+        // --- Physics Update ---
+        function updatePhysics() {
+            // =================================================================
+            // == OPTIMIZED MERGING LOGIC USING A SPATIAL GRID                ==
+            // =================================================================
+
+            // 1. Initialize grid structure
+            gridCols = Math.ceil(width / GRID_CELL_SIZE);
+            gridRows = Math.ceil(height / GRID_CELL_SIZE);
+            grid = Array.from({ length: gridCols }, () => Array.from({ length: gridRows }, () => []));
+
+            // 2. Place particles into the grid
+            for (const p of particles) {
+                p.merged = false; // Reset merge flag
+                const cellX = Math.floor(p.x / GRID_CELL_SIZE);
+                const cellY = Math.floor(p.y / GRID_CELL_SIZE);
+                if (cellX >= 0 && cellX < gridCols && cellY >= 0 && cellY < gridRows) {
+                    grid[cellX][cellY].push(p);
+                }
+            }
+            
+            const mergedParticles = [];
+            // 3. Check for merges only within local neighborhoods
+            for (let i = 0; i < particles.length; i++) {
+                const p1 = particles[i];
+                if (p1.merged) continue;
+
+                const cellX = Math.floor(p1.x / GRID_CELL_SIZE);
+                const cellY = Math.floor(p1.y / GRID_CELL_SIZE);
+
+                // Check own cell and 8 neighbors
+                for (let dx = -1; dx <= 1; dx++) {
+                    for (let dy = -1; dy <= 1; dy++) {
+                        const neighborCellX = cellX + dx;
+                        const neighborCellY = cellY + dy;
+
+                        if (neighborCellX >= 0 && neighborCellX < gridCols && neighborCellY >= 0 && neighborCellY < gridRows) {
+                            for (const p2 of grid[neighborCellX][neighborCellY]) {
+                                // Important: Check unique IDs to process each pair only once
+                                // and avoid checking a particle against itself.
+                                if (p1.id >= p2.id || p2.merged) continue;
+                                
+                                const dist = Math.sqrt((p1.x - p2.x)**2 + (p1.y - p2.y)**2);
+
+                                if (dist < MERGE_DISTANCE) {
+                                    const totalMass = p1.mass + p2.mass;
+                                    const new_vx = (p1.mass * p1.vx + p2.mass * p2.vx) / totalMass;
+                                    const new_vy = (p1.mass * p1.vy + p2.mass * p2.vy) / totalMass;
+                                    const new_x = (p1.mass * p1.x + p2.mass * p2.x) / totalMass;
+                                    const new_y = (p1.mass * p1.y + p2.mass * p2.y) / totalMass;
+
+                                    mergedParticles.push({
+                                        id: nextParticleId++,
+                                        x: new_x, y: new_y, vx: new_vx, vy: new_vy,
+                                        ax: 0, ay: 0, mass: totalMass, merged: false
+                                    });
+                                    p1.merged = true;
+                                    p2.merged = true;
+                                    goto_next_particle:; // Break out of all neighbor loops for p1
+                                }
+                            }
+                        }
+                    }
+                }
+                goto_next_particle:;
+            }
+
+            // Update the main particle list
+            particles = particles.filter(p => !p.merged).concat(mergedParticles);
+            NUM_PARTICLES = particles.length;
+
+            // =================================================================
+            // == GRAVITATIONAL FORCE CALCULATION (UNCHANGED)                 ==
+            // =================================================================
+            for (const p of particles) { p.ax = 0; p.ay = 0; }
+
+            for (let i = 0; i < NUM_PARTICLES; i++) {
+                for (let j = i + 1; j < NUM_PARTICLES; j++) {
+                    const p1 = particles[i];
+                    const p2 = particles[j];
+                    const dx = p2.x - p1.x;
+                    const dy = p2.y - p1.y;
+                    const distSq = dx * dx + dy * dy;
+
+                    const invDistCube = 1.0 / Math.pow(distSq + SOFTENING * SOFTENING, 1.5);
+                    const force = G * p1.mass * p2.mass * invDistCube;
+
+                    const fx = force * dx;
+                    const fy = force * dy;
+
+                    p1.ax += fx / p1.mass; p1.ay += fy / p1.mass;
+                    p2.ax -= fx / p2.mass; p2.ay -= fy / p2.mass;
+                }
+            }
+
+            // -- Integration Step --
+            for (const p of particles) {
+                p.vx += p.ax; p.vy += p.ay;
+                p.x += p.vx;  p.y += p.vy;
+            }
+        }
+
+        // --- Drawing and Animation ---
+        function draw() {
+            ctx.fillStyle = `rgba(0, 0, 0, ${TRAIL_ALPHA})`;
+            ctx.fillRect(0, 0, width, height);
+
+            for (const p of particles) {
+                const size = Math.cbrt(p.mass) * PARTICLE_SIZE;
+                let massRatio = Math.min(1, p.mass / MAX_MASS_FOR_COLOR);
+                
+                const r = Math.round(MIN_MASS_COLOR.r + (MAX_MASS_COLOR.r - MIN_MASS_COLOR.r) * massRatio);
+                const g = Math.round(MIN_MASS_COLOR.g + (MAX_MASS_COLOR.g - MIN_MASS_COLOR.g) * massRatio);
+                const b = Math.round(MIN_MASS_COLOR.b + (MAX_MASS_COLOR.b - MIN_MASS_COLOR.b) * massRatio);
+
+                ctx.fillStyle = `rgb(${r}, ${g}, ${b})`;
+                ctx.fillRect(p.x - size / 2, p.y - size / 2, size, size);
+            }
+        }
+
+        function animate() {
+            updatePhysics();
+            draw();
+            requestAnimationFrame(animate);
+        }
+
+        window.addEventListener('resize', () => {
+            width = canvas.width = window.innerWidth;
+            height = canvas.height = window.innerHeight;
+        });
+
+        initializeParticles();
+        animate();
+    </script>
+</body>
+</html>

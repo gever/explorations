@@ -1,0 +1,350 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>p5.js Polygon Filler</title>
+    <style>
+        html, body {
+            margin: 0;
+            padding: 0;
+            font-family: Arial, sans-serif;
+            background: #222;
+            color: #eee;
+        }
+        main {
+            display: flex;
+            gap: 20px;
+            padding: 20px;
+            flex-wrap: wrap;
+            justify-content: center;
+        }
+        #drawing-area {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+        #canvas-container {
+            border: 1px solid #444;
+            line-height: 0;
+        }
+        #caption {
+            color: #aaa;
+            font-size: 0.9em;
+            margin-top: 8px;
+        }
+        #controls {
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+            min-width: 250px;
+        }
+        #controls div {
+            display: grid;
+            grid-template-columns: 100px 1fr;
+            gap: 10px;
+            align-items: center;
+        }
+        #controls label {
+            text-align: right;
+            font-size: 0.9em;
+        }
+        #controls input {
+            width: 100%;
+        }
+        #controls button {
+            grid-column: 1 / -1;
+            padding: 10px;
+            font-size: 1em;
+            cursor: pointer;
+        }
+        #controls span {
+            font-size: 0.9em;
+            color: #aaa;
+        }
+    </style>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.9.0/p5.min.js"></script>
+    <script type="text/javascript" src="https://unpkg.com/p5.js-svg/dist/p5.svg.js"></script>
+</head>
+
+<body>
+    <main>
+        <div id="controls">
+            <div>
+                <label for="padding">Padding:</label>
+                <input type="range" id="padding" min="0" max="50" value="2" step="1" oninput="this.nextElementSibling.textContent = this.value">
+                <span>2</span>
+            </div>
+            <div>
+                <label for="minSize">Min Size:</label>
+                <input type="range" id="minSize" min="2" max="100" value="4" step="1" oninput="this.nextElementSibling.textContent = this.value">
+                <span>4</span>
+            </div>
+            <div>
+                <label for="maxSize">Max Size:</label>
+                <input type="range" id="maxSize" min="2" max="100" value="20" step="1" oninput="this.nextElementSibling.textContent = this.value">
+                <span>20</span>
+            </div>
+            <div>
+                <label for="density">Density:</label>
+                <input type="range" id="density" min="0" max="100" value="50" step="1" oninput="this.nextElementSibling.textContent = this.value + '%'">
+                <span>50%</span>
+            </div>
+            <button id="fillButton">Fill Polygon</button>
+            <button id="clearButton">Clear</button>
+            <button id="exportButton">Export SVG</button>
+        </div>
+        <div id="drawing-area">
+            <div id="canvas-container"></div>
+            <p id="caption">Click to draw a polygon</p>
+        </div>
+    </main>
+
+    <script>
+        let vertices = [];
+        let circles = [];
+        let state = 'drawing'; // 'drawing' or 'filled'
+
+        let ui = {};
+        let canvas;
+        const SNAP_DISTANCE = 10;
+
+        function setup() {
+            // Use SVG renderer for easy export
+            canvas = createCanvas(800, 600, SVG);
+            canvas.parent('canvas-container');
+
+            ui.padding = select('#padding');
+            ui.minSize = select('#minSize');
+            ui.maxSize = select('#maxSize');
+            ui.density = select('#density');
+            ui.fillButton = select('#fillButton');
+            ui.clearButton = select('#clearButton');
+            ui.exportButton = select('#exportButton');
+            ui.caption = select('#caption');
+
+            ui.fillButton.mousePressed(fillPolygon);
+            ui.clearButton.mousePressed(clearAll);
+            ui.exportButton.mousePressed(exportSVG);
+            
+            loop();
+        }
+
+        function clearAll() {
+            vertices = [];
+            circles = [];
+            state = 'drawing';
+            loop();
+        }
+
+        function fillPolygon() {
+            if (vertices.length < 3) return; 
+
+            state = 'filled';
+            generateCircles();
+            redraw();
+            noLoop();
+        }
+
+        function exportSVG() {
+            save('polygon-fill.svg');
+        }
+
+        function draw() {
+            background(80); // #505050
+
+            if (state === 'drawing') {
+                ui.caption.style('display', 'block');
+                drawPolygonVertices();
+            } else {
+                ui.caption.style('display', 'none');
+                drawFilledShape();
+                drawCircles();
+            }
+        }
+
+        function drawPolygonVertices() {
+            stroke(255);
+            strokeWeight(2);
+            fill(255, 50);
+
+            beginShape();
+            for (const v of vertices) {
+                vertex(v.x, v.y);
+            }
+            endShape();
+
+            noStroke();
+            fill(255, 150);
+            for (const v of vertices) {
+                ellipse(v.x, v.y, 8, 8);
+            }
+
+            if (vertices.length > 0 && mouseIsOnCanvas()) {
+                let targetX = mouseX;
+                let targetY = mouseY;
+                let isSnapping = false;
+
+                if (vertices.length > 2) {
+                    const d = dist(mouseX, mouseY, vertices[0].x, vertices[0].y);
+                    if (d < SNAP_DISTANCE) {
+                        targetX = vertices[0].x;
+                        targetY = vertices[0].y;
+                        isSnapping = true;
+                    }
+                }
+                stroke(255, isSnapping ? 255 : 100);
+                strokeWeight(isSnapping ? 2 : 1);
+                line(vertices[vertices.length - 1].x, vertices[vertices.length - 1].y, targetX, targetY);
+
+                if (isSnapping) {
+                    fill(0, 255, 0, 200);
+                    noStroke();
+                    ellipse(vertices[0].x, vertices[0].y, 12, 12);
+                }
+            }
+        }
+        
+        function drawFilledShape() {
+            noStroke();
+            fill(100); // #646464
+            beginShape();
+            for (const v of vertices) {
+                vertex(v.x, v.y);
+            }
+            endShape(CLOSE);
+        }
+
+        function drawCircles() {
+            noStroke();
+            fill(200, 255, 200, 150); // RGBA
+            for (const c of circles) {
+                ellipse(c.x, c.y, c.r * 2, c.r * 2);
+            }
+        }
+
+        function mousePressed() {
+            if (state !== 'drawing' || !mouseIsOnCanvas()) return;
+            const p = createVector(mouseX, mouseY);
+            
+            if (vertices.length > 2) {
+                const d = p.dist(vertices[0]);
+                if (d < SNAP_DISTANCE) {
+                    state = 'filled';
+                    fillPolygon();
+                    return;
+                }
+            }
+            vertices.push(p);
+        }
+        
+        function mouseIsOnCanvas() {
+            return mouseX > 0 && mouseX < width && mouseY > 0 && mouseY < height;
+        }
+
+        // --- Core Logic ---
+
+        function getPolygonArea(polygon) {
+            let area = 0.0;
+            let j = polygon.length - 1;
+            for (let i = 0; i < polygon.length; i++) {
+                area += (polygon[j].x + polygon[i].x) * (polygon[j].y - polygon[i].y);
+                j = i;
+            }
+            return abs(area / 2.0);
+        }
+
+        function generateCircles() {
+            circles = [];
+            const padding = float(ui.padding.value());
+            let minR = float(ui.minSize.value()) / 2;
+            let maxR = float(ui.maxSize.value()) / 2;
+            const densityPercent = float(ui.density.value()) / 100.0;
+            
+            if (minR > maxR) [minR, maxR] = [maxR, minR];
+
+            const avgR = (minR + maxR) / 2.0;
+            const avgCircleArea = PI * avgR * avgR;
+            
+            if (avgCircleArea < 1e-6) return;
+
+            const polyArea = getPolygonArea(vertices);
+            const maxPossibleCircles = polyArea / avgCircleArea;
+            const numCircles = floor(maxPossibleCircles * densityPercent);
+
+            if (numCircles <= 0) return;
+            
+            let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+            for (const v of vertices) {
+                if (v.x < minX) minX = v.x;
+                if (v.x > maxX) maxX = v.x;
+                if (v.y < minY) minY = v.y;
+                if (v.y > maxY) maxY = v.y;
+            }
+
+            let attempts = 0;
+            const maxAttempts = numCircles * 200; 
+
+            while (circles.length < numCircles && attempts < maxAttempts) {
+                attempts++;
+                
+                const r = random(minR, maxR);
+                const p = createVector(
+                    random(minX + r, maxX - r),
+                    random(minY + r, maxY - r)
+                );
+
+                if (!isInside(p, vertices)) continue;
+                if (isTooCloseToEdge(p, r, vertices, padding)) continue;
+
+                let collision = false;
+                for (const c of circles) {
+                    const d = dist(p.x, p.y, c.x, c.y);
+                    if (d < r + c.r + padding) {
+                        collision = true;
+                        break;
+                    }
+                }
+                if (collision) continue;
+
+                circles.push({ x: p.x, y: p.y, r: r });
+            }
+        }
+
+        function isTooCloseToEdge(p, r, polygon, padding) {
+            for (let i = 0, j = polygon.length - 1; i < polygon.length; j = i++) {
+                const a = polygon[j];
+                const b = polygon[i];
+                const dist = pointToLineSegmentDistance(p, a, b);
+                if (dist < r + padding) {
+                    return true;
+                }
+            }
+            return false;
+        }
+
+        function isInside(p, polygon) {
+            let inside = false;
+            for (let i = 0, j = polygon.length - 1; i < polygon.length; j = i++) {
+                const vi = polygon[i];
+                const vj = polygon[j];
+                const intersect = ((vi.y > p.y) !== (vj.y > p.y))
+                    && (p.x < (vj.x - vi.x) * (p.y - vi.y) / (vj.y - vi.y) + vi.x);
+                if (intersect) inside = !inside;
+            }
+            return inside;
+        }
+
+        function pointToLineSegmentDistance(p, a, b) {
+            const vAP = p5.Vector.sub(p, a);
+            const vAB = p5.Vector.sub(b, a);
+            const magAB_sq = vAB.magSq();
+            if (magAB_sq === 0) return p.dist(a);
+            const t = p5.Vector.dot(vAP, vAB) / magAB_sq;
+            const t_clamped = constrain(t, 0, 1);
+            const projection = p5.Vector.add(a, p5.Vector.mult(vAB, t_clamped));
+            return p.dist(projection);
+        }
+    </script>
+</body>
+</html>

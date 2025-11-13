@@ -62,6 +62,26 @@
             font-size: 0.9em;
             color: #aaa;
         }
+        /* Updated style */
+        .algorithm-radio {
+            grid-column: 1 / -1;
+            display: grid; /* Use Grid */
+            grid-template-columns: 1fr; /* Force single column */
+            gap: 10px; 
+            background: #333;
+            padding: 10px;
+            border-radius: 5px;
+            color: #eee;
+        }
+        .algorithm-radio label {
+            text-align: left;
+            display: flex; /* This is for the [o] and "Text" */
+            align-items: center;
+            gap: 5px;
+            color: #eee;
+            font-size: 1em;
+            margin-left: 10px;
+        }
     </style>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.9.0/p5.min.js"></script>
     <script src="https://unpkg.com/p5.js-svg/dist/p5.svg.js"></script>
@@ -76,14 +96,19 @@
                 <span>2</span>
             </div>
             <div>
-                <label for="minSize">Min Size:</label>
-                <input type="range" id="minSize" min="2" max="100" value="4" step="1" oninput="this.nextElementSibling.textContent = this.value">
+                <label for="aSize">A Size:</label>
+                <input type="range" id="aSize" min="2" max="100" value="4" step="1" oninput="this.nextElementSibling.textContent = this.value">
                 <span>4</span>
             </div>
             <div>
-                <label for="maxSize">Max Size:</label>
-                <input type="range" id="maxSize" min="2" max="100" value="20" step="1" oninput="this.nextElementSibling.textContent = this.value">
+                <label for="bSize">B Size:</label>
+                <input type="range" id="bSize" min="2" max="100" value="20" step="1" oninput="this.nextElementSibling.textContent = this.value">
                 <span>20</span>
+            </div>
+            <div>
+                <label for="ratio">A to B Ratio:</label>
+                <input type="range" id="ratio" min="0" max="100" value="50" step="1" oninput="this.nextElementSibling.textContent = this.value + '%'">
+                <span>50%</span>
             </div>
             <div>
                 <label for="density">Density:</label>
@@ -93,7 +118,7 @@
             <button id="fillButton">Fill Polygon</button>
             <button id="clearButton">Clear</button>
             <button id="exportButton">Export SVG</button>
-        </div>
+            </div>
         <div id="drawing-area">
             <div id="canvas-container"></div>
             <p id="caption">Click to draw a polygon</p>
@@ -110,18 +135,25 @@
         const SNAP_DISTANCE = 10;
 
         function setup() {
-            // Use SVG renderer for easy export
             canvas = createCanvas(800, 600, SVG);
             canvas.parent('canvas-container');
 
             ui.padding = select('#padding');
-            ui.minSize = select('#minSize');
-            ui.maxSize = select('#maxSize');
+            ui.aSize = select('#aSize');
+            ui.bSize = select('#bSize');
+            ui.ratio = select('#ratio');
             ui.density = select('#density');
             ui.fillButton = select('#fillButton');
             ui.clearButton = select('#clearButton');
             ui.exportButton = select('#exportButton');
             ui.caption = select('#caption');
+
+            ui.algorithm = createRadio();
+            ui.algorithm.option('random', 'Random');
+            ui.algorithm.option('grid', 'Grid');
+            ui.algorithm.selected('random');
+            ui.algorithm.parent('controls');
+            ui.algorithm.addClass('algorithm-radio');
 
             ui.fillButton.mousePressed(fillPolygon);
             ui.clearButton.mousePressed(clearAll);
@@ -151,7 +183,7 @@
         }
 
         function draw() {
-            background(80); // #505050
+            background(80); 
 
             if (state === 'drawing') {
                 ui.caption.style('display', 'block');
@@ -167,7 +199,6 @@
             stroke(255);
             strokeWeight(2);
             fill(255, 50);
-
             beginShape();
             for (const v of vertices) {
                 vertex(v.x, v.y);
@@ -207,7 +238,7 @@
         
         function drawFilledShape() {
             noStroke();
-            fill(100); // #646464
+            fill(100);
             beginShape();
             for (const v of vertices) {
                 vertex(v.x, v.y);
@@ -217,7 +248,7 @@
 
         function drawCircles() {
             noStroke();
-            fill(200, 255, 200, 150); // RGBA
+            fill(200, 255, 200, 150);
             for (const c of circles) {
                 ellipse(c.x, c.y, c.r * 2, c.r * 2);
             }
@@ -257,23 +288,34 @@
         function generateCircles() {
             circles = [];
             const padding = float(ui.padding.value());
-            let minR = float(ui.minSize.value()) / 2;
-            let maxR = float(ui.maxSize.value()) / 2;
+            const aR = float(ui.aSize.value()) / 2;
+            const bR = float(ui.bSize.value()) / 2;
+            const ratioPercent = float(ui.ratio.value()) / 100.0;
             const densityPercent = float(ui.density.value()) / 100.0;
             
-            if (minR > maxR) [minR, maxR] = [maxR, minR];
+            const algorithm = ui.algorithm.value();
 
-            const avgR = (minR + maxR) / 2.0;
-            const avgCircleArea = PI * avgR * avgR;
+            if (algorithm === 'random') {
+                generateCirclesRandom(padding, aR, bR, ratioPercent, densityPercent);
+            } else if (algorithm === 'grid') {
+                generateCirclesGrid(padding, aR, bR, ratioPercent, densityPercent);
+            }
+        }
+
+        function generateCirclesRandom(padding, aR, bR, ratioPercent, densityPercent) {
+            const avgR = (aR * (1.0 - ratioPercent)) + (bR * ratioPercent);
+            const avgCircleArea = PI * avgR * avgR; 
             
             if (avgCircleArea < 1e-6) return;
 
             const polyArea = getPolygonArea(vertices);
             const maxPossibleCircles = polyArea / avgCircleArea;
             const numCircles = floor(maxPossibleCircles * densityPercent);
-
             if (numCircles <= 0) return;
             
+            const minR = min(aR, bR);
+            const maxR = max(aR, bR);
+
             let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
             for (const v of vertices) {
                 if (v.x < minX) minX = v.x;
@@ -287,8 +329,7 @@
 
             while (circles.length < numCircles && attempts < maxAttempts) {
                 attempts++;
-                
-                const r = random(minR, maxR);
+                const r = (random(1) < ratioPercent) ? bR : aR;
                 const p = createVector(
                     random(minX + r, maxX - r),
                     random(minY + r, maxY - r)
@@ -308,6 +349,46 @@
                 if (collision) continue;
 
                 circles.push({ x: p.x, y: p.y, r: r });
+            }
+        }
+        
+        function generateCirclesGrid(padding, aR, bR, ratioPercent, densityPercent) {
+            const minR = min(aR, bR);
+            const maxR = max(aR, bR);
+            
+            const gridStep = (maxR * 2) + padding;
+            if (gridStep < 1) return;
+
+            let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+            for (const v of vertices) {
+                if (v.x < minX) minX = v.x;
+                if (v.x > maxX) maxX = v.x;
+                if (v.y < minY) minY = v.y;
+                if (v.y > maxY) maxY = v.y;
+            }
+
+            let validPoints = [];
+            for (let x = minX; x <= maxX; x += gridStep) {
+                for (let y = minY; y <= maxY; y += gridStep) {
+                    const p = createVector(x, y);
+                    if (isInside(p, vertices) && !isTooCloseToEdge(p, maxR, vertices, padding)) {
+                        validPoints.push(p);
+                    }
+                }
+            }
+
+            if (validPoints.length === 0) return;
+
+            const numCircles = floor(validPoints.length * densityPercent);
+            shuffle(validPoints, true); 
+
+            for (let i = 0; i < numCircles; i++) {
+                const p = validPoints[i];
+                const r = (random(1) < ratioPercent) ? bR : aR;
+                
+                if (!isTooCloseToEdge(p, r, vertices, padding)) {
+                    circles.push({ x: p.x, y: p.y, r: r });
+                }
             }
         }
 

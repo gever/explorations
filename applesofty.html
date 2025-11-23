@@ -20,143 +20,168 @@
             align-items: center;
         }
 
+        /* --- MONITOR CHASSIS --- */
         #monitor {
-            width: 800px;
-            height: 600px;
+            width: 832px;
+            height: 620px;
             background-color: #000;
             border: 20px solid #333;
             border-radius: 10px;
-            box-shadow: 0 0 20px rgba(0, 0, 0, 0.8);
+            box-shadow: 0 0 30px rgba(0, 0, 0, 0.9);
             padding: 20px;
             position: relative;
-            overflow: hidden;
             display: flex;
             flex-direction: column;
+            overflow: hidden;
         }
 
         #monitor::before {
             content: " ";
             display: block;
             position: absolute;
-            top: 0;
-            left: 0;
-            bottom: 0;
-            right: 0;
-            background: linear-gradient(
-                rgba(18, 16, 16, 0) 50%,
-                rgba(0, 0, 0, 0.25) 50%
-            );
+            top: 0; left: 0; bottom: 0; right: 0;
+            background: linear-gradient(rgba(18, 16, 16, 0) 50%, rgba(0, 0, 0, 0.25) 50%);
             background-size: 100% 4px;
             z-index: 20;
             pointer-events: none;
         }
 
+        /* --- DISPLAY LAYER --- */
         #screen-output {
             flex-grow: 1;
-            overflow-y: auto;
-            white-space: pre-wrap;
-            font-size: 24px;
-            line-height: 1.2;
+            white-space: pre;
+            font-family: 'VT323', monospace;
+            font-size: 28px;
+            line-height: 1.0;
+            letter-spacing: 0.05em;
             text-transform: uppercase;
-            scrollbar-width: none;
+            color: #33ff33;
+            background-color: #000;
             z-index: 1;
+            overflow: hidden;
+            cursor: text;
         }
-        
-        #screen-output::-webkit-scrollbar { display: none; }
+
+        .blink { animation: blink 1s step-end infinite; background-color: #33ff33; color: #000; }
+        .perf-stats { color: #00ffff; font-weight: bold; text-shadow: 0 0 5px #00aaaa; }
 
         #graphics-layer {
             position: absolute;
-            top: 20px;
-            left: 20px;
-            width: 800px;
+            top: 20px; left: 20px;
+            width: 832px; height: 580px;
             image-rendering: pixelated;
             z-index: 5;
             display: none;
             background-color: black;
         }
 
-        /* STOP BUTTON FOR IOS/TOUCH */
+        /* --- HELP OVERLAY (Dot Matrix Style) --- */
+        #help-overlay {
+            position: absolute;
+            top: 40px; left: 40px; right: 40px; bottom: 40px;
+            z-index: 50;
+            display: none;
+            flex-direction: column;
+            box-shadow: 0 20px 50px rgba(0,0,0,0.9);
+            border: 1px solid #444;
+        }
+
+        .help-header {
+            display: flex; justify-content: space-between; align-items: center;
+            background: #222; color: #ccc; padding: 10px 20px;
+            font-family: sans-serif; font-size: 14px;
+            border-bottom: 2px solid #000;
+        }
+        
+        #help-search {
+            background: #444; border: 1px solid #666; color: white;
+            padding: 5px 10px; font-family: sans-serif; width: 200px;
+        }
+
+        .help-close {
+            background: #c00; color: white; border: none;
+            padding: 5px 15px; cursor: pointer; font-weight: bold;
+        }
+
+        /* Fan-fold Paper Effect */
+        .printer-paper {
+            flex-grow: 1;
+            background-color: #f4f4f0;
+            /* Green Bar Background */
+            background-image: repeating-linear-gradient(
+                to bottom,
+                #f4f4f0,
+                #f4f4f0 40px,
+                #e8eadd 40px,
+                #e8eadd 80px
+            );
+            color: #333;
+            font-family: 'Courier New', Courier, monospace;
+            font-size: 14px;
+            line-height: 1.5;
+            overflow-y: auto;
+            padding: 20px 40px;
+            /* Perforation holes on sides */
+            border-left: 12px dotted #bbb;
+            border-right: 12px dotted #bbb;
+            box-shadow: inset 0 0 20px rgba(0,0,0,0.1);
+        }
+
+        .help-section { margin-bottom: 40px; border-top: 2px solid #000; padding-top: 20px; }
+        .help-title { font-size: 1.8em; font-weight: 900; margin-bottom: 15px; text-transform: uppercase; letter-spacing: 2px; }
+        
+        .help-entry { margin-bottom: 20px; break-inside: avoid; }
+        .help-cmd { font-weight: bold; font-size: 1.2em; color: #000; background: rgba(0,0,0,0.05); display: inline-block; padding: 0 5px; }
+        .help-desc { margin: 5px 0 5px 20px; }
+        .help-ex { margin-left: 20px; color: #004488; font-family: monospace; font-weight: bold; }
+        .help-ex::before { content: "Ex: "; color: #666; font-weight: normal; }
+
+        .index-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 15px; margin-bottom: 30px; }
+        .index-btn { 
+            background: #fff; border: 2px solid #333; padding: 10px; 
+            cursor: pointer; text-align: center; font-weight: bold; font-family: 'Courier New', monospace;
+            box-shadow: 3px 3px 0px rgba(0,0,0,0.2); transition: transform 0.1s;
+        }
+        .index-btn:active { transform: translate(2px, 2px); box-shadow: 1px 1px 0px rgba(0,0,0,0.2); }
+
         #break-btn {
-            position: absolute;
-            top: 30px;
-            right: 40px;
-            background: #cc0000;
-            color: #fff;
-            border: 2px solid #ff0000;
-            font-family: 'VT323', monospace;
-            font-size: 24px;
-            padding: 5px 15px;
-            cursor: pointer;
-            display: none; /* Hidden by default */
-            z-index: 100;
-            text-transform: uppercase;
-            font-weight: bold;
-            box-shadow: 0 0 10px #ff0000;
+            position: absolute; top: 30px; right: 40px;
+            background: #cc0000; color: #fff; border: 2px solid #ff0000;
+            font-family: 'VT323', monospace; font-size: 24px;
+            padding: 5px 15px; cursor: pointer;
+            display: none; z-index: 100;
+            text-transform: uppercase; font-weight: bold;
         }
-        #break-btn:active { background: #ff0000; }
-
-        .cursor {
-            display: inline-block;
-            width: 0.6em;
-            height: 1em;
-            background-color: #33ff33;
-            animation: blink 1s step-end infinite;
-            vertical-align: text-bottom;
-        }
-
-        .perf-stats {
-            color: #00ffff;
-            font-weight: bold;
-        }
-
-        @keyframes blink {
-            0%, 100% { opacity: 1; }
-            50% { opacity: 0; }
-        }
-
-        #input-trap {
-            position: absolute;
-            opacity: 0;
-            top: -1000px;
-        }
-
-        .scanline {
-            width: 100%;
-            height: 100px;
-            z-index: 10;
-            background: linear-gradient(0deg, rgba(0,0,0,0) 0%, rgba(51, 255, 51, 0.1) 50%, rgba(0,0,0,0) 100%);
-            opacity: 0.1;
-            position: absolute;
-            bottom: 100%;
-            animation: scanline 10s linear infinite;
-            pointer-events: none;
-        }
-
-        @keyframes scanline {
-            0% { bottom: 100%; }
-            100% { bottom: -100px; }
-        }
+        
+        #input-trap { position: absolute; opacity: 0; top: -1000px; }
     </style>
 </head>
 <body>
 
     <div id="monitor">
-        <div class="scanline"></div>
         <button id="break-btn">STOP (ESC)</button>
         <canvas id="graphics-layer" width="280" height="192"></canvas>
         <div id="screen-output"></div>
+        
+        <div id="help-overlay">
+            <div class="help-header">
+                <span>APPLESOFT REFERENCE MANUAL</span>
+                <input type="text" id="help-search" placeholder="FILTER COMMANDS..." autocomplete="off">
+                <button class="help-close" onclick="document.getElementById('help-overlay').style.display='none'">CLOSE</button>
+            </div>
+            <div class="printer-paper" id="help-content"></div>
+        </div>
+
         <input type="text" id="input-trap" autocomplete="off" autofocus>
     </div>
 
     <script>
         /**
-         * APPLESOFT BASIC INTERPRETER v12
-         * Updates: 
-         * 1. Instant Interrupt check after every PRINT command
-         * 2. DOM Element Limiter (Scrollback limit)
+         * APPLESOFT BASIC INTERPRETER v17
+         * Feature Update: Comprehensive Help System & Documentation
          */
 
-        // --- UTILS ---
+        // --- GLOBALS ---
         const outputDiv = document.getElementById('screen-output');
         const inputTrap = document.getElementById('input-trap');
         const canvas = document.getElementById('graphics-layer');
@@ -164,589 +189,360 @@
         const ctx = canvas.getContext('2d');
         const AsyncFunction = Object.getPrototypeOf(async function(){}).constructor;
 
+        // --- SCREEN MEMORY ---
+        const SCREEN = {
+            W: 40, H: 24,
+            mem: new Array(24).fill(" ".repeat(40)), 
+            styles: new Array(24).fill(null).map(() => new Array(40).fill(null)),
+            cx: 0, cy: 0,
+            
+            render: () => {
+                let html = "";
+                for (let y = 0; y < SCREEN.H; y++) {
+                    let lineStr = SCREEN.mem[y];
+                    let lineStyles = SCREEN.styles[y];
+                    let lineHtml = "";
+                    for(let x = 0; x < SCREEN.W; x++) {
+                        let char = lineStr[x] || " ";
+                        let style = lineStyles[x];
+                        if (y === SCREEN.cy && x === SCREEN.cx && IO.cursorVisible) {
+                            lineHtml += `<span class="blink">${char}</span>`;
+                        } else if (style) {
+                            lineHtml += `<span class="${style}">${char}</span>`;
+                        } else {
+                            lineHtml += char;
+                        }
+                    }
+                    html += lineHtml + "\n";
+                }
+                outputDiv.innerHTML = html;
+            },
+
+            put: (str, className = null) => {
+                for (let char of str) {
+                    if (char === '\n') {
+                        SCREEN.newline();
+                    } else {
+                        let line = SCREEN.mem[SCREEN.cy];
+                        line = line.substring(0, SCREEN.cx) + char + line.substring(SCREEN.cx + 1);
+                        SCREEN.mem[SCREEN.cy] = line;
+                        SCREEN.styles[SCREEN.cy][SCREEN.cx] = className;
+                        SCREEN.cx++;
+                        if (SCREEN.cx >= SCREEN.W) SCREEN.newline();
+                    }
+                }
+                SCREEN.render();
+            },
+
+            newline: () => {
+                SCREEN.cx = 0; SCREEN.cy++;
+                if (SCREEN.cy >= SCREEN.H) { SCREEN.scroll(); SCREEN.cy = SCREEN.H - 1; }
+            },
+
+            scroll: () => {
+                SCREEN.mem.shift(); SCREEN.mem.push(" ".repeat(SCREEN.W));
+                SCREEN.styles.shift(); SCREEN.styles.push(new Array(SCREEN.W).fill(null));
+            },
+
+            clear: () => {
+                SCREEN.mem = new Array(SCREEN.H).fill(" ".repeat(SCREEN.W));
+                SCREEN.styles = new Array(SCREEN.H).fill(null).map(() => new Array(SCREEN.W).fill(null));
+                SCREEN.cx = 0; SCREEN.cy = 0; SCREEN.render();
+            }
+        };
+
         // --- MEMORY & STATE ---
         const SYS = {
-            vars: {},           
-            program: [],        
-            compiled: [],       
-            pc: 0,              
-            labels: {},         
-            stack: [],          
-            forStack: {},       
-            running: false,
-            break: false,       
-            inputCallback: null 
+            vars: {}, arrays: {}, program: [], compiled: [],
+            pc: 0, labels: {}, stack: [], forStack: {},
+            running: false, break: false, inputCallback: null,
+            getArray: (n, i) => { if (!SYS.arrays[n]) throw `UNDEFINED ARRAY ${n}`; return SYS.arrays[n][i]; },
+            setArray: (n, i, v) => { if (!SYS.arrays[n]) throw `UNDEFINED ARRAY ${n}`; SYS.arrays[n][i] = v; }
+        };
+
+        // --- DEMOS ---
+        const DEMOS = {
+            "DEMO/ANIM.BAS": [
+                {line: 10, src: 'HOME'}, {line: 20, src: 'PRINT "ANIMATION DEMO - USE SETPOS"'},
+                {line: 30, src: 'FOR I = 1 TO 22'}, {line: 40, src: 'SETPOS I, I : PRINT "O"'},
+                {line: 50, src: 'SETPOS 39-I, I : PRINT "X"'}, {line: 60, src: 'NEXT I'},
+                {line: 70, src: 'VTAB 23 : PRINT "DONE"'}, {line: 80, src: 'END'}
+            ],
+            "DEMO/PERFORMANCE.BAS": [
+                {line: 10, src: 'HOME: PRINT "BENCHMARKING..."'}, {line: 20, src: 'SUM = 0'},
+                {line: 30, src: 'FOR I = 1 TO 10000 : SUM = SUM + 1 : NEXT I'},
+                {line: 40, src: 'PRINT "SUM: "; SUM'}, {line: 50, src: 'END'}
+            ],
+            "DEMO/GRAPHICS.BAS": [
+                {line: 10, src: 'HGR2 : HCOLOR=3'}, {line: 20, src: 'FOR I=0 TO 191 STEP 5'},
+                {line: 30, src: 'HPLOT 0,0 TO 279,I'}, {line: 40, src: 'NEXT I'},
+                {line: 50, src: 'INPUT ""; X$ : TEXT : END'}
+            ]
+        };
+
+        // --- HELP DATA (UPDATED) ---
+        const HELP_DATA = {
+            "SYSTEM & FILES": [
+                { c: "RUN", d: "Executes the program currently in memory. Clears variables.", e: "RUN" },
+                { c: "LIST", d: "Displays the source code of the current program.", e: "LIST" },
+                { c: "NEW", d: "Clears the current program from memory and resets variables.", e: "NEW" },
+                { c: "SAVE", d: "Saves current program to browser local storage.", e: "SAVE \"MYGAME\"" },
+                { c: "LOAD", d: "Loads a program from local storage or demo library.", e: "LOAD \"DEMO/GRAPHICS.BAS\"" },
+                { c: "DIR", d: "Lists all saved files and available demos.", e: "DIR" },
+                { c: "DOWNLOAD", d: "Downloads the program as a .BAS text file to your computer.", e: "DOWNLOAD \"GAME\"" },
+                { c: "HELP", d: "Opens this reference manual.", e: "HELP" },
+                { c: "REM", d: "Remark/Comment. Line is ignored by interpreter.", e: "10 REM SETUP VARIABLES" }
+            ],
+            "SCREEN & GRAPHICS": [
+                { c: "HOME", d: "Clears the text screen and moves cursor to top-left.", e: "10 HOME" },
+                { c: "TEXT", d: "Switches display back to standard 40-column text mode.", e: "100 TEXT" },
+                { c: "HGR", d: "Switches to High-Res Graphics (160px height) with 4 text lines.", e: "10 HGR" },
+                { c: "HGR2", d: "Switches to Full High-Res Graphics (192px height).", e: "10 HGR2" },
+                { c: "HCOLOR", d: "Sets drawing color (0-7) for HPLOT.", e: "20 HCOLOR = 3" },
+                { c: "HPLOT", d: "Plots a point or draws lines on the graphics screen.", e: "30 HPLOT 0,0 TO 100,100" },
+                { c: "HTAB", d: "Moves cursor to horizontal column X (1-40).", e: "10 HTAB 20" },
+                { c: "VTAB", d: "Moves cursor to vertical row Y (1-24).", e: "20 VTAB 12" },
+                { c: "SETPOS", d: "Moves cursor to X, Y coordinates (Custom).", e: "30 SETPOS 15, 10" }
+            ],
+            "I/O & CONTROL": [
+                { c: "PRINT", d: "Outputs text or variables. Use ; to suppress newline.", e: "10 PRINT \"SCORE: \"; S" },
+                { c: "INPUT", d: "Pauses to get value from user.", e: "20 INPUT \"NAME? \"; N$" },
+                { c: "GOTO", d: "Unconditional jump to line number.", e: "50 GOTO 10" },
+                { c: "GOSUB", d: "Jump to subroutine. Returns on RETURN.", e: "10 GOSUB 1000" },
+                { c: "RETURN", d: "Return from subroutine.", e: "1000 RETURN" },
+                { c: "IF...THEN", d: "Conditional execution.", e: "10 IF A > 10 THEN GOTO 50" },
+                { c: "FOR...NEXT", d: "Loop structure.", e: "10 FOR I=1 TO 10 STEP 2 ... 50 NEXT I" },
+                { c: "END", d: "Stops program execution.", e: "99 END" },
+                { c: "DIM", d: "Defines array size.", e: "10 DIM A(100)" },
+                { c: "LET", d: "Assigns value to variable (optional keyword).", e: "10 LET A = 5" }
+            ],
+            "MATH FUNCTIONS": [
+                { c: "SIN(X)", d: "Sine of X (radians).", e: "Y = SIN(3.14)" },
+                { c: "COS(X)", d: "Cosine of X (radians).", e: "Y = COS(0)" },
+                { c: "TAN(X)", d: "Tangent of X.", e: "Y = TAN(1)" },
+                { c: "ATN(X)", d: "Arctangent of X.", e: "Y = ATN(1)" },
+                { c: "SQR(X)", d: "Square root.", e: "Y = SQR(16)" },
+                { c: "ABS(X)", d: "Absolute value.", e: "Y = ABS(-5)" },
+                { c: "INT(X)", d: "Integer part (Floor).", e: "Y = INT(3.9)" },
+                { c: "EXP(X)", d: "e raised to power X.", e: "Y = EXP(1)" },
+                { c: "LOG(X)", d: "Natural logarithm.", e: "Y = LOG(10)" },
+                { c: "RND(1)", d: "Random number 0.0 to 1.0.", e: "R = RND(1)" },
+                { c: "RAND(X)", d: "Random number 0 to X.", e: "R = RAND(100)" }
+            ],
+            "STRING FUNCTIONS": [
+                { c: "LEN(S$)", d: "Length of string.", e: "L = LEN(\"ABC\")" },
+                { c: "LEFT$(S$,N)", d: "First N chars.", e: "A$ = LEFT$(\"HELLO\", 2)" },
+                { c: "RIGHT$(S$,N)", d: "Last N chars.", e: "A$ = RIGHT$(\"WORLD\", 3)" },
+                { c: "MID$(S$,I,N)", d: "N chars starting at I.", e: "A$ = MID$(\"ABC\", 2, 1)" },
+                { c: "STR$(N)", d: "Convert number to string.", e: "A$ = STR$(123)" },
+                { c: "VAL(S$)", d: "Convert string to number.", e: "N = VAL(\"12.5\")" }
+            ]
         };
 
         // --- FILE SYSTEM ---
         const FS = {
             PREFIX: 'APPLESOFT_PROG_',
-            save: (filename) => {
-                const key = FS.PREFIX + filename.toUpperCase();
-                const data = JSON.stringify(SYS.program);
-                try {
-                    localStorage.setItem(key, data);
-                    IO.print("SAVED " + filename);
-                } catch(e) {
-                    IO.print("?DISK FULL ERROR");
-                }
-            },
-            load: (filename) => {
-                const key = FS.PREFIX + filename.toUpperCase();
-                const data = localStorage.getItem(key);
-                if (data) {
-                    try {
-                        SYS.program = JSON.parse(data);
-                        SYS.vars = {};
-                        GRAPHICS.setMode(0);
-                        IO.print("LOADED " + filename);
-                    } catch(e) {
-                        IO.print("?FILE CORRUPT ERROR");
-                    }
-                } else {
-                    IO.print("?FILE NOT FOUND ERROR");
-                }
+            save: (fn) => { try { localStorage.setItem(FS.PREFIX+fn.toUpperCase(), JSON.stringify(SYS.program)); IO.print("SAVED "+fn); } catch(e){ IO.print("?DISK FULL"); } },
+            load: (fn) => {
+                const f = fn.toUpperCase();
+                if (DEMOS[f]) { SYS.program = JSON.parse(JSON.stringify(DEMOS[f])); SYS.vars={}; SYS.arrays={}; GRAPHICS.setMode(0); IO.print("LOADED DEMO"); return; }
+                const d = localStorage.getItem(FS.PREFIX + f);
+                if (d) { SYS.program = JSON.parse(d); SYS.vars={}; SYS.arrays={}; GRAPHICS.setMode(0); IO.print("LOADED"); } else IO.print("?FILE NOT FOUND");
             },
             dir: () => {
                 IO.print("CATALOG");
-                let count = 0;
-                for (let i = 0; i < localStorage.length; i++) {
-                    const key = localStorage.key(i);
-                    if (key.startsWith(FS.PREFIX)) {
-                        const name = key.replace(FS.PREFIX, '');
-                        IO.print(" " + name);
-                        count++;
-                    }
-                }
-                if (count === 0) IO.print(" NO FILES FOUND");
+                IO.print(" [DEMOS]"); for(let k in DEMOS) IO.print("  " + k);
+                IO.print(" [USER]"); for (let i=0; i<localStorage.length; i++) { const k=localStorage.key(i); if(k.startsWith(FS.PREFIX)) IO.print("  " + k.replace(FS.PREFIX,'')); }
             },
-            download: (filename) => {
-                SYS.program.sort((a, b) => a.line - b.line);
-                const textContent = SYS.program.map(l => `${l.line} ${l.src}`).join("\n");
-                const blob = new Blob([textContent], { type: 'text/plain' });
-                const url = URL.createObjectURL(blob);
-                const a = document.createElement('a');
-                a.href = url;
-                a.download = (filename || "PROGRAM") + ".BAS";
-                document.body.appendChild(a);
-                a.click();
-                document.body.removeChild(a);
-                URL.revokeObjectURL(url);
-                IO.print("DOWNLOADED " + a.download);
+            download: (fn) => {
+                SYS.program.sort((a,b)=>a.line-b.line);
+                const t = SYS.program.map(l=>`${l.line} ${l.src}`).join("\n");
+                const b = new Blob([t],{type:'text/plain'}); const u = URL.createObjectURL(b);
+                const a = document.createElement('a'); a.href=u; a.download=(fn||"PROG")+".BAS";
+                document.body.appendChild(a); a.click(); document.body.removeChild(a);
             }
         };
 
-        // --- GRAPHICS SYSTEM ---
+        // --- GRAPHICS ---
         const GRAPHICS = {
-            lastX: 0,
-            lastY: 0,
-            color: 3, 
+            lastX:0, lastY:0, color:3, 
             colors: ['#000000', '#14F53C', '#A040A0', '#FFFFFF', '#000000', '#FF6000', '#3040FF', '#FFFFFF'],
-            setMode: (mode) => {
-                if (mode === 0) { 
-                    canvas.style.display = 'none';
-                } else if (mode === 1) { 
-                    canvas.style.display = 'block';
-                    canvas.height = 160; 
-                    canvas.style.height = '500px'; 
-                    GRAPHICS.clear();
-                } else if (mode === 2) { 
-                    canvas.style.display = 'block';
-                    canvas.height = 192;
-                    canvas.style.height = '600px';
-                    GRAPHICS.clear();
-                }
-            },
-            clear: () => {
-                ctx.fillStyle = "#000000";
-                ctx.fillRect(0, 0, canvas.width, canvas.height);
-            },
-            setColor: (c) => { GRAPHICS.color = Math.floor(c) % 8; },
-            plot: (x, y) => {
-                ctx.fillStyle = GRAPHICS.colors[GRAPHICS.color];
-                ctx.fillRect(Math.floor(x), Math.floor(y), 1, 1);
-                GRAPHICS.lastX = x;
-                GRAPHICS.lastY = y;
-            },
-            lineTo: (x, y) => {
-                ctx.strokeStyle = GRAPHICS.colors[GRAPHICS.color];
-                ctx.lineWidth = 1;
-                ctx.beginPath();
-                ctx.moveTo(Math.floor(GRAPHICS.lastX) + 0.5, Math.floor(GRAPHICS.lastY) + 0.5);
-                ctx.lineTo(Math.floor(x) + 0.5, Math.floor(y) + 0.5);
-                ctx.stroke();
-                GRAPHICS.lastX = x;
-                GRAPHICS.lastY = y;
+            setMode: (m) => { if(m===0) canvas.style.display='none'; else { canvas.style.display='block'; canvas.height=(m===1?160:192); canvas.style.height=(m===1?'500px':'580px'); GRAPHICS.clear(); } },
+            clear: () => { ctx.fillStyle="#000"; ctx.fillRect(0,0,canvas.width,canvas.height); },
+            setColor: (c) => GRAPHICS.color = Math.floor(c)%8,
+            plot: (x,y) => { ctx.fillStyle=GRAPHICS.colors[GRAPHICS.color]; ctx.fillRect(Math.floor(x),Math.floor(y),1,1); GRAPHICS.lastX=x; GRAPHICS.lastY=y; },
+            lineTo: (x,y) => {
+                ctx.strokeStyle=GRAPHICS.colors[GRAPHICS.color]; ctx.lineWidth=1; ctx.beginPath();
+                ctx.moveTo(Math.floor(GRAPHICS.lastX)+0.5, Math.floor(GRAPHICS.lastY)+0.5);
+                ctx.lineTo(Math.floor(x)+0.5, Math.floor(y)+0.5); ctx.stroke(); GRAPHICS.lastX=x; GRAPHICS.lastY=y;
             }
         };
 
-        // --- THE COMPILER ---
-        const Tokenizer = {
-            regex: /([0-9]+)|(".*?")|([A-Z][A-Z0-9_]*)|(<=|>=|<>|<|>|=)|([\+\-\*\/])|(\()|(\))|(:)|(,)/g,
-            tokenize: (str) => {
-                const tokens = [];
-                let match;
-                while ((match = Tokenizer.regex.exec(str)) !== null) {
-                    tokens.push(match[0]);
-                }
-                return tokens;
-            }
+        // --- COMPILER ---
+        const LIB = {
+            'SIN': 'Math.sin', 'COS': 'Math.cos', 'TAN': 'Math.tan', 'ATN': 'Math.atan', 'EXP': 'Math.exp', 'LOG': 'Math.log', 'SQR': 'Math.sqrt', 'ABS': 'Math.abs',
+            'INT': 'Math.floor', 'RND': '(x)=>Math.random()', 'RAND': '(x)=>Math.random()*x',
+            'LEN': '(s)=>(s+"").length', 'LEFT$': '(s,n)=>(s+"").substr(0,n)', 'RIGHT$': '(s,n)=>(s+"").substr((s+"").length-n)', 'MID$': '(s,st,ln)=>(s+"").substr(st-1,ln)',
+            'STR$': '(n)=>n.toString()', 'VAL': '(s)=>parseFloat(s)'
         };
-
+        const Tokenizer = { regex: /([0-9]*\.?[0-9]+)|(".*?")|([A-Z][A-Z0-9_]*\$?)|(<=|>=|<>|<|>|=)|([\+\-\*\/])|(\()|(\))|(:)|(,)|(;)/g, tokenize: (str)=>{const t=[];let m;while((m=Tokenizer.regex.exec(str))!==null)t.push(m[0]);return t;} };
         const Compiler = {
             genExpression: (tokens, ctx) => {
-                const peek = () => tokens[ctx.idx];
-                const next = () => tokens[ctx.idx++];
-
-                const parseExpression = () => {
-                    let left = parseTerm();
-                    while (ctx.idx < tokens.length && (peek() === '+' || peek() === '-')) {
-                        const op = next();
-                        const right = parseTerm();
-                        left = `(${left} ${op} ${right})`;
-                    }
-                    if (ctx.idx < tokens.length && ['=', '<', '>', '<=', '>=', '<>'].includes(peek())) {
-                        let op = next();
-                        const right = parseExpression();
-                        let jsOp = op;
-                        if (op === '=') jsOp = '===';
-                        if (op === '<>') jsOp = '!==';
-                        left = `(${left} ${jsOp} ${right} ? 1 : 0)`;
-                    }
-                    return left;
-                };
-
-                const parseTerm = () => {
-                    let left = parseFactor();
-                    while (ctx.idx < tokens.length && (peek() === '*' || peek() === '/')) {
-                        const op = next();
-                        const right = parseFactor();
-                        left = `(${left} ${op} ${right})`;
-                    }
-                    return left;
-                };
-
-                const parseFactor = () => {
-                    const t = next();
-                    if (!t) return "0";
-                    if (!isNaN(t)) return t;
-                    if (t.startsWith('"')) return t;
-                    if (/^[A-Z][A-Z0-9_]*$/.test(t)) return `(SYS.vars['${t}'] || 0)`;
-                    if (t === '(') {
-                        const expr = parseExpression();
-                        next(); 
-                        return `(${expr})`;
-                    }
-                    return "0";
-                };
-
-                return parseExpression();
+                const peek=()=>tokens[ctx.idx], next=()=>tokens[ctx.idx++];
+                const parseExp=()=>{ let l=parseTerm(); while(ctx.idx<tokens.length&&(peek()==='+'||peek()==='-')) l=`(${l} ${next()} ${parseTerm()})`; if(ctx.idx<tokens.length&&['=','<','>','<=','>=','<>'].includes(peek())){let op=next(),jop=op==='='?'===':op==='<>'?'!==':op;l=`(${l} ${jop} ${parseExp()}?1:0)`;} return l; };
+                const parseTerm=()=>{ let l=parseFactor(); while(ctx.idx<tokens.length&&(peek()==='*'||peek()==='/')) l=`(${l} ${next()} ${parseFactor()})`; return l; };
+                const parseFactor=()=>{
+                    const t=next(); if(!t) return "0"; if(!isNaN(t)||t.startsWith('"')) return t; if(t==='('){const e=parseExp();next();return `(${e})`;}
+                    if(/^[A-Z]/.test(t)){ if(LIB[t]){next();const a=[];if(peek()!==')')do{a.push(parseExp());if(peek()===',')next();else break;}while(true);next();return `${LIB[t]}(${a.join(',')})`;} if(peek()==='('){next();const i=parseExp();next();return `SYS.getArray('${t}',${i})`;} return `(SYS.vars['${t}']!==undefined?SYS.vars['${t}']:0)`; } return "0";
+                }; return parseExp();
             },
-
             compile: (lineObj) => {
-                const tokens = Tokenizer.tokenize(lineObj.src.toUpperCase());
-                const ctx = { idx: 0 };
-                const peek = () => tokens[ctx.idx];
-                const next = () => tokens[ctx.idx++];
-                const remain = () => tokens.slice(ctx.idx);
-
-                let jsBody = "";
-                let isAsync = false;
-
-                const cmd = next();
-
-                if (cmd === 'PRINT') {
-                    if (!peek()) jsBody = "IO.print('');";
-                    else {
-                        const parts = [];
-                        while(ctx.idx < tokens.length) {
-                            if (peek() === ';') { next(); continue; }
-                            if (peek() === ',') { next(); continue; }
-                            if ([':', 'THEN', 'ELSE'].includes(peek())) break; 
-                            parts.push(Compiler.genExpression(tokens, ctx));
-                            if (peek() === ';') next(); 
-                        }
-                        const expr = parts.length ? parts.join(' + "" + ') : '""';
-                        jsBody = `IO.print(${expr});`;
-                    }
-                    // UPDATE 1: CHECK BREAK IMMEDIATELY AFTER PRINT
-                    jsBody += ` if (SYS.break) { SYS.running = false; return; }`;
-                }
-                else if (cmd === 'GOTO') {
-                    const line = Number(next());
-                    jsBody = `if (SYS.labels[${line}] !== undefined) SYS.pc = SYS.labels[${line}] - 1; else { IO.print("?UNDEF LINE ${line}"); SYS.running = false; }`;
-                }
-                else if (cmd === 'IF') {
-                    const conditionCode = Compiler.genExpression(tokens, ctx);
-                    if (next() !== 'THEN') throw "SYNTAX";
-                    
-                    let thenBody = "";
-                    if (!isNaN(peek())) {
-                        const line = Number(next());
-                        thenBody = `if (SYS.labels[${line}] !== undefined) SYS.pc = SYS.labels[${line}] - 1;`;
-                    } else {
-                        const restSrc = remain().join(" ");
-                        const subLine = { line: lineObj.line, src: restSrc };
-                        const subId = "SUB_" + Math.random().toString(36).substr(2, 9);
-                        SYS[subId] = Compiler.compile(subLine); 
-                        thenBody = `return SYS['${subId}'](SYS, IO, GRAPHICS, FS);`;
-                    }
-                    
-                    jsBody = `if (${conditionCode}) { ${thenBody} }`;
-                }
-                else if (cmd === 'FOR') {
-                    const v = next();
-                    next(); // =
-                    const start = Compiler.genExpression(tokens, ctx);
-                    next(); // TO
-                    const end = Compiler.genExpression(tokens, ctx);
-                    jsBody = `SYS.vars['${v}'] = ${start}; SYS.forStack['${v}'] = { target: ${end}, pc: SYS.pc };`;
-                }
-                else if (cmd === 'NEXT') {
-                    const v = next();
-                    jsBody = `
-                        var loop = SYS.forStack['${v}'];
-                        if (loop) {
-                            SYS.vars['${v}']++;
-                            if (SYS.vars['${v}'] <= loop.target) SYS.pc = loop.pc;
-                            else delete SYS.forStack['${v}'];
-                        }
-                    `;
-                }
-                else if (cmd === 'INPUT') {
-                    isAsync = true;
-                    let prompt = "?";
-                    if (peek().startsWith('"')) {
-                        prompt = next().replace(/"/g, '');
-                        if (peek() === ';') next();
-                    }
-                    const v = next();
-                    jsBody = `
-                        IO.print("${prompt}", false);
-                        var val = await IO.input();
-                        SYS.vars['${v}'] = isNaN(Number(val)) ? val : Number(val);
-                    `;
-                }
-                else if (cmd === 'LET' || (cmd && peek() === '=')) {
-                    let v = cmd;
-                    if (cmd === 'LET') { v = next(); }
-                    next(); 
-                    const val = Compiler.genExpression(tokens, ctx);
-                    jsBody = `SYS.vars['${v}'] = ${val};`;
-                }
-                else if (cmd === 'GOSUB') {
-                    const line = Number(next());
-                    jsBody = `SYS.stack.push(SYS.pc); if (SYS.labels[${line}] !== undefined) SYS.pc = SYS.labels[${line}] - 1;`;
-                }
-                else if (cmd === 'RETURN') {
-                    jsBody = `if (SYS.stack.length === 0) { IO.print("?RETURN ERROR"); SYS.running=false; } else { SYS.pc = SYS.stack.pop(); }`;
-                }
-                else if (cmd === 'END') jsBody = "SYS.running = false;";
-                else if (cmd === 'HOME') jsBody = "IO.clear();";
-                else if (cmd === 'REM') jsBody = "";
-                else if (['HGR','HGR2','TEXT'].includes(cmd)) {
-                    const m = cmd==='TEXT'?0 : (cmd==='HGR'?1:2);
-                    jsBody = `GRAPHICS.setMode(${m});`;
-                }
-                else if (cmd === 'HCOLOR') {
-                    next(); 
-                    const c = Compiler.genExpression(tokens, ctx);
-                    jsBody = `GRAPHICS.setColor(${c});`;
-                }
-                else if (cmd === 'HPLOT') {
-                    let startLine = false;
-                    let startCode = "";
-                    if (peek() === 'TO') { next(); startLine = true; }
-                    else {
-                        const x = Compiler.genExpression(tokens, ctx);
-                        if(peek()===',') next();
-                        const y = Compiler.genExpression(tokens, ctx);
-                        startCode = `GRAPHICS.plot(${x}, ${y});`;
-                    }
-                    let lineCalls = "";
-                    while (peek() === 'TO') {
-                        next();
-                        const x = Compiler.genExpression(tokens, ctx);
-                        if(peek()===',') next();
-                        const y = Compiler.genExpression(tokens, ctx);
-                        lineCalls += `GRAPHICS.lineTo(${x}, ${y});`;
-                    }
-                    jsBody = (startLine ? "" : startCode) + lineCalls;
-                }
-                else if (cmd === 'SAVE') {
-                    const fn = Compiler.genExpression(tokens, ctx);
-                    jsBody = `FS.save(${fn});`;
-                }
-                else if (cmd === 'LOAD') {
-                    const fn = Compiler.genExpression(tokens, ctx);
-                    jsBody = `FS.load(${fn});`;
-                }
-                else if (cmd === 'DIR' || cmd === 'CATALOG') {
-                    jsBody = `FS.dir();`;
-                }
-                else if (cmd === 'DOWNLOAD') {
-                    const fn = Compiler.genExpression(tokens, ctx);
-                    jsBody = `FS.download(${fn});`;
-                }
-                else {
-                    jsBody = `IO.print("?SYNTAX ERROR IN ${lineObj.line}");`;
-                }
-
-                try {
-                    if (isAsync) {
-                        return new AsyncFunction("SYS", "IO", "GRAPHICS", "FS", jsBody);
-                    } else {
-                        return new Function("SYS", "IO", "GRAPHICS", "FS", jsBody);
-                    }
-                } catch (e) {
-                    console.error("Compile Error", e, jsBody);
-                    return () => IO.print(`?COMPILE ERROR ${lineObj.line}`);
-                }
+                const tokens=Tokenizer.tokenize(lineObj.src.toUpperCase()); const ctx={idx:0};
+                const peek=()=>tokens[ctx.idx], next=()=>tokens[ctx.idx++], remain=()=>tokens.slice(ctx.idx);
+                let body="", async=false; const cmd=next();
+                if(cmd==='PRINT'){ if(!peek()) body="IO.print('');"; else { const p=[]; while(ctx.idx<tokens.length){ if(peek()===';'||peek()===','){next();continue;} if([':','THEN','ELSE'].includes(peek())) break; p.push(Compiler.genExpression(tokens,ctx)); if(peek()===';')next(); } body=`IO.print(${p.length?p.join(' + "" + '):'""'});`; } body+=` if(SYS.break){SYS.running=false;return;}`; }
+                else if(cmd==='GOTO'){ const l=Number(next()); body=`if(SYS.labels[${l}]!==undefined)SYS.pc=SYS.labels[${l}]-1;`; }
+                else if(cmd==='IF'){ const cond=Compiler.genExpression(tokens,ctx); if(next()!=='THEN') throw "SYNTAX"; let tb; if(!isNaN(peek())) tb=`if(SYS.labels[${Number(next())}]!==undefined)SYS.pc=SYS.labels[${Number(next())}]-1;`; else { const sid="SUB_"+Math.random().toString(36).substr(2,9); SYS[sid]=Compiler.compile({line:lineObj.line,src:remain().join(" ")}); tb=`return SYS['${sid}'](SYS,IO,GRAPHICS,FS);`; } body=`if(${cond}){${tb}}`; }
+                else if(cmd==='FOR'){ const v=next(); next(); const s=Compiler.genExpression(tokens,ctx); next(); const e=Compiler.genExpression(tokens,ctx); let st="1"; if(peek()==='STEP'){next();st=Compiler.genExpression(tokens,ctx);} body=`SYS.vars['${v}']=${s};SYS.forStack['${v}']={target:${e},step:${st},pc:SYS.pc};`; }
+                else if(cmd==='NEXT'){ const v=next(); body=`var l=SYS.forStack['${v}'];if(l){SYS.vars['${v}']+=l.step;if((l.step>=0&&SYS.vars['${v}']<=l.target)||(l.step<0&&SYS.vars['${v}']>=l.target))SYS.pc=l.pc;else delete SYS.forStack['${v}'];}`; }
+                else if(cmd==='DIM'){ const v=next(); next(); const sz=Compiler.genExpression(tokens,ctx); next(); body=`SYS.arrays['${v}']=new Array(${sz}+1).fill(0);`; }
+                else if(cmd==='INPUT'){ async=true; let p="?"; if(peek().startsWith('"')){p=next().replace(/"/g,'');if(peek()===';')next();} const v=next(), str=v.endsWith('$'); body=`IO.print("${p}",false);var val=await IO.input();SYS.vars['${v}']=${str?'val':'parseFloat(val)'};`; }
+                else if(cmd==='LET'||(cmd&&peek()==='=')||(cmd&&peek()==='(')){ let v=cmd; if(cmd==='LET') v=next(); if(peek()==='('){next();const i=Compiler.genExpression(tokens,ctx);next();next();body=`SYS.setArray('${v}',${i},${Compiler.genExpression(tokens,ctx)});`;} else {next();body=`SYS.vars['${v}']=${Compiler.genExpression(tokens,ctx)};`;} }
+                else if(cmd==='HTAB') body=`IO.htab(${Compiler.genExpression(tokens,ctx)});`;
+                else if(cmd==='VTAB') body=`IO.vtab(${Compiler.genExpression(tokens,ctx)});`;
+                else if(cmd==='SETPOS') { const x=Compiler.genExpression(tokens,ctx); next(); const y=Compiler.genExpression(tokens,ctx); body=`IO.setPos(${x},${y});`; }
+                else if(cmd==='HOME') body="IO.home();";
+                else if(cmd==='END') body="SYS.running=false;";
+                else if(cmd==='HGR'||cmd==='HGR2'||cmd==='TEXT') body=`GRAPHICS.setMode(${cmd==='TEXT'?0:(cmd==='HGR'?1:2)});`;
+                else if(cmd==='HCOLOR'){ next(); body=`GRAPHICS.setColor(${Compiler.genExpression(tokens,ctx)});`; }
+                else if(cmd==='HPLOT'){ let sc="", sl=false; if(peek()==='TO'){next();sl=true;} else {const x=Compiler.genExpression(tokens,ctx); if(peek()===',')next(); sc=`GRAPHICS.plot(${x},${Compiler.genExpression(tokens,ctx)});`;} let lc=""; while(peek()==='TO'){next();const x=Compiler.genExpression(tokens,ctx); if(peek()===',')next(); lc+=`GRAPHICS.lineTo(${x},${Compiler.genExpression(tokens,ctx)});`;} body=(sl?"":sc)+lc; }
+                else if(cmd==='SAVE') body=`FS.save(${Compiler.genExpression(tokens,ctx)});`;
+                else if(cmd==='LOAD') body=`FS.load(${Compiler.genExpression(tokens,ctx)});`;
+                else if(cmd==='DIR'||cmd==='CATALOG') body=`FS.dir();`;
+                else if(cmd==='DOWNLOAD') body=`FS.download(${Compiler.genExpression(tokens,ctx)});`;
+                else if(cmd==='HELP') body=`IO.help();`;
+                else if(cmd==='REM') body="";
+                else body=`IO.print("?SYNTAX ERROR");`;
+                try { return new (async?AsyncFunction:Function)("SYS","IO","GRAPHICS","FS",body); } catch(e){ return ()=>IO.print(`?COMPILE ERROR ${lineObj.line}`); }
             }
         };
 
-        // --- RUNTIME ENGINE ---
-        const ENGINE = {
-            build: () => {
-                SYS.program.sort((a, b) => a.line - b.line);
-                SYS.compiled = [];
-                SYS.labels = {};
-                SYS.program.forEach((item, index) => {
-                    SYS.labels[item.line] = index;
-                    SYS.compiled.push(Compiler.compile(item));
-                });
-            },
-            run: async () => {
-                ENGINE.build();
-                SYS.pc = 0;
-                SYS.running = true;
-                SYS.break = false; 
-                SYS.vars = {};
-                SYS.stack = [];
-                SYS.forStack = {};
-                
-                // UI: Show Stop Button
-                breakBtn.style.display = 'block';
-
-                const startTime = performance.now();
-                let lastYield = startTime;
-                let ops = 0;
-                
-                const compiled = SYS.compiled;
-                
-                while (SYS.running && SYS.pc < compiled.length) {
-                    const fn = compiled[SYS.pc];
-                    
-                    const result = fn(SYS, IO, GRAPHICS, FS);
-                    
-                    if (result && typeof result.then === 'function') {
-                        await result;
-                        lastYield = performance.now();
-                    }
-
-                    SYS.pc++;
-                    ops++;
-
-                    // 1. High Freq Break Check (Now also happens inside PRINT)
-                    if ((ops % 100) === 0) {
-                        if (SYS.break) {
-                            let lineNum = '?';
-                            if (SYS.pc > 0 && SYS.program[SYS.pc - 1]) {
-                                lineNum = SYS.program[SYS.pc - 1].line;
-                            }
-                            IO.print(`\nBREAK IN ${lineNum}`);
-                            SYS.running = false;
-                            SYS.break = false;
-                            break;
-                        }
-                    }
-
-                    // 2. Low Freq Time Check
-                    if ((ops & 4095) === 0) {
-                        const now = performance.now();
-                        if (now - lastYield > 14) {
-                            await new Promise(r => setTimeout(r, 0));
-                            lastYield = performance.now();
-                        }
-                    }
-                }
-
-                // UI: Hide Stop Button
-                breakBtn.style.display = 'none';
-
-                const endTime = performance.now();
-                const duration = (endTime - startTime).toFixed(2);
-
-                if (SYS.running || SYS.pc >= compiled.length) {
-                    IO.newLine();
-                    IO.print(`[ELAPSED TIME: ${duration} MS]`, true, 'perf-stats');
-                }
-
-                SYS.running = false;
-                IO.prompt();
-            }
-        };
-
-        // --- I/O HANDLING ---
+        // --- I/O & HELP ---
         const IO = {
-            cursorElement: null,
-            MAX_DOM_NODES: 60, // Approx 2 screens worth (buffer)
-
-            print: (text, newline = true, className = '') => {
-                const span = document.createElement('span');
-                span.textContent = text + (newline ? "\n" : "");
-                if (className) span.className = className;
-                outputDiv.appendChild(span);
+            cursorVisible: true,
+            help: () => {
+                const ov = document.getElementById('help-overlay'), ct = document.getElementById('help-content'), search = document.getElementById('help-search');
+                ov.style.display = 'flex';
+                search.focus();
                 
-                // UPDATE 2: SCROLLBACK LIMIT
-                // Keep DOM size small to prevent browser crash on mobile
-                while (outputDiv.childElementCount > IO.MAX_DOM_NODES) {
-                    outputDiv.removeChild(outputDiv.firstChild);
-                }
+                const render = (filter = "") => {
+                    let html = "<div class='help-title' style='text-align:center'>QUICK INDEX</div><div class='index-grid'>";
+                    const keys = Object.keys(HELP_DATA);
+                    // Index Buttons
+                    keys.forEach(cat => {
+                         html += `<button class='index-btn' onclick="document.getElementById('sec-${cat}').scrollIntoView({behavior:'smooth'})">${cat}</button>`;
+                    });
+                    html += "</div><hr/><br/>";
 
-                outputDiv.scrollTop = outputDiv.scrollHeight;
+                    // Content
+                    keys.forEach(cat => {
+                        html += `<div id='sec-${cat}' class='help-section'><div class='help-title'>${cat}</div>`;
+                        HELP_DATA[cat].forEach(item => {
+                            if(!filter || item.c.includes(filter.toUpperCase()) || item.d.toUpperCase().includes(filter.toUpperCase())) {
+                                html += `<div class='help-entry'>
+                                    <div class='help-cmd'>${item.c}</div>
+                                    <div class='help-desc'>${item.d}</div>
+                                    <div class='help-ex'>${item.e}</div>
+                                </div>`;
+                            }
+                        });
+                        html += "</div>";
+                    });
+                    ct.innerHTML = html;
+                };
+                render(); search.onkeyup = (e) => render(e.target.value);
             },
-            clear: () => { outputDiv.innerHTML = ""; },
-            newLine: () => {
-                const span = document.createElement('span');
-                span.textContent = "\n";
-                outputDiv.appendChild(span);
-            },
-            startInput: () => {
-                const textSpan = document.createElement('span');
-                outputDiv.appendChild(textSpan);
-                const cursor = document.createElement('span');
-                cursor.className = 'cursor';
-                outputDiv.appendChild(cursor);
-                IO.cursorElement = cursor;
-                inputTrap.value = "";
-                inputTrap.focus();
-                outputDiv.scrollTop = outputDiv.scrollHeight;
-            },
-            prompt: () => {
-                const span = document.createElement('span');
-                span.textContent = "]";
-                outputDiv.appendChild(span);
-                IO.startInput();
-            },
-            input: () => {
-                return new Promise(resolve => {
-                    SYS.inputCallback = resolve;
-                    IO.startInput();
-                });
-            },
+            print: (txt, newline=true, style=null) => { SCREEN.put(txt.toString(), style); if(newline) SCREEN.newline(); },
+            input: () => { IO.cursorVisible = true; SCREEN.render(); return new Promise(r => { SYS.inputCallback = r; inputTrap.value=""; inputTrap.focus(); }); },
+            home: () => SCREEN.clear(),
+            htab: (x) => { SCREEN.cx = Math.max(0, Math.min(SCREEN.W-1, x-1)); SCREEN.render(); },
+            vtab: (y) => { SCREEN.cy = Math.max(0, Math.min(SCREEN.H-1, y-1)); SCREEN.render(); },
+            setPos: (x, y) => { SCREEN.cx = Math.max(0, Math.min(SCREEN.W-1, x-1)); SCREEN.cy = Math.max(0, Math.min(SCREEN.H-1, y-1)); SCREEN.render(); },
             handleCommand: (raw) => {
-                const clean = raw.trim().toUpperCase();
-                if (!clean) { IO.prompt(); return; }
-
-                const match = clean.match(/^(\d+)\s*(.*)/);
-                if (match) {
-                    const lineNum = parseInt(match[1]);
-                    const src = match[2];
-                    SYS.program = SYS.program.filter(l => l.line !== lineNum);
-                    if (src) SYS.program.push({ line: lineNum, src: src });
+                const c = raw.trim().toUpperCase();
+                if(!c) return IO.prompt();
+                const m = c.match(/^(\d+)\s*(.*)/);
+                if(m) {
+                    const l = parseInt(m[1]);
+                    SYS.program = SYS.program.filter(x=>x.line!==l);
+                    if(m[2]) SYS.program.push({line:l, src:m[2]});
                     IO.prompt();
-                } 
-                else {
-                    if (clean === 'LIST') {
-                        SYS.program.sort((a, b) => a.line - b.line);
-                        SYS.program.forEach(l => IO.print(`${l.line} ${l.src}`));
-                        IO.prompt();
-                    }
-                    else if (clean === 'NEW') {
-                        SYS.program = [];
-                        SYS.vars = {};
-                        GRAPHICS.setMode(0);
-                        IO.prompt();
-                    }
-                    else if (clean === 'RUN') {
-                        ENGINE.run();
-                    }
-                    else if (clean === 'HOME') {
-                        IO.clear();
-                        IO.prompt();
-                    }
-                    else if (clean.startsWith('DIR') || clean.startsWith('CATALOG')) {
-                        FS.dir();
-                        IO.prompt();
-                    }
+                } else {
+                    if(c==='LIST') { SYS.program.sort((a,b)=>a.line-b.line); SYS.program.forEach(l=>IO.print(`${l.line} ${l.src}`)); IO.prompt(); }
+                    else if(c==='RUN') ENGINE.run();
+                    else if(c==='NEW') { SYS.program=[]; SYS.vars={}; SCREEN.clear(); IO.prompt(); }
                     else {
-                        try {
-                            const singleFunc = Compiler.compile({ line: 0, src: clean });
-                            const res = singleFunc(SYS, IO, GRAPHICS, FS);
-                            if (res && res.then) res.then(() => IO.prompt());
-                            else IO.prompt();
-                        } catch (e) {
-                            IO.print("?SYNTAX ERROR");
-                            IO.prompt();
-                        }
+                        try { Compiler.compile({line:0, src:c})(SYS,IO,GRAPHICS,FS)?.then?(()=>IO.prompt()):IO.prompt(); }
+                        catch(e){ IO.print("?SYNTAX ERROR"); IO.prompt(); }
                     }
                 }
+            },
+            prompt: () => { IO.cursorVisible=true; IO.print("]", false); }
+        };
+
+        // --- ENGINE ---
+        const ENGINE = {
+            run: async () => {
+                SYS.program.sort((a,b)=>a.line-b.line); SYS.compiled=[]; SYS.labels={};
+                SYS.program.forEach((x,i)=>{ SYS.labels[x.line]=i; SYS.compiled.push(Compiler.compile(x)); });
+                SYS.pc=0; SYS.running=true; SYS.break=false; SYS.vars={}; SYS.arrays={}; SYS.stack=[]; SYS.forStack={};
+                breakBtn.style.display='block'; IO.cursorVisible=false;
+                const t0=performance.now(); let ly=t0; let ops=0;
+                while(SYS.running && SYS.pc < SYS.compiled.length) {
+                    const res = SYS.compiled[SYS.pc](SYS,IO,GRAPHICS,FS);
+                    if(res && res.then) { await res; ly=performance.now(); }
+                    SYS.pc++; ops++;
+                    if((ops%100)===0 && SYS.break) { IO.print(`\nBREAK IN ${SYS.program[SYS.pc-1]?.line}`); SYS.running=false; break; }
+                    if((ops&4095)===0 && (performance.now()-ly)>14) { await new Promise(r=>setTimeout(r,0)); ly=performance.now(); }
+                }
+                breakBtn.style.display='none';
+                const duration = (performance.now() - t0).toFixed(2);
+                IO.print("");
+                IO.print(`[ELAPSED TIME: ${duration} MS]`, true, 'perf-stats');
+                SYS.running=false; IO.prompt();
             }
         };
 
-        // --- EVENT LISTENERS ---
-        document.addEventListener('click', () => inputTrap.focus());
-        
-        // TOUCH BUTTON HANDLER
-        breakBtn.addEventListener('click', (e) => {
-            e.preventDefault(); // Don't steal focus if possible
-            if (SYS.running) {
-                SYS.break = true;
-            }
-            inputTrap.focus(); 
-        });
-
-        // INTERRUPT HANDLER (ESC)
-        window.addEventListener('keydown', (e) => {
-            if (e.code === 'Escape') {
+        // --- EVENTS ---
+        setInterval(()=>{ if(IO.cursorVisible) { document.querySelectorAll('.blink').forEach(e=>e.style.opacity=e.style.opacity==='0'?'1':'0'); } }, 500);
+        document.addEventListener('click', (e)=>{ if(e.target.id !== 'help-search') inputTrap.focus(); });
+        breakBtn.onclick = (e) => { e.preventDefault(); if(SYS.running) SYS.break=true; inputTrap.focus(); };
+        window.onkeydown = (e) => { if(e.key==='Escape' && SYS.running) SYS.break=true; };
+        inputTrap.onkeydown = (e) => {
+            if(e.key==='Enter') { 
                 e.preventDefault(); 
-                if (SYS.running) {
-                    SYS.break = true;
-                }
+                const v=inputTrap.value; 
+                IO.print("", true); 
+                if(SYS.inputCallback){const c=SYS.inputCallback; SYS.inputCallback=null; c(v);} else IO.handleCommand(v); 
+                inputTrap.value=""; inputTrap.lastLen = 0;
             }
-        });
+            else if(e.key==='Backspace') { 
+                 if(inputTrap.value.length>0) { SCREEN.cx = Math.max(0, SCREEN.cx-1); SCREEN.put(" "); SCREEN.cx--; SCREEN.render(); }
+            }
+        };
+        inputTrap.oninput = () => {
+            const char = inputTrap.value.slice(-1);
+            if(inputTrap.value.length > (inputTrap.lastLen||0)) { SCREEN.put(char); }
+            inputTrap.lastLen = inputTrap.value.length;
+            if(inputTrap.value === "") inputTrap.lastLen = 0;
+        };
 
-        inputTrap.addEventListener('keydown', (e) => {
-            if (e.key === 'Enter') {
-                e.preventDefault();
-                const val = inputTrap.value;
-                if (IO.cursorElement) {
-                    IO.cursorElement.remove();
-                    IO.cursorElement = null;
-                }
-                IO.newLine();
-                if (SYS.inputCallback) {
-                    const cb = SYS.inputCallback;
-                    SYS.inputCallback = null;
-                    cb(val); 
-                } else {
-                    IO.handleCommand(val);
-                }
-            }
-        });
-        inputTrap.addEventListener('input', (e) => {
-            if (IO.cursorElement && IO.cursorElement.previousSibling) {
-                IO.cursorElement.previousSibling.textContent = inputTrap.value;
-            }
-        });
-
-        // --- BOOT ---
-        IO.print("APPLESOFT JS BASIC INTERPRETER V12");
+        SCREEN.clear();
+        IO.print("APPLESOFT JS BASIC INTERPRETER V17");
         IO.print("COPYRIGHT 2023");
-        IO.newLine();
+        IO.print("");
+        IO.print("TYPE 'HELP' FOR MANUAL");
         IO.prompt();
-
-        // Demo with Infinite Printing Loop (Test CTRL-C and Buffer)
-        SYS.program = [
-            {line: 10, src: 'HOME'},
-            {line: 20, src: 'PRINT "TESTING INFINITE PRINT LOOP..."'},
-            {line: 30, src: 'PRINT "PRESS ESC OR [STOP] TO BREAK"'},
-            {line: 40, src: 'I = 0'},
-            {line: 50, src: 'I = I + 1'},
-            {line: 60, src: 'PRINT "LINE "; I; " OF TEXT STREAM"'},
-            {line: 70, src: 'GOTO 50'}
-        ];
 
     </script>
 </body>

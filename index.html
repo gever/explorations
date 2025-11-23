@@ -153,65 +153,73 @@ function addRow(id, url, link_text, thumbnail, description, attribution) {
   tableBody.appendChild(newRow);
 }
         
-        document.addEventListener('DOMContentLoaded', function() {
-            // add the rows to the links table
-            addRow(
-                'projects-table',
-                'binary_playground.html',
-                'Binary Playground',
-                'binary_playground_th.png',
-                'particles, set in circular motion, collide and agglomerate, often producing binary pairs of super-massive "stars".',
-                'gever + gemini'
-                );
-            addRow(
-                'projects-table',
-                'https://gemini.google.com/share/73e1efc4a821',
-                'Dry Ice',
-                'dryice_simulation_th.png',
-                'a simulation of dry ice chips floating on water in a circular dish.',
-                'aidan krempetz'
-                );
-            addRow(
-                'projects-table',
-                'https://g.co/gemini/share/1e11bb3ffe9b',
-                'Binary Star Stability',
-                'binary_star_stability_th.png',
-                'knowledge summary, basic concepts, types, and some of the physics (errors in the formulae rendering)',
-                'gemini + gever'
-            );
-            addRow(
-                'projects-table',
-                'gstd/index.html',
-                'Galactic Space Tortoise Doctor',
-                'gstd/splash.png',
-                'Deliver life-saving vaccine to infected planets!',
-                'gever + gemini'
-            );
-            addRow(
-                'projects-table',
-                'tiling.html',
-                'Square Tiling Playground',
-                'tiling_th.png',
-                'Drop an image in and play with rotations and symmetry.',
-                'gever + gemini'
-            );
-            addRow(
-                'projects-table',
-                'particle_cloud.html',
-                'Particle Cloud',
-                'particle_cloud_th.png',
-                'Watch a cloud of particles spontaneously aggregate into planetoids.',
-                'gever + gemini'
-            );
-            addRow(
-                'projects-table',
-                'circle_packing.html',
-                'Circle Packing',
-                'circle_packing_th.png',
-                'Play with how circles relate to polygonal borders.',
-                'gever + gemini'
-            );
-            
+document.addEventListener('DOMContentLoaded', function() {
+    // add the rows to the links table
+    addRow(
+        'projects-table',
+        'applesofty_js.html',
+        'Applesofty',
+        'applesofty_js_th.png',
+        'A sketch of an Applesoft-like BASIC experience.',
+        'gever + gemini'
+    );
+    addRow(
+        'projects-table',
+        'circle_packing.html',
+        'Circle Packing',
+        'circle_packing_th.png',
+        'Play with how circles relate to polygonal borders.',
+        'gever + gemini'
+    );
+    addRow(
+        'projects-table',
+        'particle_cloud.html',
+        'Particle Cloud',
+        'particle_cloud_th.png',
+        'Watch a cloud of particles spontaneously aggregate into planetoids.',
+        'gever + gemini'
+    );
+    addRow(
+        'projects-table',
+        'tiling.html',
+        'Square Tiling Playground',
+        'tiling_th.png',
+        'Drop an image in and play with rotations and symmetry.',
+        'gever + gemini'
+    );
+    addRow(
+        'projects-table',
+        'gstd/index.html',
+        'Galactic Space Tortoise Doctor',
+        'gstd/splash.png',
+        'Deliver life-saving vaccine to infected planets!',
+        'gever + gemini'
+    );
+    addRow(
+        'projects-table',
+        'https://g.co/gemini/share/1e11bb3ffe9b',
+        'Binary Star Stability',
+        'binary_star_stability_th.png',
+        'knowledge summary, basic concepts, types, and some of the physics (errors in the formulae rendering)',
+        'gemini + gever'
+    );
+    addRow(
+        'projects-table',
+        'https://gemini.google.com/share/73e1efc4a821',
+        'Dry Ice',
+        'dryice_simulation_th.png',
+        'a simulation of dry ice chips floating on water in a circular dish.',
+        'aidan krempetz'
+    );
+    addRow(
+        'projects-table',
+        'binary_playground.html',
+        'Binary Playground',
+        'binary_playground_th.png',
+        'particles, set in circular motion, collide and agglomerate, often producing binary pairs of super-massive "stars".',
+        'gever + gemini'
+    );
+    
             const textBlockElement = document.getElementById('text-block');
             
             // EDIT THIS TEXT to change the content that gets typed out.

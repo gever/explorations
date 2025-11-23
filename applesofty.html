@@ -1,0 +1,754 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Applesoft BASIC JIT Interpreter</title>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=VT323&display=swap');
+
+        body {
+            margin: 0;
+            padding: 20px;
+            background-color: #111;
+            color: #33ff33;
+            font-family: 'VT323', monospace;
+            height: 100vh;
+            overflow: hidden;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+
+        #monitor {
+            width: 800px;
+            height: 600px;
+            background-color: #000;
+            border: 20px solid #333;
+            border-radius: 10px;
+            box-shadow: 0 0 20px rgba(0, 0, 0, 0.8);
+            padding: 20px;
+            position: relative;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+        }
+
+        #monitor::before {
+            content: " ";
+            display: block;
+            position: absolute;
+            top: 0;
+            left: 0;
+            bottom: 0;
+            right: 0;
+            background: linear-gradient(
+                rgba(18, 16, 16, 0) 50%,
+                rgba(0, 0, 0, 0.25) 50%
+            );
+            background-size: 100% 4px;
+            z-index: 20;
+            pointer-events: none;
+        }
+
+        #screen-output {
+            flex-grow: 1;
+            overflow-y: auto;
+            white-space: pre-wrap;
+            font-size: 24px;
+            line-height: 1.2;
+            text-transform: uppercase;
+            scrollbar-width: none;
+            z-index: 1;
+        }
+        
+        #screen-output::-webkit-scrollbar { display: none; }
+
+        #graphics-layer {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            width: 800px;
+            image-rendering: pixelated;
+            z-index: 5;
+            display: none;
+            background-color: black;
+        }
+
+        /* STOP BUTTON FOR IOS/TOUCH */
+        #break-btn {
+            position: absolute;
+            top: 30px;
+            right: 40px;
+            background: #cc0000;
+            color: #fff;
+            border: 2px solid #ff0000;
+            font-family: 'VT323', monospace;
+            font-size: 24px;
+            padding: 5px 15px;
+            cursor: pointer;
+            display: none; /* Hidden by default */
+            z-index: 100;
+            text-transform: uppercase;
+            font-weight: bold;
+            box-shadow: 0 0 10px #ff0000;
+        }
+        #break-btn:active { background: #ff0000; }
+
+        .cursor {
+            display: inline-block;
+            width: 0.6em;
+            height: 1em;
+            background-color: #33ff33;
+            animation: blink 1s step-end infinite;
+            vertical-align: text-bottom;
+        }
+
+        .perf-stats {
+            color: #00ffff;
+            font-weight: bold;
+        }
+
+        @keyframes blink {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0; }
+        }
+
+        #input-trap {
+            position: absolute;
+            opacity: 0;
+            top: -1000px;
+        }
+
+        .scanline {
+            width: 100%;
+            height: 100px;
+            z-index: 10;
+            background: linear-gradient(0deg, rgba(0,0,0,0) 0%, rgba(51, 255, 51, 0.1) 50%, rgba(0,0,0,0) 100%);
+            opacity: 0.1;
+            position: absolute;
+            bottom: 100%;
+            animation: scanline 10s linear infinite;
+            pointer-events: none;
+        }
+
+        @keyframes scanline {
+            0% { bottom: 100%; }
+            100% { bottom: -100px; }
+        }
+    </style>
+</head>
+<body>
+
+    <div id="monitor">
+        <div class="scanline"></div>
+        <button id="break-btn">STOP (ESC)</button>
+        <canvas id="graphics-layer" width="280" height="192"></canvas>
+        <div id="screen-output"></div>
+        <input type="text" id="input-trap" autocomplete="off" autofocus>
+    </div>
+
+    <script>
+        /**
+         * APPLESOFT BASIC INTERPRETER v12
+         * Updates: 
+         * 1. Instant Interrupt check after every PRINT command
+         * 2. DOM Element Limiter (Scrollback limit)
+         */
+
+        // --- UTILS ---
+        const outputDiv = document.getElementById('screen-output');
+        const inputTrap = document.getElementById('input-trap');
+        const canvas = document.getElementById('graphics-layer');
+        const breakBtn = document.getElementById('break-btn');
+        const ctx = canvas.getContext('2d');
+        const AsyncFunction = Object.getPrototypeOf(async function(){}).constructor;
+
+        // --- MEMORY & STATE ---
+        const SYS = {
+            vars: {},           
+            program: [],        
+            compiled: [],       
+            pc: 0,              
+            labels: {},         
+            stack: [],          
+            forStack: {},       
+            running: false,
+            break: false,       
+            inputCallback: null 
+        };
+
+        // --- FILE SYSTEM ---
+        const FS = {
+            PREFIX: 'APPLESOFT_PROG_',
+            save: (filename) => {
+                const key = FS.PREFIX + filename.toUpperCase();
+                const data = JSON.stringify(SYS.program);
+                try {
+                    localStorage.setItem(key, data);
+                    IO.print("SAVED " + filename);
+                } catch(e) {
+                    IO.print("?DISK FULL ERROR");
+                }
+            },
+            load: (filename) => {
+                const key = FS.PREFIX + filename.toUpperCase();
+                const data = localStorage.getItem(key);
+                if (data) {
+                    try {
+                        SYS.program = JSON.parse(data);
+                        SYS.vars = {};
+                        GRAPHICS.setMode(0);
+                        IO.print("LOADED " + filename);
+                    } catch(e) {
+                        IO.print("?FILE CORRUPT ERROR");
+                    }
+                } else {
+                    IO.print("?FILE NOT FOUND ERROR");
+                }
+            },
+            dir: () => {
+                IO.print("CATALOG");
+                let count = 0;
+                for (let i = 0; i < localStorage.length; i++) {
+                    const key = localStorage.key(i);
+                    if (key.startsWith(FS.PREFIX)) {
+                        const name = key.replace(FS.PREFIX, '');
+                        IO.print(" " + name);
+                        count++;
+                    }
+                }
+                if (count === 0) IO.print(" NO FILES FOUND");
+            },
+            download: (filename) => {
+                SYS.program.sort((a, b) => a.line - b.line);
+                const textContent = SYS.program.map(l => `${l.line} ${l.src}`).join("\n");
+                const blob = new Blob([textContent], { type: 'text/plain' });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = (filename || "PROGRAM") + ".BAS";
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                URL.revokeObjectURL(url);
+                IO.print("DOWNLOADED " + a.download);
+            }
+        };
+
+        // --- GRAPHICS SYSTEM ---
+        const GRAPHICS = {
+            lastX: 0,
+            lastY: 0,
+            color: 3, 
+            colors: ['#000000', '#14F53C', '#A040A0', '#FFFFFF', '#000000', '#FF6000', '#3040FF', '#FFFFFF'],
+            setMode: (mode) => {
+                if (mode === 0) { 
+                    canvas.style.display = 'none';
+                } else if (mode === 1) { 
+                    canvas.style.display = 'block';
+                    canvas.height = 160; 
+                    canvas.style.height = '500px'; 
+                    GRAPHICS.clear();
+                } else if (mode === 2) { 
+                    canvas.style.display = 'block';
+                    canvas.height = 192;
+                    canvas.style.height = '600px';
+                    GRAPHICS.clear();
+                }
+            },
+            clear: () => {
+                ctx.fillStyle = "#000000";
+                ctx.fillRect(0, 0, canvas.width, canvas.height);
+            },
+            setColor: (c) => { GRAPHICS.color = Math.floor(c) % 8; },
+            plot: (x, y) => {
+                ctx.fillStyle = GRAPHICS.colors[GRAPHICS.color];
+                ctx.fillRect(Math.floor(x), Math.floor(y), 1, 1);
+                GRAPHICS.lastX = x;
+                GRAPHICS.lastY = y;
+            },
+            lineTo: (x, y) => {
+                ctx.strokeStyle = GRAPHICS.colors[GRAPHICS.color];
+                ctx.lineWidth = 1;
+                ctx.beginPath();
+                ctx.moveTo(Math.floor(GRAPHICS.lastX) + 0.5, Math.floor(GRAPHICS.lastY) + 0.5);
+                ctx.lineTo(Math.floor(x) + 0.5, Math.floor(y) + 0.5);
+                ctx.stroke();
+                GRAPHICS.lastX = x;
+                GRAPHICS.lastY = y;
+            }
+        };
+
+        // --- THE COMPILER ---
+        const Tokenizer = {
+            regex: /([0-9]+)|(".*?")|([A-Z][A-Z0-9_]*)|(<=|>=|<>|<|>|=)|([\+\-\*\/])|(\()|(\))|(:)|(,)/g,
+            tokenize: (str) => {
+                const tokens = [];
+                let match;
+                while ((match = Tokenizer.regex.exec(str)) !== null) {
+                    tokens.push(match[0]);
+                }
+                return tokens;
+            }
+        };
+
+        const Compiler = {
+            genExpression: (tokens, ctx) => {
+                const peek = () => tokens[ctx.idx];
+                const next = () => tokens[ctx.idx++];
+
+                const parseExpression = () => {
+                    let left = parseTerm();
+                    while (ctx.idx < tokens.length && (peek() === '+' || peek() === '-')) {
+                        const op = next();
+                        const right = parseTerm();
+                        left = `(${left} ${op} ${right})`;
+                    }
+                    if (ctx.idx < tokens.length && ['=', '<', '>', '<=', '>=', '<>'].includes(peek())) {
+                        let op = next();
+                        const right = parseExpression();
+                        let jsOp = op;
+                        if (op === '=') jsOp = '===';
+                        if (op === '<>') jsOp = '!==';
+                        left = `(${left} ${jsOp} ${right} ? 1 : 0)`;
+                    }
+                    return left;
+                };
+
+                const parseTerm = () => {
+                    let left = parseFactor();
+                    while (ctx.idx < tokens.length && (peek() === '*' || peek() === '/')) {
+                        const op = next();
+                        const right = parseFactor();
+                        left = `(${left} ${op} ${right})`;
+                    }
+                    return left;
+                };
+
+                const parseFactor = () => {
+                    const t = next();
+                    if (!t) return "0";
+                    if (!isNaN(t)) return t;
+                    if (t.startsWith('"')) return t;
+                    if (/^[A-Z][A-Z0-9_]*$/.test(t)) return `(SYS.vars['${t}'] || 0)`;
+                    if (t === '(') {
+                        const expr = parseExpression();
+                        next(); 
+                        return `(${expr})`;
+                    }
+                    return "0";
+                };
+
+                return parseExpression();
+            },
+
+            compile: (lineObj) => {
+                const tokens = Tokenizer.tokenize(lineObj.src.toUpperCase());
+                const ctx = { idx: 0 };
+                const peek = () => tokens[ctx.idx];
+                const next = () => tokens[ctx.idx++];
+                const remain = () => tokens.slice(ctx.idx);
+
+                let jsBody = "";
+                let isAsync = false;
+
+                const cmd = next();
+
+                if (cmd === 'PRINT') {
+                    if (!peek()) jsBody = "IO.print('');";
+                    else {
+                        const parts = [];
+                        while(ctx.idx < tokens.length) {
+                            if (peek() === ';') { next(); continue; }
+                            if (peek() === ',') { next(); continue; }
+                            if ([':', 'THEN', 'ELSE'].includes(peek())) break; 
+                            parts.push(Compiler.genExpression(tokens, ctx));
+                            if (peek() === ';') next(); 
+                        }
+                        const expr = parts.length ? parts.join(' + "" + ') : '""';
+                        jsBody = `IO.print(${expr});`;
+                    }
+                    // UPDATE 1: CHECK BREAK IMMEDIATELY AFTER PRINT
+                    jsBody += ` if (SYS.break) { SYS.running = false; return; }`;
+                }
+                else if (cmd === 'GOTO') {
+                    const line = Number(next());
+                    jsBody = `if (SYS.labels[${line}] !== undefined) SYS.pc = SYS.labels[${line}] - 1; else { IO.print("?UNDEF LINE ${line}"); SYS.running = false; }`;
+                }
+                else if (cmd === 'IF') {
+                    const conditionCode = Compiler.genExpression(tokens, ctx);
+                    if (next() !== 'THEN') throw "SYNTAX";
+                    
+                    let thenBody = "";
+                    if (!isNaN(peek())) {
+                        const line = Number(next());
+                        thenBody = `if (SYS.labels[${line}] !== undefined) SYS.pc = SYS.labels[${line}] - 1;`;
+                    } else {
+                        const restSrc = remain().join(" ");
+                        const subLine = { line: lineObj.line, src: restSrc };
+                        const subId = "SUB_" + Math.random().toString(36).substr(2, 9);
+                        SYS[subId] = Compiler.compile(subLine); 
+                        thenBody = `return SYS['${subId}'](SYS, IO, GRAPHICS, FS);`;
+                    }
+                    
+                    jsBody = `if (${conditionCode}) { ${thenBody} }`;
+                }
+                else if (cmd === 'FOR') {
+                    const v = next();
+                    next(); // =
+                    const start = Compiler.genExpression(tokens, ctx);
+                    next(); // TO
+                    const end = Compiler.genExpression(tokens, ctx);
+                    jsBody = `SYS.vars['${v}'] = ${start}; SYS.forStack['${v}'] = { target: ${end}, pc: SYS.pc };`;
+                }
+                else if (cmd === 'NEXT') {
+                    const v = next();
+                    jsBody = `
+                        var loop = SYS.forStack['${v}'];
+                        if (loop) {
+                            SYS.vars['${v}']++;
+                            if (SYS.vars['${v}'] <= loop.target) SYS.pc = loop.pc;
+                            else delete SYS.forStack['${v}'];
+                        }
+                    `;
+                }
+                else if (cmd === 'INPUT') {
+                    isAsync = true;
+                    let prompt = "?";
+                    if (peek().startsWith('"')) {
+                        prompt = next().replace(/"/g, '');
+                        if (peek() === ';') next();
+                    }
+                    const v = next();
+                    jsBody = `
+                        IO.print("${prompt}", false);
+                        var val = await IO.input();
+                        SYS.vars['${v}'] = isNaN(Number(val)) ? val : Number(val);
+                    `;
+                }
+                else if (cmd === 'LET' || (cmd && peek() === '=')) {
+                    let v = cmd;
+                    if (cmd === 'LET') { v = next(); }
+                    next(); 
+                    const val = Compiler.genExpression(tokens, ctx);
+                    jsBody = `SYS.vars['${v}'] = ${val};`;
+                }
+                else if (cmd === 'GOSUB') {
+                    const line = Number(next());
+                    jsBody = `SYS.stack.push(SYS.pc); if (SYS.labels[${line}] !== undefined) SYS.pc = SYS.labels[${line}] - 1;`;
+                }
+                else if (cmd === 'RETURN') {
+                    jsBody = `if (SYS.stack.length === 0) { IO.print("?RETURN ERROR"); SYS.running=false; } else { SYS.pc = SYS.stack.pop(); }`;
+                }
+                else if (cmd === 'END') jsBody = "SYS.running = false;";
+                else if (cmd === 'HOME') jsBody = "IO.clear();";
+                else if (cmd === 'REM') jsBody = "";
+                else if (['HGR','HGR2','TEXT'].includes(cmd)) {
+                    const m = cmd==='TEXT'?0 : (cmd==='HGR'?1:2);
+                    jsBody = `GRAPHICS.setMode(${m});`;
+                }
+                else if (cmd === 'HCOLOR') {
+                    next(); 
+                    const c = Compiler.genExpression(tokens, ctx);
+                    jsBody = `GRAPHICS.setColor(${c});`;
+                }
+                else if (cmd === 'HPLOT') {
+                    let startLine = false;
+                    let startCode = "";
+                    if (peek() === 'TO') { next(); startLine = true; }
+                    else {
+                        const x = Compiler.genExpression(tokens, ctx);
+                        if(peek()===',') next();
+                        const y = Compiler.genExpression(tokens, ctx);
+                        startCode = `GRAPHICS.plot(${x}, ${y});`;
+                    }
+                    let lineCalls = "";
+                    while (peek() === 'TO') {
+                        next();
+                        const x = Compiler.genExpression(tokens, ctx);
+                        if(peek()===',') next();
+                        const y = Compiler.genExpression(tokens, ctx);
+                        lineCalls += `GRAPHICS.lineTo(${x}, ${y});`;
+                    }
+                    jsBody = (startLine ? "" : startCode) + lineCalls;
+                }
+                else if (cmd === 'SAVE') {
+                    const fn = Compiler.genExpression(tokens, ctx);
+                    jsBody = `FS.save(${fn});`;
+                }
+                else if (cmd === 'LOAD') {
+                    const fn = Compiler.genExpression(tokens, ctx);
+                    jsBody = `FS.load(${fn});`;
+                }
+                else if (cmd === 'DIR' || cmd === 'CATALOG') {
+                    jsBody = `FS.dir();`;
+                }
+                else if (cmd === 'DOWNLOAD') {
+                    const fn = Compiler.genExpression(tokens, ctx);
+                    jsBody = `FS.download(${fn});`;
+                }
+                else {
+                    jsBody = `IO.print("?SYNTAX ERROR IN ${lineObj.line}");`;
+                }
+
+                try {
+                    if (isAsync) {
+                        return new AsyncFunction("SYS", "IO", "GRAPHICS", "FS", jsBody);
+                    } else {
+                        return new Function("SYS", "IO", "GRAPHICS", "FS", jsBody);
+                    }
+                } catch (e) {
+                    console.error("Compile Error", e, jsBody);
+                    return () => IO.print(`?COMPILE ERROR ${lineObj.line}`);
+                }
+            }
+        };
+
+        // --- RUNTIME ENGINE ---
+        const ENGINE = {
+            build: () => {
+                SYS.program.sort((a, b) => a.line - b.line);
+                SYS.compiled = [];
+                SYS.labels = {};
+                SYS.program.forEach((item, index) => {
+                    SYS.labels[item.line] = index;
+                    SYS.compiled.push(Compiler.compile(item));
+                });
+            },
+            run: async () => {
+                ENGINE.build();
+                SYS.pc = 0;
+                SYS.running = true;
+                SYS.break = false; 
+                SYS.vars = {};
+                SYS.stack = [];
+                SYS.forStack = {};
+                
+                // UI: Show Stop Button
+                breakBtn.style.display = 'block';
+
+                const startTime = performance.now();
+                let lastYield = startTime;
+                let ops = 0;
+                
+                const compiled = SYS.compiled;
+                
+                while (SYS.running && SYS.pc < compiled.length) {
+                    const fn = compiled[SYS.pc];
+                    
+                    const result = fn(SYS, IO, GRAPHICS, FS);
+                    
+                    if (result && typeof result.then === 'function') {
+                        await result;
+                        lastYield = performance.now();
+                    }
+
+                    SYS.pc++;
+                    ops++;
+
+                    // 1. High Freq Break Check (Now also happens inside PRINT)
+                    if ((ops % 100) === 0) {
+                        if (SYS.break) {
+                            let lineNum = '?';
+                            if (SYS.pc > 0 && SYS.program[SYS.pc - 1]) {
+                                lineNum = SYS.program[SYS.pc - 1].line;
+                            }
+                            IO.print(`\nBREAK IN ${lineNum}`);
+                            SYS.running = false;
+                            SYS.break = false;
+                            break;
+                        }
+                    }
+
+                    // 2. Low Freq Time Check
+                    if ((ops & 4095) === 0) {
+                        const now = performance.now();
+                        if (now - lastYield > 14) {
+                            await new Promise(r => setTimeout(r, 0));
+                            lastYield = performance.now();
+                        }
+                    }
+                }
+
+                // UI: Hide Stop Button
+                breakBtn.style.display = 'none';
+
+                const endTime = performance.now();
+                const duration = (endTime - startTime).toFixed(2);
+
+                if (SYS.running || SYS.pc >= compiled.length) {
+                    IO.newLine();
+                    IO.print(`[ELAPSED TIME: ${duration} MS]`, true, 'perf-stats');
+                }
+
+                SYS.running = false;
+                IO.prompt();
+            }
+        };
+
+        // --- I/O HANDLING ---
+        const IO = {
+            cursorElement: null,
+            MAX_DOM_NODES: 60, // Approx 2 screens worth (buffer)
+
+            print: (text, newline = true, className = '') => {
+                const span = document.createElement('span');
+                span.textContent = text + (newline ? "\n" : "");
+                if (className) span.className = className;
+                outputDiv.appendChild(span);
+                
+                // UPDATE 2: SCROLLBACK LIMIT
+                // Keep DOM size small to prevent browser crash on mobile
+                while (outputDiv.childElementCount > IO.MAX_DOM_NODES) {
+                    outputDiv.removeChild(outputDiv.firstChild);
+                }
+
+                outputDiv.scrollTop = outputDiv.scrollHeight;
+            },
+            clear: () => { outputDiv.innerHTML = ""; },
+            newLine: () => {
+                const span = document.createElement('span');
+                span.textContent = "\n";
+                outputDiv.appendChild(span);
+            },
+            startInput: () => {
+                const textSpan = document.createElement('span');
+                outputDiv.appendChild(textSpan);
+                const cursor = document.createElement('span');
+                cursor.className = 'cursor';
+                outputDiv.appendChild(cursor);
+                IO.cursorElement = cursor;
+                inputTrap.value = "";
+                inputTrap.focus();
+                outputDiv.scrollTop = outputDiv.scrollHeight;
+            },
+            prompt: () => {
+                const span = document.createElement('span');
+                span.textContent = "]";
+                outputDiv.appendChild(span);
+                IO.startInput();
+            },
+            input: () => {
+                return new Promise(resolve => {
+                    SYS.inputCallback = resolve;
+                    IO.startInput();
+                });
+            },
+            handleCommand: (raw) => {
+                const clean = raw.trim().toUpperCase();
+                if (!clean) { IO.prompt(); return; }
+
+                const match = clean.match(/^(\d+)\s*(.*)/);
+                if (match) {
+                    const lineNum = parseInt(match[1]);
+                    const src = match[2];
+                    SYS.program = SYS.program.filter(l => l.line !== lineNum);
+                    if (src) SYS.program.push({ line: lineNum, src: src });
+                    IO.prompt();
+                } 
+                else {
+                    if (clean === 'LIST') {
+                        SYS.program.sort((a, b) => a.line - b.line);
+                        SYS.program.forEach(l => IO.print(`${l.line} ${l.src}`));
+                        IO.prompt();
+                    }
+                    else if (clean === 'NEW') {
+                        SYS.program = [];
+                        SYS.vars = {};
+                        GRAPHICS.setMode(0);
+                        IO.prompt();
+                    }
+                    else if (clean === 'RUN') {
+                        ENGINE.run();
+                    }
+                    else if (clean === 'HOME') {
+                        IO.clear();
+                        IO.prompt();
+                    }
+                    else if (clean.startsWith('DIR') || clean.startsWith('CATALOG')) {
+                        FS.dir();
+                        IO.prompt();
+                    }
+                    else {
+                        try {
+                            const singleFunc = Compiler.compile({ line: 0, src: clean });
+                            const res = singleFunc(SYS, IO, GRAPHICS, FS);
+                            if (res && res.then) res.then(() => IO.prompt());
+                            else IO.prompt();
+                        } catch (e) {
+                            IO.print("?SYNTAX ERROR");
+                            IO.prompt();
+                        }
+                    }
+                }
+            }
+        };
+
+        // --- EVENT LISTENERS ---
+        document.addEventListener('click', () => inputTrap.focus());
+        
+        // TOUCH BUTTON HANDLER
+        breakBtn.addEventListener('click', (e) => {
+            e.preventDefault(); // Don't steal focus if possible
+            if (SYS.running) {
+                SYS.break = true;
+            }
+            inputTrap.focus(); 
+        });
+
+        // INTERRUPT HANDLER (ESC)
+        window.addEventListener('keydown', (e) => {
+            if (e.code === 'Escape') {
+                e.preventDefault(); 
+                if (SYS.running) {
+                    SYS.break = true;
+                }
+            }
+        });
+
+        inputTrap.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                const val = inputTrap.value;
+                if (IO.cursorElement) {
+                    IO.cursorElement.remove();
+                    IO.cursorElement = null;
+                }
+                IO.newLine();
+                if (SYS.inputCallback) {
+                    const cb = SYS.inputCallback;
+                    SYS.inputCallback = null;
+                    cb(val); 
+                } else {
+                    IO.handleCommand(val);
+                }
+            }
+        });
+        inputTrap.addEventListener('input', (e) => {
+            if (IO.cursorElement && IO.cursorElement.previousSibling) {
+                IO.cursorElement.previousSibling.textContent = inputTrap.value;
+            }
+        });
+
+        // --- BOOT ---
+        IO.print("APPLESOFT JS BASIC INTERPRETER V12");
+        IO.print("COPYRIGHT 2023");
+        IO.newLine();
+        IO.prompt();
+
+        // Demo with Infinite Printing Loop (Test CTRL-C and Buffer)
+        SYS.program = [
+            {line: 10, src: 'HOME'},
+            {line: 20, src: 'PRINT "TESTING INFINITE PRINT LOOP..."'},
+            {line: 30, src: 'PRINT "PRESS ESC OR [STOP] TO BREAK"'},
+            {line: 40, src: 'I = 0'},
+            {line: 50, src: 'I = I + 1'},
+            {line: 60, src: 'PRINT "LINE "; I; " OF TEXT STREAM"'},
+            {line: 70, src: 'GOTO 50'}
+        ];
+
+    </script>
+</body>
+</html>
+

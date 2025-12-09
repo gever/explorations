@@ -3,13 +3,12 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Applesoft BASIC JIT Interpreter</title>
+    <title>Applesoft BASIC JIT - Mixed Mode</title>
     <style>
         @import url('https://fonts.googleapis.com/css2?family=VT323&display=swap');
 
         body {
-            margin: 0;
-            padding: 20px;
+            margin: 0; padding: 20px;
             background-color: #111;
             color: #33ff33;
             font-family: 'VT323', monospace;
@@ -22,7 +21,7 @@
 
         /* --- MONITOR CHASSIS --- */
         #monitor {
-            width: 832px;
+            width: 832px; /* Fitted to new canvas size + padding */
             height: 620px;
             background-color: #000;
             border: 20px solid #333;
@@ -46,36 +45,15 @@
             pointer-events: none;
         }
 
-        /* --- DISPLAY LAYER --- */
-        #screen-output {
-            flex-grow: 1;
-            white-space: pre;
-            font-family: 'VT323', monospace;
-            font-size: 28px;
-            line-height: 1.0;
-            letter-spacing: 0.05em;
-            text-transform: uppercase;
-            color: #33ff33;
+        /* --- SINGLE CANVAS DISPLAY --- */
+        canvas {
             background-color: #000;
+            image-rendering: pixelated; 
             z-index: 1;
-            overflow: hidden;
             cursor: text;
         }
 
-        .blink { animation: blink 1s step-end infinite; background-color: #33ff33; color: #000; }
-        .perf-stats { color: #00ffff; font-weight: bold; text-shadow: 0 0 5px #00aaaa; }
-
-        #graphics-layer {
-            position: absolute;
-            top: 20px; left: 20px;
-            width: 832px; height: 580px;
-            image-rendering: pixelated;
-            z-index: 5;
-            display: none;
-            background-color: black;
-        }
-
-        /* --- HELP OVERLAY (Dot Matrix Style) --- */
+        /* --- HELP OVERLAY (Restored Original Style) --- */
         #help-overlay {
             position: absolute;
             top: 40px; left: 40px; right: 40px; bottom: 40px;
@@ -107,21 +85,13 @@
         .printer-paper {
             flex-grow: 1;
             background-color: #f4f4f0;
-            /* Green Bar Background */
-            background-image: repeating-linear-gradient(
-                to bottom,
-                #f4f4f0,
-                #f4f4f0 40px,
-                #e8eadd 40px,
-                #e8eadd 80px
-            );
+            background-image: repeating-linear-gradient(to bottom, #f4f4f0, #f4f4f0 40px, #e8eadd 40px, #e8eadd 80px);
             color: #333;
             font-family: 'Courier New', Courier, monospace;
             font-size: 14px;
             line-height: 1.5;
             overflow-y: auto;
             padding: 20px 40px;
-            /* Perforation holes on sides */
             border-left: 12px dotted #bbb;
             border-right: 12px dotted #bbb;
             box-shadow: inset 0 0 20px rgba(0,0,0,0.1);
@@ -129,7 +99,6 @@
 
         .help-section { margin-bottom: 40px; border-top: 2px solid #000; padding-top: 20px; }
         .help-title { font-size: 1.8em; font-weight: 900; margin-bottom: 15px; text-transform: uppercase; letter-spacing: 2px; }
-        
         .help-entry { margin-bottom: 20px; break-inside: avoid; }
         .help-cmd { font-weight: bold; font-size: 1.2em; color: #000; background: rgba(0,0,0,0.05); display: inline-block; padding: 0 5px; }
         .help-desc { margin: 5px 0 5px 20px; }
@@ -160,8 +129,7 @@
 
     <div id="monitor">
         <button id="break-btn">STOP (ESC)</button>
-        <canvas id="graphics-layer" width="280" height="192"></canvas>
-        <div id="screen-output"></div>
+        <canvas id="main-canvas" width="800" height="576"></canvas>
         
         <div id="help-overlay">
             <div class="help-header">
@@ -177,77 +145,160 @@
 
     <script>
         /**
-         * APPLESOFT BASIC INTERPRETER v17.1
-         * Feature Update: Compound Statement Support
+         * APPLESOFT BASIC INTERPRETER v18.0 (Mixed Mode)
+         * - Single Canvas Architecture
+         * - Preserved Demos & Help Data
          */
 
-        // --- GLOBALS ---
-        const outputDiv = document.getElementById('screen-output');
+        // --- CONFIGURATION ---
+        const CONFIG = {
+            cols: 40, rows: 24,
+            width: 800, height: 576,
+            charW: 20, charH: 24,
+            font: '32px VT323', // Larger font to fill gaps
+            fontOffsetY: -4, fontOffsetX: 2,
+            color: '#33ff33', bgColor: '#000000',
+            scaleX: 800 / 280, scaleY: 576 / 192
+        };
+
+        const canvas = document.getElementById('main-canvas');
+        const ctx = canvas.getContext('2d', { alpha: false, desynchronized: true });
         const inputTrap = document.getElementById('input-trap');
-        const canvas = document.getElementById('graphics-layer');
         const breakBtn = document.getElementById('break-btn');
-        const ctx = canvas.getContext('2d');
         const AsyncFunction = Object.getPrototypeOf(async function(){}).constructor;
 
-        // --- SCREEN MEMORY ---
+        // --- SCREEN MEMORY (NEW CANVAS ENGINE) ---
         const SCREEN = {
-            W: 40, H: 24,
-            mem: new Array(24).fill(" ".repeat(40)), 
-            styles: new Array(24).fill(null).map(() => new Array(40).fill(null)),
             cx: 0, cy: 0,
-            
-            render: () => {
-                let html = "";
-                for (let y = 0; y < SCREEN.H; y++) {
-                    let lineStr = SCREEN.mem[y];
-                    let lineStyles = SCREEN.styles[y];
-                    let lineHtml = "";
-                    for(let x = 0; x < SCREEN.W; x++) {
-                        let char = lineStr[x] || " ";
-                        let style = lineStyles[x];
-                        if (y === SCREEN.cy && x === SCREEN.cx && IO.cursorVisible) {
-                            lineHtml += `<span class="blink">${char}</span>`;
-                        } else if (style) {
-                            lineHtml += `<span class="${style}">${char}</span>`;
-                        } else {
-                            lineHtml += char;
-                        }
-                    }
-                    html += lineHtml + "\n";
-                }
-                outputDiv.innerHTML = html;
-            },
+            savedUnderCursor: null, isCursorDrawn: false, blinkState: true,
 
-            put: (str, className = null) => {
-                for (let char of str) {
-                    if (char === '\n') {
-                        SCREEN.newline();
-                    } else {
-                        let line = SCREEN.mem[SCREEN.cy];
-                        line = line.substring(0, SCREEN.cx) + char + line.substring(SCREEN.cx + 1);
-                        SCREEN.mem[SCREEN.cy] = line;
-                        SCREEN.styles[SCREEN.cy][SCREEN.cx] = className;
-                        SCREEN.cx++;
-                        if (SCREEN.cx >= SCREEN.W) SCREEN.newline();
-                    }
-                }
-                SCREEN.render();
-            },
-
-            newline: () => {
-                SCREEN.cx = 0; SCREEN.cy++;
-                if (SCREEN.cy >= SCREEN.H) { SCREEN.scroll(); SCREEN.cy = SCREEN.H - 1; }
-            },
-
-            scroll: () => {
-                SCREEN.mem.shift(); SCREEN.mem.push(" ".repeat(SCREEN.W));
-                SCREEN.styles.shift(); SCREEN.styles.push(new Array(SCREEN.W).fill(null));
+            init: () => {
+                ctx.font = CONFIG.font;
+                ctx.textBaseline = 'top';
+                ctx.fillStyle = CONFIG.bgColor;
+                ctx.fillRect(0, 0, CONFIG.width, CONFIG.height);
+                SCREEN.cursorTicker();
             },
 
             clear: () => {
-                SCREEN.mem = new Array(SCREEN.H).fill(" ".repeat(SCREEN.W));
-                SCREEN.styles = new Array(SCREEN.H).fill(null).map(() => new Array(SCREEN.W).fill(null));
-                SCREEN.cx = 0; SCREEN.cy = 0; SCREEN.render();
+                SCREEN.removeCursor();
+                ctx.fillStyle = CONFIG.bgColor;
+                ctx.fillRect(0, 0, CONFIG.width, CONFIG.height);
+                SCREEN.cx = 0; SCREEN.cy = 0;
+                SCREEN.drawCursor();
+            },
+
+            scroll: () => {
+                SCREEN.removeCursor();
+                ctx.drawImage(canvas, 
+                    0, CONFIG.charH, CONFIG.width, CONFIG.height - CONFIG.charH, 
+                    0, 0, CONFIG.width, CONFIG.height - CONFIG.charH
+                );
+                ctx.fillStyle = CONFIG.bgColor;
+                ctx.fillRect(0, CONFIG.height - CONFIG.charH, CONFIG.width, CONFIG.charH);
+                SCREEN.drawCursor();
+            },
+
+            newline: () => {
+                SCREEN.removeCursor();
+                SCREEN.cx = 0; SCREEN.cy++;
+                if (SCREEN.cy >= CONFIG.rows) { SCREEN.cy = CONFIG.rows - 1; SCREEN.scroll(); }
+                else SCREEN.drawCursor();
+            },
+
+            put: (str) => {
+                SCREEN.removeCursor();
+                ctx.font = CONFIG.font;
+                
+                for (let char of str) {
+                    if (char === '\n') {
+                        SCREEN.cx = 0; SCREEN.cy++;
+                        if (SCREEN.cy >= CONFIG.rows) {
+                            SCREEN.cy = CONFIG.rows - 1;
+                            ctx.drawImage(canvas, 0, CONFIG.charH, CONFIG.width, CONFIG.height - CONFIG.charH, 0, 0, CONFIG.width, CONFIG.height - CONFIG.charH);
+                            ctx.fillStyle = CONFIG.bgColor;
+                            ctx.fillRect(0, CONFIG.height - CONFIG.charH, CONFIG.width, CONFIG.charH);
+                        }
+                    } else {
+                        // Clear cell background
+                        ctx.fillStyle = CONFIG.bgColor;
+                        ctx.fillRect(SCREEN.cx * CONFIG.charW, SCREEN.cy * CONFIG.charH, CONFIG.charW, CONFIG.charH);
+                        // Draw char
+                        ctx.fillStyle = CONFIG.color;
+                        ctx.fillText(char, (SCREEN.cx * CONFIG.charW) + CONFIG.fontOffsetX, (SCREEN.cy * CONFIG.charH) + CONFIG.fontOffsetY);
+                        
+                        SCREEN.cx++;
+                        if (SCREEN.cx >= CONFIG.cols) {
+                            SCREEN.cx = 0; SCREEN.cy++;
+                            if (SCREEN.cy >= CONFIG.rows) {
+                                SCREEN.cy = CONFIG.rows - 1;
+                                ctx.drawImage(canvas, 0, CONFIG.charH, CONFIG.width, CONFIG.height - CONFIG.charH, 0, 0, CONFIG.width, CONFIG.height - CONFIG.charH);
+                                ctx.fillStyle = CONFIG.bgColor;
+                                ctx.fillRect(0, CONFIG.height - CONFIG.charH, CONFIG.width, CONFIG.charH);
+                            }
+                        }
+                    }
+                }
+                SCREEN.drawCursor();
+            },
+
+            drawCursor: () => {
+                if (!IO.cursorVisible || SCREEN.isCursorDrawn) return;
+                const x = SCREEN.cx * CONFIG.charW;
+                const y = SCREEN.cy * CONFIG.charH;
+                SCREEN.savedUnderCursor = ctx.getImageData(x, y, CONFIG.charW, CONFIG.charH);
+                ctx.fillStyle = CONFIG.color;
+                ctx.fillRect(x, y, CONFIG.charW, CONFIG.charH);
+                SCREEN.isCursorDrawn = true;
+            },
+
+            removeCursor: () => {
+                if (!SCREEN.isCursorDrawn) return;
+                const x = SCREEN.cx * CONFIG.charW;
+                const y = SCREEN.cy * CONFIG.charH;
+                if (SCREEN.savedUnderCursor) ctx.putImageData(SCREEN.savedUnderCursor, x, y);
+                SCREEN.isCursorDrawn = false;
+            },
+
+            cursorTicker: () => {
+                setInterval(() => {
+                    if (IO.cursorVisible) {
+                        if (SCREEN.blinkState) SCREEN.drawCursor(); else SCREEN.removeCursor();
+                        SCREEN.blinkState = !SCREEN.blinkState;
+                    } else if (SCREEN.isCursorDrawn) SCREEN.removeCursor();
+                }, 500);
+            }
+        };
+
+        // --- GRAPHICS (UPDATED FOR MIXED MODE) ---
+        const GRAPHICS = {
+            lastX:0, lastY:0, colorIdx:3, 
+            colors: ['#000000', '#14F53C', '#A040A0', '#FFFFFF', '#000000', '#FF6000', '#3040FF', '#FFFFFF'],
+            mapX: (x) => Math.floor(x * CONFIG.scaleX),
+            mapY: (y) => Math.floor(y * CONFIG.scaleY),
+            
+            // Legacy support: HGR/HGR2 now just clear, they don't hide text
+            setMode: (m) => { if(m>0) SCREEN.clear(); }, 
+            
+            clear: () => SCREEN.clear(),
+            setColor: (c) => GRAPHICS.colorIdx = Math.floor(c)%8,
+            
+            plot: (x,y) => {
+                SCREEN.removeCursor();
+                ctx.fillStyle=GRAPHICS.colors[GRAPHICS.colorIdx]; 
+                const cx = GRAPHICS.mapX(x), cy = GRAPHICS.mapY(y);
+                ctx.fillRect(cx, cy, Math.ceil(CONFIG.scaleX), Math.ceil(CONFIG.scaleY)); 
+                GRAPHICS.lastX=cx; GRAPHICS.lastY=cy; 
+            },
+            
+            lineTo: (x,y) => {
+                SCREEN.removeCursor();
+                ctx.strokeStyle=GRAPHICS.colors[GRAPHICS.colorIdx]; ctx.lineWidth=2; ctx.beginPath();
+                const tx = GRAPHICS.mapX(x), ty = GRAPHICS.mapY(y);
+                ctx.moveTo(GRAPHICS.lastX+(CONFIG.scaleX/2), GRAPHICS.lastY+(CONFIG.scaleY/2));
+                ctx.lineTo(tx+(CONFIG.scaleX/2), ty+(CONFIG.scaleY/2)); 
+                ctx.stroke(); 
+                GRAPHICS.lastX=tx; GRAPHICS.lastY=ty;
             }
         };
 
@@ -260,7 +311,7 @@
             setArray: (n, i, v) => { if (!SYS.arrays[n]) throw `UNDEFINED ARRAY ${n}`; SYS.arrays[n][i] = v; }
         };
 
-        // --- DEMOS ---
+        // --- DEMOS (RESTORED) ---
         const DEMOS = {
             "DEMO/ANIM.BAS": [
                 {line: 10, src: 'HOME'}, {line: 20, src: 'PRINT "ANIMATION DEMO - USE SETPOS"'},
@@ -277,10 +328,18 @@
                 {line: 10, src: 'HGR2 : HCOLOR=3'}, {line: 20, src: 'FOR I=0 TO 191 STEP 5'},
                 {line: 30, src: 'HPLOT 0,0 TO 279,I'}, {line: 40, src: 'NEXT I'},
                 {line: 50, src: 'INPUT ""; X$ : TEXT : END'}
+            ],
+            "DEMO/MIXED.BAS": [
+                 {line:10, src:'HOME : HCOLOR=3'},
+                 {line:20, src:'FOR I=0 TO 190 STEP 10'},
+                 {line:30, src:'HPLOT 0,I TO 279,190-I'},
+                 {line:40, src:'NEXT I'},
+                 {line:50, src:'VTAB 12 : HTAB 12 : PRINT "MIXED TEXT & GRAPHICS"'},
+                 {line:60, src:'HPLOT 0,0 TO 279,191'}
             ]
         };
 
-        // --- HELP DATA (UPDATED) ---
+        // --- HELP DATA (RESTORED) ---
         const HELP_DATA = {
             "SYSTEM & FILES": [
                 { c: "RUN", d: "Executes the program currently in memory. Clears variables.", e: "RUN" },
@@ -295,9 +354,9 @@
             ],
             "SCREEN & GRAPHICS": [
                 { c: "HOME", d: "Clears the text screen and moves cursor to top-left.", e: "10 HOME" },
-                { c: "TEXT", d: "Switches display back to standard 40-column text mode.", e: "100 TEXT" },
-                { c: "HGR", d: "Switches to High-Res Graphics (160px height) with 4 text lines.", e: "10 HGR" },
-                { c: "HGR2", d: "Switches to Full High-Res Graphics (192px height).", e: "10 HGR2" },
+                { c: "TEXT", d: "Legacy command (Clears screen in Mixed Mode).", e: "100 TEXT" },
+                { c: "HGR", d: "Legacy command (Clears screen in Mixed Mode).", e: "10 HGR" },
+                { c: "HGR2", d: "Legacy command (Clears screen in Mixed Mode).", e: "10 HGR2" },
                 { c: "HCOLOR", d: "Sets drawing color (0-7) for HPLOT.", e: "20 HCOLOR = 3" },
                 { c: "HPLOT", d: "Plots a point or draws lines on the graphics screen.", e: "30 HPLOT 0,0 TO 100,100" },
                 { c: "HTAB", d: "Moves cursor to horizontal column X (1-40).", e: "10 HTAB 20" },
@@ -339,15 +398,15 @@
             ]
         };
 
-        // --- FILE SYSTEM ---
+        // --- FILE SYSTEM (RESTORED) ---
         const FS = {
             PREFIX: 'APPLESOFT_PROG_',
             save: (fn) => { try { localStorage.setItem(FS.PREFIX+fn.toUpperCase(), JSON.stringify(SYS.program)); IO.print("SAVED "+fn); } catch(e){ IO.print("?DISK FULL"); } },
             load: (fn) => {
                 const f = fn.toUpperCase();
-                if (DEMOS[f]) { SYS.program = JSON.parse(JSON.stringify(DEMOS[f])); SYS.vars={}; SYS.arrays={}; GRAPHICS.setMode(0); IO.print("LOADED DEMO"); return; }
+                if (DEMOS[f]) { SYS.program = JSON.parse(JSON.stringify(DEMOS[f])); SYS.vars={}; SYS.arrays={}; SCREEN.clear(); IO.print("LOADED DEMO"); return; }
                 const d = localStorage.getItem(FS.PREFIX + f);
-                if (d) { SYS.program = JSON.parse(d); SYS.vars={}; SYS.arrays={}; GRAPHICS.setMode(0); IO.print("LOADED"); } else IO.print("?FILE NOT FOUND");
+                if (d) { SYS.program = JSON.parse(d); SYS.vars={}; SYS.arrays={}; SCREEN.clear(); IO.print("LOADED"); } else IO.print("?FILE NOT FOUND");
             },
             dir: () => {
                 IO.print("CATALOG");
@@ -360,21 +419,6 @@
                 const b = new Blob([t],{type:'text/plain'}); const u = URL.createObjectURL(b);
                 const a = document.createElement('a'); a.href=u; a.download=(fn||"PROG")+".BAS";
                 document.body.appendChild(a); a.click(); document.body.removeChild(a);
-            }
-        };
-
-        // --- GRAPHICS ---
-        const GRAPHICS = {
-            lastX:0, lastY:0, color:3, 
-            colors: ['#000000', '#14F53C', '#A040A0', '#FFFFFF', '#000000', '#FF6000', '#3040FF', '#FFFFFF'],
-            setMode: (m) => { if(m===0) canvas.style.display='none'; else { canvas.style.display='block'; canvas.height=(m===1?160:192); canvas.style.height=(m===1?'500px':'580px'); GRAPHICS.clear(); } },
-            clear: () => { ctx.fillStyle="#000"; ctx.fillRect(0,0,canvas.width,canvas.height); },
-            setColor: (c) => GRAPHICS.color = Math.floor(c)%8,
-            plot: (x,y) => { ctx.fillStyle=GRAPHICS.colors[GRAPHICS.color]; ctx.fillRect(Math.floor(x),Math.floor(y),1,1); GRAPHICS.lastX=x; GRAPHICS.lastY=y; },
-            lineTo: (x,y) => {
-                ctx.strokeStyle=GRAPHICS.colors[GRAPHICS.color]; ctx.lineWidth=1; ctx.beginPath();
-                ctx.moveTo(Math.floor(GRAPHICS.lastX)+0.5, Math.floor(GRAPHICS.lastY)+0.5);
-                ctx.lineTo(Math.floor(x)+0.5, Math.floor(y)+0.5); ctx.stroke(); GRAPHICS.lastX=x; GRAPHICS.lastY=y;
             }
         };
 
@@ -400,44 +444,27 @@
                 const tokens=Tokenizer.tokenize(lineObj.src.toUpperCase()); 
                 const ctx={idx:0};
                 const peek=()=>tokens[ctx.idx], next=()=>tokens[ctx.idx++], remain=()=>tokens.slice(ctx.idx);
-                
-                let body = ""; 
-                let async = false;
+                let body = "", async = false;
 
-                // FIX: Loop through tokens to handle multiple commands per line (separated by :)
                 while(ctx.idx < tokens.length) {
                     const cmd = next();
-                    
-                    if (cmd === ':') continue; // Skip separator
-                    if (cmd === 'REM') break;  // Comment ignores rest of line
-
+                    if (cmd === ':') continue; if (cmd === 'REM') break;
                     let chunk = "";
 
                     if(cmd==='PRINT'){ 
                         if(!peek()) chunk="IO.print('');"; 
                         else { 
-                            const p=[]; 
-                            while(ctx.idx<tokens.length){ 
-                                if(peek()===';'||peek()===','){next();continue;} 
-                                if([':','THEN','ELSE'].includes(peek())) break; 
-                                p.push(Compiler.genExpression(tokens,ctx)); 
-                                if(peek()===';')next(); 
-                            } 
+                            const p=[]; while(ctx.idx<tokens.length){ if(peek()===';'||peek()===','){next();continue;} if([':','THEN','ELSE'].includes(peek())) break; p.push(Compiler.genExpression(tokens,ctx)); if(peek()===';')next(); } 
                             chunk=`IO.print(${p.length?p.join(' + "" + '):'""'});`; 
                         } 
                         chunk+=` if(SYS.break){SYS.running=false;return;}`; 
                     }
                     else if(cmd==='GOTO'){ const l=Number(next()); chunk=`if(SYS.labels[${l}]!==undefined)SYS.pc=SYS.labels[${l}]-1;`; }
                     else if(cmd==='IF'){ 
-                        const cond=Compiler.genExpression(tokens,ctx); 
-                        if(next()!=='THEN') throw "SYNTAX"; 
-                        let tb; 
-                        // IF handles the rest of the line recursively, so we break the loop after processing IF
+                        const cond=Compiler.genExpression(tokens,ctx); if(next()!=='THEN') throw "SYNTAX"; let tb; 
                         if(!isNaN(peek())) tb=`if(SYS.labels[${Number(next())}]!==undefined)SYS.pc=SYS.labels[${Number(next())}]-1;`; 
                         else { const sid="SUB_"+Math.random().toString(36).substr(2,9); SYS[sid]=Compiler.compile({line:lineObj.line,src:remain().join(" ")}); tb=`return SYS['${sid}'](SYS,IO,GRAPHICS,FS);`; } 
-                        chunk=`if(${cond}){${tb}}`; 
-                        // Force loop exit because IF consumes the rest of the line
-                        ctx.idx = tokens.length; 
+                        chunk=`if(${cond}){${tb}}`; ctx.idx = tokens.length; 
                     }
                     else if(cmd==='FOR'){ const v=next(); next(); const s=Compiler.genExpression(tokens,ctx); next(); const e=Compiler.genExpression(tokens,ctx); let st="1"; if(peek()==='STEP'){next();st=Compiler.genExpression(tokens,ctx);} chunk=`SYS.vars['${v}']=${s};SYS.forStack['${v}']={target:${e},step:${st},pc:SYS.pc};`; }
                     else if(cmd==='NEXT'){ const v=next(); chunk=`var l=SYS.forStack['${v}'];if(l){SYS.vars['${v}']+=l.step;if((l.step>=0&&SYS.vars['${v}']<=l.target)||(l.step<0&&SYS.vars['${v}']>=l.target))SYS.pc=l.pc;else delete SYS.forStack['${v}'];}`; }
@@ -449,7 +476,7 @@
                     else if(cmd==='SETPOS') { const x=Compiler.genExpression(tokens,ctx); next(); const y=Compiler.genExpression(tokens,ctx); chunk=`IO.setPos(${x},${y});`; }
                     else if(cmd==='HOME') chunk="IO.home();";
                     else if(cmd==='END') chunk="SYS.running=false;";
-                    else if(cmd==='HGR'||cmd==='HGR2'||cmd==='TEXT') chunk=`GRAPHICS.setMode(${cmd==='TEXT'?0:(cmd==='HGR'?1:2)});`;
+                    else if(cmd==='HGR'||cmd==='HGR2'||cmd==='TEXT') chunk=`GRAPHICS.setMode(1);`;
                     else if(cmd==='HCOLOR'){ next(); chunk=`GRAPHICS.setColor(${Compiler.genExpression(tokens,ctx)});`; }
                     else if(cmd==='HPLOT'){ let sc="", sl=false; if(peek()==='TO'){next();sl=true;} else {const x=Compiler.genExpression(tokens,ctx); if(peek()===',')next(); sc=`GRAPHICS.plot(${x},${Compiler.genExpression(tokens,ctx)});`;} let lc=""; while(peek()==='TO'){next();const x=Compiler.genExpression(tokens,ctx); if(peek()===',')next(); lc+=`GRAPHICS.lineTo(${x},${Compiler.genExpression(tokens,ctx)});`;} chunk=(sl?"":sc)+lc; }
                     else if(cmd==='DELAY') { async=true; chunk=`await new Promise(r=>setTimeout(r,${Compiler.genExpression(tokens,ctx)}));`; }
@@ -472,28 +499,18 @@
             cursorVisible: true,
             help: () => {
                 const ov = document.getElementById('help-overlay'), ct = document.getElementById('help-content'), search = document.getElementById('help-search');
-                ov.style.display = 'flex';
-                search.focus();
+                ov.style.display = 'flex'; search.focus();
                 
                 const render = (filter = "") => {
                     let html = "<div class='help-title' style='text-align:center'>QUICK INDEX</div><div class='index-grid'>";
                     const keys = Object.keys(HELP_DATA);
-                    // Index Buttons
-                    keys.forEach(cat => {
-                         html += `<button class='index-btn' onclick="document.getElementById('sec-${cat}').scrollIntoView({behavior:'smooth'})">${cat}</button>`;
-                    });
+                    keys.forEach(cat => { html += `<button class='index-btn' onclick="document.getElementById('sec-${cat}').scrollIntoView({behavior:'smooth'})">${cat}</button>`; });
                     html += "</div><hr/><br/>";
-
-                    // Content
                     keys.forEach(cat => {
                         html += `<div id='sec-${cat}' class='help-section'><div class='help-title'>${cat}</div>`;
                         HELP_DATA[cat].forEach(item => {
                             if(!filter || item.c.includes(filter.toUpperCase()) || item.d.toUpperCase().includes(filter.toUpperCase())) {
-                                html += `<div class='help-entry'>
-                                    <div class='help-cmd'>${item.c}</div>
-                                    <div class='help-desc'>${item.d}</div>
-                                    <div class='help-ex'>${item.e}</div>
-                                </div>`;
+                                html += `<div class='help-entry'><div class='help-cmd'>${item.c}</div><div class='help-desc'>${item.d}</div><div class='help-ex'>${item.e}</div></div>`;
                             }
                         });
                         html += "</div>";
@@ -502,12 +519,15 @@
                 };
                 render(); search.onkeyup = (e) => render(e.target.value);
             },
-            print: (txt, newline=true, style=null) => { SCREEN.put(txt.toString(), style); if(newline) SCREEN.newline(); },
-            input: () => { IO.cursorVisible = true; SCREEN.render(); return new Promise(r => { SYS.inputCallback = r; inputTrap.value=""; inputTrap.focus(); }); },
+            print: (txt, newline=true) => { SCREEN.put(txt.toString()); if(newline) SCREEN.newline(); },
+            input: () => { 
+                IO.cursorVisible = true; SCREEN.blinkState = true; SCREEN.drawCursor(); 
+                return new Promise(r => { SYS.inputCallback = r; inputTrap.value=""; inputTrap.focus(); }); 
+            },
             home: () => SCREEN.clear(),
-            htab: (x) => { SCREEN.cx = Math.max(0, Math.min(SCREEN.W-1, x-1)); SCREEN.render(); },
-            vtab: (y) => { SCREEN.cy = Math.max(0, Math.min(SCREEN.H-1, y-1)); SCREEN.render(); },
-            setPos: (x, y) => { SCREEN.cx = Math.max(0, Math.min(SCREEN.W-1, x-1)); SCREEN.cy = Math.max(0, Math.min(SCREEN.H-1, y-1)); SCREEN.render(); },
+            htab: (x) => { SCREEN.removeCursor(); SCREEN.cx = Math.max(0, Math.min(CONFIG.cols-1, x-1)); SCREEN.drawCursor(); },
+            vtab: (y) => { SCREEN.removeCursor(); SCREEN.cy = Math.max(0, Math.min(CONFIG.rows-1, y-1)); SCREEN.drawCursor(); },
+            setPos: (x, y) => { SCREEN.removeCursor(); SCREEN.cx = Math.max(0, Math.min(CONFIG.cols-1, x-1)); SCREEN.cy = Math.max(0, Math.min(CONFIG.rows-1, y-1)); SCREEN.drawCursor(); },
             handleCommand: (raw) => {
                 const c = raw.trim().toUpperCase();
                 if(!c) return IO.prompt();
@@ -536,7 +556,7 @@
                 SYS.program.sort((a,b)=>a.line-b.line); SYS.compiled=[]; SYS.labels={};
                 SYS.program.forEach((x,i)=>{ SYS.labels[x.line]=i; SYS.compiled.push(Compiler.compile(x)); });
                 SYS.pc=0; SYS.running=true; SYS.break=false; SYS.vars={}; SYS.arrays={}; SYS.stack=[]; SYS.forStack={};
-                breakBtn.style.display='block'; IO.cursorVisible=false;
+                breakBtn.style.display='block'; IO.cursorVisible=false; SCREEN.removeCursor();
                 const t0=performance.now(); let ly=t0; let ops=0;
                 while(SYS.running && SYS.pc < SYS.compiled.length) {
                     const res = SYS.compiled[SYS.pc](SYS,IO,GRAPHICS,FS);
@@ -546,43 +566,41 @@
                     if((ops&4095)===0 && (performance.now()-ly)>14) { await new Promise(r=>setTimeout(r,0)); ly=performance.now(); }
                 }
                 breakBtn.style.display='none';
-                const duration = (performance.now() - t0).toFixed(2);
-                IO.print("");
-                IO.print(`[ELAPSED TIME: ${duration} MS]`, true, 'perf-stats');
                 SYS.running=false; IO.prompt();
             }
         };
 
         // --- EVENTS ---
-        setInterval(()=>{ if(IO.cursorVisible) { document.querySelectorAll('.blink').forEach(e=>e.style.opacity=e.style.opacity==='0'?'1':'0'); } }, 500);
         document.addEventListener('click', (e)=>{ if(e.target.id !== 'help-search') inputTrap.focus(); });
         breakBtn.onclick = (e) => { e.preventDefault(); if(SYS.running) SYS.break=true; inputTrap.focus(); };
         window.onkeydown = (e) => { if(e.key==='Escape' && SYS.running) SYS.break=true; };
         inputTrap.onkeydown = (e) => {
             if(e.key==='Enter') { 
-                e.preventDefault(); 
-                const v=inputTrap.value; 
-                IO.print("", true); 
+                e.preventDefault(); const v=inputTrap.value; IO.print("", true); 
                 if(SYS.inputCallback){const c=SYS.inputCallback; SYS.inputCallback=null; c(v);} else IO.handleCommand(v); 
-                inputTrap.value=""; inputTrap.lastLen = 0;
+                inputTrap.value=""; 
             }
             else if(e.key==='Backspace') { 
-                 if(inputTrap.value.length>0) { SCREEN.cx = Math.max(0, SCREEN.cx-1); SCREEN.put(" "); SCREEN.cx--; SCREEN.render(); }
+                 if(inputTrap.value.length>0) { 
+                     SCREEN.removeCursor(); 
+                     if(SCREEN.cx>0) SCREEN.cx--; 
+                     ctx.fillStyle=CONFIG.bgColor; ctx.fillRect(SCREEN.cx*CONFIG.charW,SCREEN.cy*CONFIG.charH,CONFIG.charW,CONFIG.charH); 
+                     SCREEN.drawCursor(); 
+                 }
             }
         };
-        inputTrap.oninput = () => {
-            const char = inputTrap.value.slice(-1);
-            if(inputTrap.value.length > (inputTrap.lastLen||0)) { SCREEN.put(char); }
-            inputTrap.lastLen = inputTrap.value.length;
-            if(inputTrap.value === "") inputTrap.lastLen = 0;
-        };
+        inputTrap.oninput = (e) => { if(e.inputType==="insertText" && e.data) SCREEN.put(e.data); };
 
-        SCREEN.clear();
-        IO.print("APPLESOFT JS BASIC INTERPRETER V17.1");
-        IO.print("COPYRIGHT 2023");
-        IO.print("");
-        IO.print("TYPE 'HELP' FOR MANUAL");
-        IO.prompt();
+        // Init
+        document.fonts.load(CONFIG.font).then(() => {
+            SCREEN.init();
+            IO.print("APPLESOFT JS BASIC (MIXED MODE) v18.0");
+            IO.print("COPYRIGHT 2023");
+            IO.print("");
+            IO.print("TYPE 'HELP' FOR MANUAL");
+            IO.print("TYPE 'DIR' FOR DEMOS");
+            IO.prompt();
+        });
 
     </script>
 </body>

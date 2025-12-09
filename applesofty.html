@@ -19,9 +19,8 @@
             align-items: center;
         }
 
-        /* --- MONITOR CHASSIS --- */
         #monitor {
-            width: 832px; /* Fitted to new canvas size + padding */
+            width: 832px;
             height: 620px;
             background-color: #000;
             border: 20px solid #333;
@@ -45,7 +44,6 @@
             pointer-events: none;
         }
 
-        /* --- SINGLE CANVAS DISPLAY --- */
         canvas {
             background-color: #000;
             image-rendering: pixelated; 
@@ -53,7 +51,6 @@
             cursor: text;
         }
 
-        /* --- HELP OVERLAY (Restored Original Style) --- */
         #help-overlay {
             position: absolute;
             top: 40px; left: 40px; right: 40px; bottom: 40px;
@@ -81,7 +78,6 @@
             padding: 5px 15px; cursor: pointer; font-weight: bold;
         }
 
-        /* Fan-fold Paper Effect */
         .printer-paper {
             flex-grow: 1;
             background-color: #f4f4f0;
@@ -145,17 +141,14 @@
 
     <script>
         /**
-         * APPLESOFT BASIC INTERPRETER v18.0 (Mixed Mode)
-         * - Single Canvas Architecture
-         * - Preserved Demos & Help Data
+         * APPLESOFT BASIC INTERPRETER v18.1 (Solid Cursor Update)
          */
 
-        // --- CONFIGURATION ---
         const CONFIG = {
             cols: 40, rows: 24,
             width: 800, height: 576,
             charW: 20, charH: 24,
-            font: '32px VT323', // Larger font to fill gaps
+            font: '32px VT323',
             fontOffsetY: -4, fontOffsetX: 2,
             color: '#33ff33', bgColor: '#000000',
             scaleX: 800 / 280, scaleY: 576 / 192
@@ -167,17 +160,17 @@
         const breakBtn = document.getElementById('break-btn');
         const AsyncFunction = Object.getPrototypeOf(async function(){}).constructor;
 
-        // --- SCREEN MEMORY (NEW CANVAS ENGINE) ---
+        // --- MODIFIED SCREEN MEMORY (SOLID XOR CURSOR) ---
         const SCREEN = {
             cx: 0, cy: 0,
-            savedUnderCursor: null, isCursorDrawn: false, blinkState: true,
+            isCursorDrawn: false,
 
             init: () => {
                 ctx.font = CONFIG.font;
                 ctx.textBaseline = 'top';
                 ctx.fillStyle = CONFIG.bgColor;
                 ctx.fillRect(0, 0, CONFIG.width, CONFIG.height);
-                SCREEN.cursorTicker();
+                SCREEN.drawCursor();
             },
 
             clear: () => {
@@ -242,47 +235,51 @@
                 SCREEN.drawCursor();
             },
 
+            // --- CHANGED: XOR STYLE CURSOR LOGIC ---
             drawCursor: () => {
                 if (!IO.cursorVisible || SCREEN.isCursorDrawn) return;
+                
                 const x = SCREEN.cx * CONFIG.charW;
                 const y = SCREEN.cy * CONFIG.charH;
-                SCREEN.savedUnderCursor = ctx.getImageData(x, y, CONFIG.charW, CONFIG.charH);
-                ctx.fillStyle = CONFIG.color;
+
+                ctx.save();
+                // 'difference' subtracts the pixel values. 
+                // Green (underneath) - Green (cursor) = Black (Text becomes black)
+                // Black (underneath) - Green (cursor) = Green (Background becomes green)
+                ctx.globalCompositeOperation = 'difference';
+                ctx.fillStyle = CONFIG.color; 
                 ctx.fillRect(x, y, CONFIG.charW, CONFIG.charH);
+                ctx.restore();
+
                 SCREEN.isCursorDrawn = true;
             },
 
             removeCursor: () => {
                 if (!SCREEN.isCursorDrawn) return;
+                
                 const x = SCREEN.cx * CONFIG.charW;
                 const y = SCREEN.cy * CONFIG.charH;
-                if (SCREEN.savedUnderCursor) ctx.putImageData(SCREEN.savedUnderCursor, x, y);
-                SCREEN.isCursorDrawn = false;
-            },
 
-            cursorTicker: () => {
-                setInterval(() => {
-                    if (IO.cursorVisible) {
-                        if (SCREEN.blinkState) SCREEN.drawCursor(); else SCREEN.removeCursor();
-                        SCREEN.blinkState = !SCREEN.blinkState;
-                    } else if (SCREEN.isCursorDrawn) SCREEN.removeCursor();
-                }, 500);
+                ctx.save();
+                // Apply difference again to reverse the colors exactly
+                ctx.globalCompositeOperation = 'difference';
+                ctx.fillStyle = CONFIG.color;
+                ctx.fillRect(x, y, CONFIG.charW, CONFIG.charH);
+                ctx.restore();
+
+                SCREEN.isCursorDrawn = false;
             }
         };
 
-        // --- GRAPHICS (UPDATED FOR MIXED MODE) ---
+        // --- GRAPHICS ---
         const GRAPHICS = {
             lastX:0, lastY:0, colorIdx:3, 
             colors: ['#000000', '#14F53C', '#A040A0', '#FFFFFF', '#000000', '#FF6000', '#3040FF', '#FFFFFF'],
             mapX: (x) => Math.floor(x * CONFIG.scaleX),
             mapY: (y) => Math.floor(y * CONFIG.scaleY),
-            
-            // Legacy support: HGR/HGR2 now just clear, they don't hide text
             setMode: (m) => { if(m>0) SCREEN.clear(); }, 
-            
             clear: () => SCREEN.clear(),
             setColor: (c) => GRAPHICS.colorIdx = Math.floor(c)%8,
-            
             plot: (x,y) => {
                 SCREEN.removeCursor();
                 ctx.fillStyle=GRAPHICS.colors[GRAPHICS.colorIdx]; 
@@ -290,7 +287,6 @@
                 ctx.fillRect(cx, cy, Math.ceil(CONFIG.scaleX), Math.ceil(CONFIG.scaleY)); 
                 GRAPHICS.lastX=cx; GRAPHICS.lastY=cy; 
             },
-            
             lineTo: (x,y) => {
                 SCREEN.removeCursor();
                 ctx.strokeStyle=GRAPHICS.colors[GRAPHICS.colorIdx]; ctx.lineWidth=2; ctx.beginPath();
@@ -311,7 +307,7 @@
             setArray: (n, i, v) => { if (!SYS.arrays[n]) throw `UNDEFINED ARRAY ${n}`; SYS.arrays[n][i] = v; }
         };
 
-        // --- DEMOS (RESTORED) ---
+        // --- DEMOS ---
         const DEMOS = {
             "DEMO/ANIM.BAS": [
                 {line: 10, src: 'HOME'}, {line: 20, src: 'PRINT "ANIMATION DEMO - USE SETPOS"'},
@@ -339,7 +335,7 @@
             ]
         };
 
-        // --- HELP DATA (RESTORED) ---
+        // --- HELP DATA ---
         const HELP_DATA = {
             "SYSTEM & FILES": [
                 { c: "RUN", d: "Executes the program currently in memory. Clears variables.", e: "RUN" },
@@ -398,7 +394,7 @@
             ]
         };
 
-        // --- FILE SYSTEM (RESTORED) ---
+        // --- FILE SYSTEM ---
         const FS = {
             PREFIX: 'APPLESOFT_PROG_',
             save: (fn) => { try { localStorage.setItem(FS.PREFIX+fn.toUpperCase(), JSON.stringify(SYS.program)); IO.print("SAVED "+fn); } catch(e){ IO.print("?DISK FULL"); } },
@@ -521,7 +517,7 @@
             },
             print: (txt, newline=true) => { SCREEN.put(txt.toString()); if(newline) SCREEN.newline(); },
             input: () => { 
-                IO.cursorVisible = true; SCREEN.blinkState = true; SCREEN.drawCursor(); 
+                IO.cursorVisible = true; SCREEN.drawCursor(); 
                 return new Promise(r => { SYS.inputCallback = r; inputTrap.value=""; inputTrap.focus(); }); 
             },
             home: () => SCREEN.clear(),
@@ -594,7 +590,7 @@
         // Init
         document.fonts.load(CONFIG.font).then(() => {
             SCREEN.init();
-            IO.print("APPLESOFT JS BASIC (MIXED MODE) v18.0");
+            IO.print("APPLESOFT JS BASIC (MIXED MODE) v18.1");
             IO.print("COPYRIGHT 2023");
             IO.print("");
             IO.print("TYPE 'HELP' FOR MANUAL");

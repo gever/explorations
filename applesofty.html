@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Applesoft BASIC JIT - Mixed Mode</title>
+    <title>Applesoft BASIC JIT - 640x480 Scaled</title>
     <style>
         @import url('https://fonts.googleapis.com/css2?family=VT323&display=swap');
 
@@ -13,15 +13,18 @@
             color: #33ff33;
             font-family: 'VT323', monospace;
             height: 100vh;
-            overflow: hidden;
+            overflow: auto; /* Changed to auto to allow scrolling if screen is small */
             display: flex;
             justify-content: center;
             align-items: center;
         }
 
         #monitor {
-            width: 832px;
-            height: 620px;
+            /* Display Size: 640x480 * 2 = 1280x960. 
+               Add padding/border: 1280 + 40 = 1320 width.
+            */
+            width: 1320px;
+            height: 1000px;
             background-color: #000;
             border: 20px solid #333;
             border-radius: 10px;
@@ -31,6 +34,9 @@
             display: flex;
             flex-direction: column;
             overflow: hidden;
+            /* Scale down slightly if viewport is too small, just for usability */
+            max-width: 95vw;
+            max-height: 95vh;
         }
 
         #monitor::before {
@@ -47,6 +53,9 @@
         canvas {
             background-color: #000;
             image-rendering: pixelated; 
+            /* 2x Scaling: Logical 640 -> Visual 1280 */
+            width: 100%;
+            height: 100%;
             z-index: 1;
             cursor: text;
         }
@@ -125,7 +134,7 @@
 
     <div id="monitor">
         <button id="break-btn">STOP (ESC)</button>
-        <canvas id="main-canvas" width="800" height="576"></canvas>
+        <canvas id="main-canvas" width="640" height="480"></canvas>
         
         <div id="help-overlay">
             <div class="help-header">
@@ -141,17 +150,28 @@
 
     <script>
         /**
-         * APPLESOFT BASIC INTERPRETER v18.1 (Solid Cursor Update)
+         * APPLESOFT BASIC INTERPRETER v18.1 (640x480 Scaled Update)
          */
 
         const CONFIG = {
             cols: 40, rows: 24,
-            width: 800, height: 576,
-            charW: 20, charH: 24,
-            font: '32px VT323',
-            fontOffsetY: -4, fontOffsetX: 2,
+            // LOGICAL RESOLUTION
+            width: 640, height: 480,
+            
+            // Grid Calculation: 
+            // Width: 640 / 40 cols = 16px per char
+            // Height: 480 / 24 rows = 20px per char
+            charW: 16, charH: 20,
+            
+            // Adjusted font to fit new 16x20 cell
+            font: '26px VT323', 
+            fontOffsetY: -3, fontOffsetX: 1, // Tweaked offsets for alignment
+            
             color: '#33ff33', bgColor: '#000000',
-            scaleX: 800 / 280, scaleY: 576 / 192
+            
+            // Graphics Scaling: Maps 280x192 (Apple internal) to 640x480 (Screen)
+            scaleX: 640 / 280, 
+            scaleY: 480 / 192
         };
 
         const canvas = document.getElementById('main-canvas');
@@ -590,7 +610,7 @@
         // Init
         document.fonts.load(CONFIG.font).then(() => {
             SCREEN.init();
-            IO.print("APPLESOFT JS BASIC (MIXED MODE) v18.1");
+            IO.print("APPLESOFT JS BASIC (640X480 MODE) v18.1");
             IO.print("COPYRIGHT 2023");
             IO.print("");
             IO.print("TYPE 'HELP' FOR MANUAL");

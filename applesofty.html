@@ -397,38 +397,72 @@
                 }; return parseExp();
             },
             compile: (lineObj) => {
-                const tokens=Tokenizer.tokenize(lineObj.src.toUpperCase()); const ctx={idx:0};
+                const tokens=Tokenizer.tokenize(lineObj.src.toUpperCase()); 
+                const ctx={idx:0};
                 const peek=()=>tokens[ctx.idx], next=()=>tokens[ctx.idx++], remain=()=>tokens.slice(ctx.idx);
-                let body="", async=false; 
                 
-                while(ctx.idx < tokens.length) {
-                    const cmd=next();
-                    if(cmd === ':') continue;
+                let body = ""; 
+                let async = false;
 
-                    if(cmd==='PRINT'){ if(!peek() || peek()===':') body+="IO.print('');"; else { const p=[]; while(ctx.idx<tokens.length){ if(peek()===';'||peek()===','){next();continue;} if([':','THEN','ELSE'].includes(peek())) break; p.push(Compiler.genExpression(tokens,ctx)); if(peek()===';')next(); } body+=`IO.print(${p.length?p.join(' + "" + '):'""'});`; } body+=` if(SYS.break){SYS.running=false;return;}`; }
-                    else if(cmd==='GOTO'){ const l=Number(next()); body+=`if(SYS.labels[${l}]!==undefined){SYS.pc=SYS.labels[${l}]-1;return;}`; }
-                    else if(cmd==='IF'){ const cond=Compiler.genExpression(tokens,ctx); if(next()!=='THEN') throw "SYNTAX"; let tb; if(!isNaN(peek())) tb=`if(SYS.labels[${Number(next())}]!==undefined)SYS.pc=SYS.labels[${Number(next())}]-1;`; else { const sid="SUB_"+Math.random().toString(36).substr(2,9); SYS[sid]=Compiler.compile({line:lineObj.line,src:remain().join(" ")}); tb=`return SYS['${sid}'](SYS,IO,GRAPHICS,FS);`; } body+=`if(${cond}){${tb}}`; break; }
-                    else if(cmd==='FOR'){ const v=next(); next(); const s=Compiler.genExpression(tokens,ctx); next(); const e=Compiler.genExpression(tokens,ctx); let st="1"; if(peek()==='STEP'){next();st=Compiler.genExpression(tokens,ctx);} body+=`SYS.vars['${v}']=${s};SYS.forStack['${v}']={target:${e},step:${st},pc:SYS.pc};`; }
-                    else if(cmd==='NEXT'){ const v=next(); body+=`var l=SYS.forStack['${v}'];if(l){SYS.vars['${v}']+=l.step;if((l.step>=0&&SYS.vars['${v}']<=l.target)||(l.step<0&&SYS.vars['${v}']>=l.target)){SYS.pc=l.pc;return;}else delete SYS.forStack['${v}'];}`; }
-                    else if(cmd==='DIM'){ const v=next(); next(); const sz=Compiler.genExpression(tokens,ctx); next(); body+=`SYS.arrays['${v}']=new Array(${sz}+1).fill(0);`; }
-                    else if(cmd==='INPUT'){ async=true; let p="?"; if(peek().startsWith('"')){p=next().replace(/"/g,'');if(peek()===';')next();} const v=next(), str=v.endsWith('$'); body+=`IO.print("${p}",false);var val=await IO.input();SYS.vars['${v}']=${str?'val':'parseFloat(val)'};`; }
-                    else if(cmd==='LET'||(cmd&&peek()==='=')||(cmd&&peek()==='(')){ let v=cmd; if(cmd==='LET') v=next(); if(peek()==='('){next();const i=Compiler.genExpression(tokens,ctx);next();next();body+=`SYS.setArray('${v}',${i},${Compiler.genExpression(tokens,ctx)});`;} else {next();body+=`SYS.vars['${v}']=${Compiler.genExpression(tokens,ctx)};`;} }
-                    else if(cmd==='HTAB') body+=`IO.htab(${Compiler.genExpression(tokens,ctx)});`;
-                    else if(cmd==='VTAB') body+=`IO.vtab(${Compiler.genExpression(tokens,ctx)});`;
-                    else if(cmd==='SETPOS') { const x=Compiler.genExpression(tokens,ctx); next(); const y=Compiler.genExpression(tokens,ctx); body+=`IO.setPos(${x},${y});`; }
-                    else if(cmd==='HOME') body+="IO.home();";
-                    else if(cmd==='END') body+="SYS.running=false;return;";
-                    else if(cmd==='HGR'||cmd==='HGR2'||cmd==='TEXT') body+=`GRAPHICS.setMode(${cmd==='TEXT'?0:(cmd==='HGR'?1:2)});`;
-                    else if(cmd==='HCOLOR'){ next(); body+=`GRAPHICS.setColor(${Compiler.genExpression(tokens,ctx)});`; }
-                    else if(cmd==='HPLOT'){ let sc="", sl=false; if(peek()==='TO'){next();sl=true;} else {const x=Compiler.genExpression(tokens,ctx); if(peek()===',')next(); sc=`GRAPHICS.plot(${x},${Compiler.genExpression(tokens,ctx)});`;} let lc=""; while(peek()==='TO'){next();const x=Compiler.genExpression(tokens,ctx); if(peek()===',')next(); lc+=`GRAPHICS.lineTo(${x},${Compiler.genExpression(tokens,ctx)});`;} body+=(sl?"":sc)+lc; }
-                    else if(cmd==='SAVE') body+=`FS.save(${Compiler.genExpression(tokens,ctx)});`;
-                    else if(cmd==='LOAD') body+=`FS.load(${Compiler.genExpression(tokens,ctx)});`;
-                    else if(cmd==='DIR'||cmd==='CATALOG') body+=`FS.dir();`;
-                    else if(cmd==='DOWNLOAD') body+=`FS.download(${Compiler.genExpression(tokens,ctx)});`;
-                    else if(cmd==='HELP') body+=`IO.help();`;
-                    else if(cmd==='REM') break;
-                    else body+=`IO.print("?SYNTAX ERROR");break;`;
+                // FIX: Loop through tokens to handle multiple commands per line (separated by :)
+                while(ctx.idx < tokens.length) {
+                    const cmd = next();
+                    
+                    if (cmd === ':') continue; // Skip separator
+                    if (cmd === 'REM') break;  // Comment ignores rest of line
+
+                    let chunk = "";
+
+                    if(cmd==='PRINT'){ 
+                        if(!peek()) chunk="IO.print('');"; 
+                        else { 
+                            const p=[]; 
+                            while(ctx.idx<tokens.length){ 
+                                if(peek()===';'||peek()===','){next();continue;} 
+                                if([':','THEN','ELSE'].includes(peek())) break; 
+                                p.push(Compiler.genExpression(tokens,ctx)); 
+                                if(peek()===';')next(); 
+                            } 
+                            chunk=`IO.print(${p.length?p.join(' + "" + '):'""'});`; 
+                        } 
+                        chunk+=` if(SYS.break){SYS.running=false;return;}`; 
+                    }
+                    else if(cmd==='GOTO'){ const l=Number(next()); chunk=`if(SYS.labels[${l}]!==undefined)SYS.pc=SYS.labels[${l}]-1;`; }
+                    else if(cmd==='IF'){ 
+                        const cond=Compiler.genExpression(tokens,ctx); 
+                        if(next()!=='THEN') throw "SYNTAX"; 
+                        let tb; 
+                        // IF handles the rest of the line recursively, so we break the loop after processing IF
+                        if(!isNaN(peek())) tb=`if(SYS.labels[${Number(next())}]!==undefined)SYS.pc=SYS.labels[${Number(next())}]-1;`; 
+                        else { const sid="SUB_"+Math.random().toString(36).substr(2,9); SYS[sid]=Compiler.compile({line:lineObj.line,src:remain().join(" ")}); tb=`return SYS['${sid}'](SYS,IO,GRAPHICS,FS);`; } 
+                        chunk=`if(${cond}){${tb}}`; 
+                        // Force loop exit because IF consumes the rest of the line
+                        ctx.idx = tokens.length; 
+                    }
+                    else if(cmd==='FOR'){ const v=next(); next(); const s=Compiler.genExpression(tokens,ctx); next(); const e=Compiler.genExpression(tokens,ctx); let st="1"; if(peek()==='STEP'){next();st=Compiler.genExpression(tokens,ctx);} chunk=`SYS.vars['${v}']=${s};SYS.forStack['${v}']={target:${e},step:${st},pc:SYS.pc};`; }
+                    else if(cmd==='NEXT'){ const v=next(); chunk=`var l=SYS.forStack['${v}'];if(l){SYS.vars['${v}']+=l.step;if((l.step>=0&&SYS.vars['${v}']<=l.target)||(l.step<0&&SYS.vars['${v}']>=l.target))SYS.pc=l.pc;else delete SYS.forStack['${v}'];}`; }
+                    else if(cmd==='DIM'){ const v=next(); next(); const sz=Compiler.genExpression(tokens,ctx); next(); chunk=`SYS.arrays['${v}']=new Array(${sz}+1).fill(0);`; }
+                    else if(cmd==='INPUT'){ async=true; let p="?"; if(peek().startsWith('"')){p=next().replace(/"/g,'');if(peek()===';')next();} const v=next(), str=v.endsWith('$'); chunk=`IO.print("${p}",false);var val=await IO.input();SYS.vars['${v}']=${str?'val':'parseFloat(val)'};`; }
+                    else if(cmd==='LET'||(cmd&&peek()==='=')||(cmd&&peek()==='(')){ let v=cmd; if(cmd==='LET') v=next(); if(peek()==='('){next();const i=Compiler.genExpression(tokens,ctx);next();next();chunk=`SYS.setArray('${v}',${i},${Compiler.genExpression(tokens,ctx)});`;} else {next();chunk=`SYS.vars['${v}']=${Compiler.genExpression(tokens,ctx)};`;} }
+                    else if(cmd==='HTAB') chunk=`IO.htab(${Compiler.genExpression(tokens,ctx)});`;
+                    else if(cmd==='VTAB') chunk=`IO.vtab(${Compiler.genExpression(tokens,ctx)});`;
+                    else if(cmd==='SETPOS') { const x=Compiler.genExpression(tokens,ctx); next(); const y=Compiler.genExpression(tokens,ctx); chunk=`IO.setPos(${x},${y});`; }
+                    else if(cmd==='HOME') chunk="IO.home();";
+                    else if(cmd==='END') chunk="SYS.running=false;";
+                    else if(cmd==='HGR'||cmd==='HGR2'||cmd==='TEXT') chunk=`GRAPHICS.setMode(${cmd==='TEXT'?0:(cmd==='HGR'?1:2)});`;
+                    else if(cmd==='HCOLOR'){ next(); chunk=`GRAPHICS.setColor(${Compiler.genExpression(tokens,ctx)});`; }
+                    else if(cmd==='HPLOT'){ let sc="", sl=false; if(peek()==='TO'){next();sl=true;} else {const x=Compiler.genExpression(tokens,ctx); if(peek()===',')next(); sc=`GRAPHICS.plot(${x},${Compiler.genExpression(tokens,ctx)});`;} let lc=""; while(peek()==='TO'){next();const x=Compiler.genExpression(tokens,ctx); if(peek()===',')next(); lc+=`GRAPHICS.lineTo(${x},${Compiler.genExpression(tokens,ctx)});`;} chunk=(sl?"":sc)+lc; }
+                    else if(cmd==='DELAY') { async=true; chunk=`await new Promise(r=>setTimeout(r,${Compiler.genExpression(tokens,ctx)}));`; }
+                    else if(cmd==='SAVE') chunk=`FS.save(${Compiler.genExpression(tokens,ctx)});`;
+                    else if(cmd==='LOAD') chunk=`FS.load(${Compiler.genExpression(tokens,ctx)});`;
+                    else if(cmd==='DIR'||cmd==='CATALOG') chunk=`FS.dir();`;
+                    else if(cmd==='DOWNLOAD') chunk=`FS.download(${Compiler.genExpression(tokens,ctx)});`;
+                    else if(cmd==='HELP') chunk=`IO.help();`;
+                    else chunk=`IO.print("?SYNTAX ERROR");`;
+
+                    body += chunk + "\n";
                 }
+
                 try { return new (async?AsyncFunction:Function)("SYS","IO","GRAPHICS","FS",body); } catch(e){ return ()=>IO.print(`?COMPILE ERROR ${lineObj.line}`); }
             }
         };

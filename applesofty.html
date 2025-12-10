@@ -444,15 +444,38 @@
                 const parseExp=()=>{ let l=parseTerm(); while(ctx.idx<tokens.length&&(peek()==='+'||peek()==='-')) l=`(${l} ${next()} ${parseTerm()})`; if(ctx.idx<tokens.length&&['=','<','>','<=','>=','<>'].includes(peek())){let op=next(),jop=op==='='?'===':op==='<>'?'!==':op;l=`(${l} ${jop} ${parseExp()}?1:0)`;} return l; };
                 const parseTerm=()=>{ let l=parseFactor(); while(ctx.idx<tokens.length&&(peek()==='*'||peek()==='/')) l=`(${l} ${next()} ${parseFactor()})`; return l; };
                 const parseFactor=()=>{
-                    const t=next(); if(!t) return "0"; if(!isNaN(t)||t.startsWith('"')) return t; if(t==='('){const e=parseExp();next();return `(${e})`;}
-                    if(/^[A-Z]/.test(t)){ if(LIB[t]){next();const a=[];if(peek()!==')')do{a.push(parseExp());if(peek()===',')next();else break;}while(true);next();return `${LIB[t]}(${a.join(',')})`;} if(peek()==='('){next();const i=parseExp();next();return `SYS.getArray('${t}',${i})`;} return `(SYS.vars['${t}']!==undefined?SYS.vars['${t}']:0)`; } return "0";
+                    const t=next(); 
+                    if(!t) return "0"; 
+                    if(!isNaN(t)||t.startsWith('"')) return t; 
+                    if(t==='('){const e=parseExp();next();return `(${e})`;}
+                    
+                    if(/^[A-Z]/.test(t)){ 
+                        // --- NEW: Handle INKEY$ ---
+                        if(t === 'INKEY$') {
+                            ctx.setAsync(); // Force async mode for this line
+                            next(); // consume '('
+                            const mode = parseExp(); 
+                            next(); // consume ')'
+                            return `(await IO.inkey(${mode}))`;
+                        }
+                        // --------------------------
+
+                        if(LIB[t]){next();const a=[];if(peek()!==')')do{a.push(parseExp());if(peek()===',')next();else break;}while(true);next();return `${LIB[t]}(${a.join(',')})`;} 
+                        if(peek()==='('){next();const i=parseExp();next();return `SYS.getArray('${t}',${i})`;} 
+                        return `(SYS.vars['${t}']!==undefined?SYS.vars['${t}']:0)`; 
+                    } 
+                    return "0";
                 }; return parseExp();
             },
             compile: (lineObj) => {
                 const tokens=Tokenizer.tokenize(lineObj.src.toUpperCase()); 
-                const ctx={idx:0, jsLoops:[]};
+                // --- NEW: Add setAsync helper to context ---
+                let async = false;
+                const ctx={idx:0, jsLoops:[], setAsync: () => async = true};
+                // ------------------------------------------
+
                 const peek=()=>tokens[ctx.idx], next=()=>tokens[ctx.idx++], remain=()=>tokens.slice(ctx.idx);
-                let body = "", async = false;
+                let body = "";
 
                 while(ctx.idx < tokens.length) {
                     const cmd = next();
@@ -474,14 +497,13 @@
                         else { const sid="SUB_"+Math.random().toString(36).substr(2,9); SYS[sid]=Compiler.compile({line:lineObj.line,src:remain().join(" ")}); tb=`return SYS['${sid}'](SYS,IO,GRAPHICS,FS);`; } 
                         chunk=`if(${cond}){${tb}}`; ctx.idx = tokens.length; 
                     }
-                    // --- LOOP FIX: SINGLE LINE DETECTION ---
                     else if(cmd==='FOR'){ 
                         const v=next(); next(); 
                         const s=Compiler.genExpression(tokens,ctx); next(); 
                         const e=Compiler.genExpression(tokens,ctx); 
                         let st="1"; if(peek()==='STEP'){next();st=Compiler.genExpression(tokens,ctx);} 
                         
-                        let isSingle = false; // Lookahead for single line loops
+                        let isSingle = false;
                         for(let k=ctx.idx; k<tokens.length; k++){ if(tokens[k]==='NEXT' && tokens[k+1]===v) { isSingle=true; break; } }
 
                         if(isSingle) {
@@ -502,10 +524,9 @@
                     else if(cmd==='DIM'){ const v=next(); next(); const sz=Compiler.genExpression(tokens,ctx); next(); chunk=`SYS.arrays['${v}']=new Array(${sz}+1).fill(0);`; }
                     else if(cmd==='INPUT'){ async=true; let p="?"; if(peek().startsWith('"')){p=next().replace(/"/g,'');if(peek()===';')next();} const v=next(), str=v.endsWith('$'); chunk=`IO.print("${p}",false);var val=await IO.input();SYS.vars['${v}']=${str?'val':'parseFloat(val)'};`; }
 
-                    // --- GRAPHICS COMMANDS (Moved UP to prevent being caught by Assignment) ---
                     else if(cmd==='HGR'||cmd==='HGR2'||cmd==='TEXT') chunk=`GRAPHICS.setMode(1);`;
                     else if(cmd==='HCOLOR'){ 
-                        if(peek() === '=') next(); // Consume optional '='
+                        if(peek() === '=') next(); 
                         chunk=`GRAPHICS.setColor(${Compiler.genExpression(tokens,ctx)});`; 
                     }
                     else if(cmd==='HPLOT'){ 
@@ -525,7 +546,6 @@
                         chunk=(sl?"":sc)+lc; 
                     }
                     
-                    // --- ASSIGNMENT (Moved DOWN) ---
                     else if(cmd==='LET'||(cmd&&peek()==='=')||(cmd&&peek()==='(')){ 
                         let v=cmd; 
                         if(cmd==='LET') v=next(); 
@@ -533,12 +553,11 @@
                             next(); const i=Compiler.genExpression(tokens,ctx); next(); next();
                             chunk=`SYS.setArray('${v}',${i},${Compiler.genExpression(tokens,ctx)});`;
                         } else {
-                            next(); // Consume '='
+                            next(); 
                             chunk=`SYS.vars['${v}']=${Compiler.genExpression(tokens,ctx)};`;
                         } 
                     }
 
-                    // --- OTHER COMMANDS ---
                     else if(cmd==='HTAB') chunk=`IO.htab(${Compiler.genExpression(tokens,ctx)});`;
                     else if(cmd==='VTAB') chunk=`IO.vtab(${Compiler.genExpression(tokens,ctx)});`;
                     else if(cmd==='SETPOS') { const x=Compiler.genExpression(tokens,ctx); next(); const y=Compiler.genExpression(tokens,ctx); chunk=`IO.setPos(${x},${y});`; }
@@ -562,6 +581,34 @@
         // --- I/O & HELP ---
         const IO = {
             cursorVisible: true,
+            buffer: [], // Keyboard buffer
+            waiter: null, // Callback for blocking wait
+            
+            // --- NEW: Key buffering logic ---
+            bufferKey: (key) => {
+                // Map Enter to Carriage Return, ignore special keys like Shift/Ctrl
+                if(key.length === 1 || key === 'Enter') {
+                    const k = key === 'Enter' ? '\r' : key;
+                    if(IO.waiter) {
+                        // If waiting (INKEY$ 1), resolve immediately
+                        const w = IO.waiter; IO.waiter = null; w(k);
+                    } else {
+                        // Otherwise push to buffer (limit 16 chars)
+                        IO.buffer.push(k);
+                        if(IO.buffer.length > 16) IO.buffer.shift();
+                    }
+                }
+            },
+            inkey: async (mode) => {
+                // Mode 0: Non-blocking (poll)
+                if (Math.floor(mode) === 0) return IO.buffer.shift() || "";
+                
+                // Mode 1: Blocking (wait)
+                if (IO.buffer.length > 0) return IO.buffer.shift();
+                return new Promise(r => IO.waiter = r);
+            },
+            // --------------------------------
+
             help: () => {
                 const ov = document.getElementById('help-overlay'), ct = document.getElementById('help-content'), search = document.getElementById('help-search');
                 ov.style.display = 'flex'; search.focus();
@@ -638,32 +685,90 @@
         // --- EVENTS ---
         document.addEventListener('click', (e)=>{ if(e.target.id !== 'help-search') inputTrap.focus(); });
         breakBtn.onclick = (e) => { e.preventDefault(); if(SYS.running) SYS.break=true; inputTrap.focus(); };
-        window.onkeydown = (e) => { if(e.key==='Escape' && SYS.running) SYS.break=true; };
-        inputTrap.onkeydown = (e) => {
-            if(e.key==='Enter') { 
-                e.preventDefault(); const v=inputTrap.value; IO.print("", true); 
-                if(SYS.inputCallback){const c=SYS.inputCallback; SYS.inputCallback=null; c(v);} else IO.handleCommand(v); 
-                inputTrap.value=""; 
-            }
-            else if(e.key==='Backspace') { 
-                 if(inputTrap.value.length>0) { 
-                     SCREEN.removeCursor(); 
-                     if(SCREEN.cx>0) SCREEN.cx--; 
-                     ctx.fillStyle=CONFIG.bgColor; ctx.fillRect(SCREEN.cx*CONFIG.charW,SCREEN.cy*CONFIG.charH,CONFIG.charW,CONFIG.charH); 
-                     SCREEN.drawCursor(); 
-                 }
+        
+        // --- Global Key Listener ---
+        window.onkeydown = (e) => { 
+            // 1. Handle Break
+            if(e.key==='Escape' && SYS.running) { SYS.break=true; return; }
+
+            // 2. Feed INKEY$ Buffer
+            if(SYS.running) {
+                // Pass key to IO buffer
+                IO.bufferKey(e.key);
             }
         };
+
+        window.onkeydown = (e) => { 
+            // 1. Handle Break (ESC)
+            if(e.key === 'Escape' && SYS.running) { 
+                SYS.break = true; 
+                return; 
+            }
+
+            // 2. Handle Runtime Keys (INKEY$)
+            if(SYS.running) {
+                if (!SYS.inputCallback) {
+                    IO.bufferKey(e.key);
+                    e.preventDefault();
+                }
+            } 
+            // 3. NEW: Handle Command Submission (At Prompt)
+            else if (e.key === 'Enter') {
+                e.preventDefault();
+                const cmd = inputTrap.value; // Get command from hidden input
+                inputTrap.value = "";        // Clear input for next time
+                SCREEN.newline();            // Move cursor to next line
+                IO.handleCommand(cmd);       // Execute command
+            }
+        };
+
         inputTrap.oninput = (e) => { if(e.inputType==="insertText" && e.data) SCREEN.put(e.data); };
+
+        // --- Paste Support ---
+        inputTrap.addEventListener('paste', (e) => {
+            e.preventDefault();
+            // Get pasted data via clipboard API
+            const text = (e.clipboardData || window.clipboardData).getData('text');
+            
+            // Split into lines, filtering out empty ones
+            const lines = text.split(/\r?\n/).filter(line => line.trim() !== "");
+
+            // Process each line sequentially
+            const processLine = async (index) => {
+                if (index >= lines.length) return;
+                
+                const line = lines[index];
+                
+                // Echo the line to the screen
+                IO.print(line);
+                
+                // If it looks like a line number + code, handle it as a command
+                // If it is a direct command (RUN, LIST), handle it immediately
+                if (SYS.inputCallback) {
+                    // If we are stuck at an INPUT prompt, feed it the data
+                    const cb = SYS.inputCallback; 
+                    SYS.inputCallback = null; 
+                    cb(line);
+                } else {
+                    // Standard command processing
+                    IO.handleCommand(line);
+                }
+
+                // Small delay to prevent freezing UI on large pastes
+                setTimeout(() => processLine(index + 1), 10);
+            };
+
+            processLine(0);
+        });
+
 
         // Init
         document.fonts.load(CONFIG.font).then(() => {
             SCREEN.init();
-            IO.print("APPLESOFT JS BASIC (NATURAL FONT MODE) v18.3");
-            IO.print("COPYRIGHT 2023");
+            IO.print("APPLESOFTY JS BASIC TRANSPILER v18.4");
+            IO.print("(this work is licensed under CC BY 4.0)")
             IO.print("");
             IO.print("TYPE 'HELP' FOR MANUAL");
-            IO.print("TYPE 'DIR' FOR DEMOS");
             IO.prompt();
         });
 

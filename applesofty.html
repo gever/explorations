@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Applesoft BASIC JIT - 640x480 Scaled</title>
+    <title>Applesoft BASIC JIT - Natural Spacing</title>
     <style>
         @import url('https://fonts.googleapis.com/css2?family=VT323&display=swap');
 
@@ -13,16 +13,13 @@
             color: #33ff33;
             font-family: 'VT323', monospace;
             height: 100vh;
-            overflow: auto; /* Changed to auto to allow scrolling if screen is small */
+            overflow: auto;
             display: flex;
             justify-content: center;
             align-items: center;
         }
 
         #monitor {
-            /* Display Size: 640x480 * 2 = 1280x960. 
-               Add padding/border: 1280 + 40 = 1320 width.
-            */
             width: 1320px;
             height: 1000px;
             background-color: #000;
@@ -34,7 +31,6 @@
             display: flex;
             flex-direction: column;
             overflow: hidden;
-            /* Scale down slightly if viewport is too small, just for usability */
             max-width: 95vw;
             max-height: 95vh;
         }
@@ -53,7 +49,6 @@
         canvas {
             background-color: #000;
             image-rendering: pixelated; 
-            /* 2x Scaling: Logical 640 -> Visual 1280 */
             width: 100%;
             height: 100%;
             z-index: 1;
@@ -150,26 +145,22 @@
 
     <script>
         /**
-         * APPLESOFT BASIC INTERPRETER v18.1 (640x480 Scaled Update)
+         * APPLESOFT BASIC INTERPRETER v18.2 (Natural Rendering)
          */
 
         const CONFIG = {
-            cols: 40, rows: 24,
-            // LOGICAL RESOLUTION
+            // These will be calculated dynamically in SCREEN.init()
+            cols: 40, rows: 24, 
+            charW: 0, charH: 0, 
+
             width: 640, height: 480,
-            
-            // Grid Calculation: 
-            // Width: 640 / 40 cols = 16px per char
-            // Height: 480 / 24 rows = 20px per char
-            charW: 16, charH: 20,
-            
-            // Adjusted font to fit new 16x20 cell
-            font: '26px VT323', 
-            fontOffsetY: -3, fontOffsetX: 1, // Tweaked offsets for alignment
+            font: '26px VT323',
+            // Offsets removed for natural rendering
+            fontOffsetY: 0, fontOffsetX: 0,
             
             color: '#33ff33', bgColor: '#000000',
             
-            // Graphics Scaling: Maps 280x192 (Apple internal) to 640x480 (Screen)
+            // Graphics still map to 640x480
             scaleX: 640 / 280, 
             scaleY: 480 / 192
         };
@@ -180,7 +171,7 @@
         const breakBtn = document.getElementById('break-btn');
         const AsyncFunction = Object.getPrototypeOf(async function(){}).constructor;
 
-        // --- MODIFIED SCREEN MEMORY (SOLID XOR CURSOR) ---
+        // --- SCREEN MEMORY ---
         const SCREEN = {
             cx: 0, cy: 0,
             isCursorDrawn: false,
@@ -188,6 +179,16 @@
             init: () => {
                 ctx.font = CONFIG.font;
                 ctx.textBaseline = 'top';
+                
+                // --- CHANGED: Calculate Natural Font Metrics ---
+                const metrics = ctx.measureText("M"); // Measure standard char width
+                CONFIG.charW = Math.ceil(metrics.width);
+                CONFIG.charH = 26; // Match font size for natural line height
+                
+                // Recalculate Columns/Rows based on natural size
+                CONFIG.cols = Math.floor(CONFIG.width / CONFIG.charW);
+                CONFIG.rows = Math.floor(CONFIG.height / CONFIG.charH);
+
                 ctx.fillStyle = CONFIG.bgColor;
                 ctx.fillRect(0, 0, CONFIG.width, CONFIG.height);
                 SCREEN.drawCursor();
@@ -255,38 +256,27 @@
                 SCREEN.drawCursor();
             },
 
-            // --- CHANGED: XOR STYLE CURSOR LOGIC ---
             drawCursor: () => {
                 if (!IO.cursorVisible || SCREEN.isCursorDrawn) return;
-                
                 const x = SCREEN.cx * CONFIG.charW;
                 const y = SCREEN.cy * CONFIG.charH;
-
                 ctx.save();
-                // 'difference' subtracts the pixel values. 
-                // Green (underneath) - Green (cursor) = Black (Text becomes black)
-                // Black (underneath) - Green (cursor) = Green (Background becomes green)
                 ctx.globalCompositeOperation = 'difference';
                 ctx.fillStyle = CONFIG.color; 
                 ctx.fillRect(x, y, CONFIG.charW, CONFIG.charH);
                 ctx.restore();
-
                 SCREEN.isCursorDrawn = true;
             },
 
             removeCursor: () => {
                 if (!SCREEN.isCursorDrawn) return;
-                
                 const x = SCREEN.cx * CONFIG.charW;
                 const y = SCREEN.cy * CONFIG.charH;
-
                 ctx.save();
-                // Apply difference again to reverse the colors exactly
                 ctx.globalCompositeOperation = 'difference';
                 ctx.fillStyle = CONFIG.color;
                 ctx.fillRect(x, y, CONFIG.charW, CONFIG.charH);
                 ctx.restore();
-
                 SCREEN.isCursorDrawn = false;
             }
         };
@@ -610,7 +600,7 @@
         // Init
         document.fonts.load(CONFIG.font).then(() => {
             SCREEN.init();
-            IO.print("APPLESOFT JS BASIC (640X480 MODE) v18.1");
+            IO.print("APPLESOFT JS BASIC (NATURAL FONT MODE) v18.2");
             IO.print("COPYRIGHT 2023");
             IO.print("");
             IO.print("TYPE 'HELP' FOR MANUAL");

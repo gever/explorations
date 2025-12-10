@@ -289,9 +289,10 @@
             mapY: (y) => Math.floor(y * CONFIG.scaleY),
             setMode: (m) => { if(m>0) SCREEN.clear(); }, 
             clear: () => SCREEN.clear(),
-            setColor: (c) => GRAPHICS.colorIdx = Math.floor(c)%8,
+            setColor: (c) => { GRAPHICS.colorIdx = Math.floor(c)%8; console.log("colorIdx = ", GRAPHICS.colorIdx); },
             plot: (x,y) => {
                 SCREEN.removeCursor();
+                ctx.globalCompositeOperation = 'source-over'; // <--- ADD THIS
                 ctx.fillStyle=GRAPHICS.colors[GRAPHICS.colorIdx]; 
                 const cx = GRAPHICS.mapX(x), cy = GRAPHICS.mapY(y);
                 ctx.fillRect(cx, cy, Math.ceil(CONFIG.scaleX), Math.ceil(CONFIG.scaleY)); 
@@ -299,13 +300,14 @@
             },
             lineTo: (x,y) => {
                 SCREEN.removeCursor();
+                ctx.globalCompositeOperation = 'source-over'; // <--- ADD THIS
                 ctx.strokeStyle=GRAPHICS.colors[GRAPHICS.colorIdx]; ctx.lineWidth=2; ctx.beginPath();
                 const tx = GRAPHICS.mapX(x), ty = GRAPHICS.mapY(y);
                 ctx.moveTo(GRAPHICS.lastX+(CONFIG.scaleX/2), GRAPHICS.lastY+(CONFIG.scaleY/2));
                 ctx.lineTo(tx+(CONFIG.scaleX/2), ty+(CONFIG.scaleY/2)); 
                 ctx.stroke(); 
                 GRAPHICS.lastX=tx; GRAPHICS.lastY=ty;
-            }
+            },
         };
 
         // --- MEMORY & STATE ---
@@ -448,7 +450,7 @@
             },
             compile: (lineObj) => {
                 const tokens=Tokenizer.tokenize(lineObj.src.toUpperCase()); 
-                const ctx={idx:0};
+                const ctx={idx:0, jsLoops:[]};
                 const peek=()=>tokens[ctx.idx], next=()=>tokens[ctx.idx++], remain=()=>tokens.slice(ctx.idx);
                 let body = "", async = false;
 
@@ -472,19 +474,76 @@
                         else { const sid="SUB_"+Math.random().toString(36).substr(2,9); SYS[sid]=Compiler.compile({line:lineObj.line,src:remain().join(" ")}); tb=`return SYS['${sid}'](SYS,IO,GRAPHICS,FS);`; } 
                         chunk=`if(${cond}){${tb}}`; ctx.idx = tokens.length; 
                     }
-                    else if(cmd==='FOR'){ const v=next(); next(); const s=Compiler.genExpression(tokens,ctx); next(); const e=Compiler.genExpression(tokens,ctx); let st="1"; if(peek()==='STEP'){next();st=Compiler.genExpression(tokens,ctx);} chunk=`SYS.vars['${v}']=${s};SYS.forStack['${v}']={target:${e},step:${st},pc:SYS.pc};`; }
-                    else if(cmd==='NEXT'){ const v=next(); chunk=`var l=SYS.forStack['${v}'];if(l){SYS.vars['${v}']+=l.step;if((l.step>=0&&SYS.vars['${v}']<=l.target)||(l.step<0&&SYS.vars['${v}']>=l.target))SYS.pc=l.pc;else delete SYS.forStack['${v}'];}`; }
+                    // --- LOOP FIX: SINGLE LINE DETECTION ---
+                    else if(cmd==='FOR'){ 
+                        const v=next(); next(); 
+                        const s=Compiler.genExpression(tokens,ctx); next(); 
+                        const e=Compiler.genExpression(tokens,ctx); 
+                        let st="1"; if(peek()==='STEP'){next();st=Compiler.genExpression(tokens,ctx);} 
+                        
+                        let isSingle = false; // Lookahead for single line loops
+                        for(let k=ctx.idx; k<tokens.length; k++){ if(tokens[k]==='NEXT' && tokens[k+1]===v) { isSingle=true; break; } }
+
+                        if(isSingle) {
+                            chunk = `{ const _st=${st}; for(SYS.vars['${v}']=${s}; (_st>=0?SYS.vars['${v}']<=${e}:SYS.vars['${v}']>=${e}); SYS.vars['${v}']+=_st) {`;
+                            ctx.jsLoops.push(v);
+                        } else {
+                            chunk=`SYS.vars['${v}']=${s};SYS.forStack['${v}']={target:${e},step:${st},pc:SYS.pc};`; 
+                        }
+                    }
+                    else if(cmd==='NEXT'){ 
+                        const v=next(); 
+                        if(ctx.jsLoops.length > 0 && ctx.jsLoops[ctx.jsLoops.length-1] === v) {
+                            chunk = `}}`; ctx.jsLoops.pop();
+                        } else {
+                            chunk=`var l=SYS.forStack['${v}'];if(l){SYS.vars['${v}']+=l.step;if((l.step>=0&&SYS.vars['${v}']<=l.target)||(l.step<0&&SYS.vars['${v}']>=l.target))SYS.pc=l.pc;else delete SYS.forStack['${v}'];}`; 
+                        }
+                    }
                     else if(cmd==='DIM'){ const v=next(); next(); const sz=Compiler.genExpression(tokens,ctx); next(); chunk=`SYS.arrays['${v}']=new Array(${sz}+1).fill(0);`; }
                     else if(cmd==='INPUT'){ async=true; let p="?"; if(peek().startsWith('"')){p=next().replace(/"/g,'');if(peek()===';')next();} const v=next(), str=v.endsWith('$'); chunk=`IO.print("${p}",false);var val=await IO.input();SYS.vars['${v}']=${str?'val':'parseFloat(val)'};`; }
-                    else if(cmd==='LET'||(cmd&&peek()==='=')||(cmd&&peek()==='(')){ let v=cmd; if(cmd==='LET') v=next(); if(peek()==='('){next();const i=Compiler.genExpression(tokens,ctx);next();next();chunk=`SYS.setArray('${v}',${i},${Compiler.genExpression(tokens,ctx)});`;} else {next();chunk=`SYS.vars['${v}']=${Compiler.genExpression(tokens,ctx)};`;} }
+
+                    // --- GRAPHICS COMMANDS (Moved UP to prevent being caught by Assignment) ---
+                    else if(cmd==='HGR'||cmd==='HGR2'||cmd==='TEXT') chunk=`GRAPHICS.setMode(1);`;
+                    else if(cmd==='HCOLOR'){ 
+                        if(peek() === '=') next(); // Consume optional '='
+                        chunk=`GRAPHICS.setColor(${Compiler.genExpression(tokens,ctx)});`; 
+                    }
+                    else if(cmd==='HPLOT'){ 
+                        let sc="", sl=false; 
+                        if(peek()==='TO'){ next(); sl=true; } 
+                        else {
+                            const x=Compiler.genExpression(tokens,ctx); 
+                            if(peek()===',') next(); 
+                            sc=`GRAPHICS.plot(${x},${Compiler.genExpression(tokens,ctx)});`;
+                        } 
+                        let lc=""; 
+                        while(peek()==='TO'){
+                            next(); const x=Compiler.genExpression(tokens,ctx); 
+                            if(peek()===',') next(); 
+                            lc+=`GRAPHICS.lineTo(${x},${Compiler.genExpression(tokens,ctx)});`;
+                        } 
+                        chunk=(sl?"":sc)+lc; 
+                    }
+                    
+                    // --- ASSIGNMENT (Moved DOWN) ---
+                    else if(cmd==='LET'||(cmd&&peek()==='=')||(cmd&&peek()==='(')){ 
+                        let v=cmd; 
+                        if(cmd==='LET') v=next(); 
+                        if(peek()==='('){
+                            next(); const i=Compiler.genExpression(tokens,ctx); next(); next();
+                            chunk=`SYS.setArray('${v}',${i},${Compiler.genExpression(tokens,ctx)});`;
+                        } else {
+                            next(); // Consume '='
+                            chunk=`SYS.vars['${v}']=${Compiler.genExpression(tokens,ctx)};`;
+                        } 
+                    }
+
+                    // --- OTHER COMMANDS ---
                     else if(cmd==='HTAB') chunk=`IO.htab(${Compiler.genExpression(tokens,ctx)});`;
                     else if(cmd==='VTAB') chunk=`IO.vtab(${Compiler.genExpression(tokens,ctx)});`;
                     else if(cmd==='SETPOS') { const x=Compiler.genExpression(tokens,ctx); next(); const y=Compiler.genExpression(tokens,ctx); chunk=`IO.setPos(${x},${y});`; }
                     else if(cmd==='HOME') chunk="IO.home();";
                     else if(cmd==='END') chunk="SYS.running=false;";
-                    else if(cmd==='HGR'||cmd==='HGR2'||cmd==='TEXT') chunk=`GRAPHICS.setMode(1);`;
-                    else if(cmd==='HCOLOR'){ next(); chunk=`GRAPHICS.setColor(${Compiler.genExpression(tokens,ctx)});`; }
-                    else if(cmd==='HPLOT'){ let sc="", sl=false; if(peek()==='TO'){next();sl=true;} else {const x=Compiler.genExpression(tokens,ctx); if(peek()===',')next(); sc=`GRAPHICS.plot(${x},${Compiler.genExpression(tokens,ctx)});`;} let lc=""; while(peek()==='TO'){next();const x=Compiler.genExpression(tokens,ctx); if(peek()===',')next(); lc+=`GRAPHICS.lineTo(${x},${Compiler.genExpression(tokens,ctx)});`;} chunk=(sl?"":sc)+lc; }
                     else if(cmd==='DELAY') { async=true; chunk=`await new Promise(r=>setTimeout(r,${Compiler.genExpression(tokens,ctx)}));`; }
                     else if(cmd==='SAVE') chunk=`FS.save(${Compiler.genExpression(tokens,ctx)});`;
                     else if(cmd==='LOAD') chunk=`FS.load(${Compiler.genExpression(tokens,ctx)});`;
@@ -600,7 +659,7 @@
         // Init
         document.fonts.load(CONFIG.font).then(() => {
             SCREEN.init();
-            IO.print("APPLESOFT JS BASIC (NATURAL FONT MODE) v18.2");
+            IO.print("APPLESOFT JS BASIC (NATURAL FONT MODE) v18.3");
             IO.print("COPYRIGHT 2023");
             IO.print("");
             IO.print("TYPE 'HELP' FOR MANUAL");

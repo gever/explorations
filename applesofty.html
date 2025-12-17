@@ -172,6 +172,7 @@
         const AsyncFunction = Object.getPrototypeOf(async function(){}).constructor;
 
         // --- SCREEN MEMORY ---
+        // --- SCREEN MEMORY ---
         const SCREEN = {
             cx: 0, cy: 0,
             isCursorDrawn: false,
@@ -180,12 +181,10 @@
                 ctx.font = CONFIG.font;
                 ctx.textBaseline = 'top';
                 
-                // --- CHANGED: Calculate Natural Font Metrics ---
-                const metrics = ctx.measureText("M"); // Measure standard char width
+                const metrics = ctx.measureText("M");
                 CONFIG.charW = Math.ceil(metrics.width);
-                CONFIG.charH = 26; // Match font size for natural line height
+                CONFIG.charH = 26; 
                 
-                // Recalculate Columns/Rows based on natural size
                 CONFIG.cols = Math.floor(CONFIG.width / CONFIG.charW);
                 CONFIG.rows = Math.floor(CONFIG.height / CONFIG.charH);
 
@@ -220,19 +219,23 @@
                 else SCREEN.drawCursor();
             },
 
+            // New helper to move cursor physically without erasing/drawing
+            moveTo: (x, y) => {
+                SCREEN.removeCursor();
+                SCREEN.cx = x; SCREEN.cy = y;
+                // Handle wrapping if x is out of bounds (though usually handled by logic)
+                while(SCREEN.cx >= CONFIG.cols) { SCREEN.cx -= CONFIG.cols; SCREEN.cy++; }
+                if(SCREEN.cy >= CONFIG.rows) { SCREEN.cy = CONFIG.rows-1; SCREEN.scroll(); }
+                SCREEN.drawCursor();
+            },
+
             put: (str) => {
                 SCREEN.removeCursor();
                 ctx.font = CONFIG.font;
                 
                 for (let char of str) {
                     if (char === '\n') {
-                        SCREEN.cx = 0; SCREEN.cy++;
-                        if (SCREEN.cy >= CONFIG.rows) {
-                            SCREEN.cy = CONFIG.rows - 1;
-                            ctx.drawImage(canvas, 0, CONFIG.charH, CONFIG.width, CONFIG.height - CONFIG.charH, 0, 0, CONFIG.width, CONFIG.height - CONFIG.charH);
-                            ctx.fillStyle = CONFIG.bgColor;
-                            ctx.fillRect(0, CONFIG.height - CONFIG.charH, CONFIG.width, CONFIG.charH);
-                        }
+                        SCREEN.newline();
                     } else {
                         // Clear cell background
                         ctx.fillStyle = CONFIG.bgColor;
@@ -246,9 +249,7 @@
                             SCREEN.cx = 0; SCREEN.cy++;
                             if (SCREEN.cy >= CONFIG.rows) {
                                 SCREEN.cy = CONFIG.rows - 1;
-                                ctx.drawImage(canvas, 0, CONFIG.charH, CONFIG.width, CONFIG.height - CONFIG.charH, 0, 0, CONFIG.width, CONFIG.height - CONFIG.charH);
-                                ctx.fillStyle = CONFIG.bgColor;
-                                ctx.fillRect(0, CONFIG.height - CONFIG.charH, CONFIG.width, CONFIG.charH);
+                                SCREEN.scroll();
                             }
                         }
                     }
@@ -603,36 +604,35 @@
         };
 
         // --- I/O & HELP ---
+        // --- I/O & HELP ---
         const IO = {
             cursorVisible: true,
-            buffer: [], // Keyboard buffer
-            waiter: null, // Callback for blocking wait
+            buffer: [], // Key buffer for INKEY$
+            waiter: null, // Callback for blocking INKEY$
             
-            // --- NEW: Key buffering logic ---
+            // REPL Editing State
+            history: [],
+            historyIdx: -1,
+            lineBuffer: "",     // Current command string being typed
+            lineCursor: 0,      // Cursor position within lineBuffer
+            promptStartX: 0,    // Where the prompt ] started
+            promptStartY: 0,
+            
+            // --- Runtime Input Handling ---
             bufferKey: (key) => {
-                // Map Enter to Carriage Return, ignore special keys like Shift/Ctrl
                 if(key.length === 1 || key === 'Enter') {
                     const k = key === 'Enter' ? '\r' : key;
-                    if(IO.waiter) {
-                        // If waiting (INKEY$ 1), resolve immediately
-                        const w = IO.waiter; IO.waiter = null; w(k);
-                    } else {
-                        // Otherwise push to buffer (limit 16 chars)
-                        IO.buffer.push(k);
-                        if(IO.buffer.length > 16) IO.buffer.shift();
-                    }
+                    if(IO.waiter) { const w = IO.waiter; IO.waiter = null; w(k); }
+                    else { IO.buffer.push(k); if(IO.buffer.length > 16) IO.buffer.shift(); }
                 }
             },
             inkey: async (mode) => {
-                // Mode 0: Non-blocking (poll)
                 if (Math.floor(mode) === 0) return IO.buffer.shift() || "";
-                
-                // Mode 1: Blocking (wait)
                 if (IO.buffer.length > 0) return IO.buffer.shift();
                 return new Promise(r => IO.waiter = r);
             },
-            // --------------------------------
-
+            
+            // --- Helper Functions ---
             help: () => {
                 const ov = document.getElementById('help-overlay'), ct = document.getElementById('help-content'), search = document.getElementById('help-search');
                 ov.style.display = 'flex'; search.focus();
@@ -655,56 +655,90 @@
                 };
                 render(); search.onkeyup = (e) => render(e.target.value);
             },
+
             print: (txt, newline=true) => { SCREEN.put(txt.toString()); if(newline) SCREEN.newline(); },
+            
             input: () => { 
                 IO.cursorVisible = true; SCREEN.drawCursor(); 
                 return new Promise(r => { SYS.inputCallback = r; inputTrap.value=""; inputTrap.focus(); }); 
             },
+            
             home: () => SCREEN.clear(),
             htab: (x) => { SCREEN.removeCursor(); SCREEN.cx = Math.max(0, Math.min(CONFIG.cols-1, x-1)); SCREEN.drawCursor(); },
             vtab: (y) => { SCREEN.removeCursor(); SCREEN.cy = Math.max(0, Math.min(CONFIG.rows-1, y-1)); SCREEN.drawCursor(); },
             setPos: (x, y) => { SCREEN.removeCursor(); SCREEN.cx = Math.max(0, Math.min(CONFIG.cols-1, x-1)); SCREEN.cy = Math.max(0, Math.min(CONFIG.rows-1, y-1)); SCREEN.drawCursor(); },
+            
+            // --- Command Execution ---
             handleCommand: (raw) => {
-                const cRaw = raw.trim();           // Keep original case
-                const c = cRaw.toUpperCase();      // For checking LIST, RUN, etc.
+                const cRaw = raw.trim();           
+                const c = cRaw.toUpperCase();      
                 
+                if(cRaw) {
+                    // Save to history (avoid duplicates at end)
+                    if(IO.history[IO.history.length-1] !== cRaw) IO.history.push(cRaw);
+                    IO.historyIdx = IO.history.length;
+                }
+
                 if(!c) return IO.prompt();
 
-                // Check for Line Number (Program Entry)
-                // Use cRaw here to preserve the casing of the code being entered
                 const m = cRaw.match(/^(\d+)\s*(.*)/);
-                
                 if(m) {
                     const l = parseInt(m[1]);
                     SYS.program = SYS.program.filter(x=>x.line!==l);
-                    // m[2] contains the source code with original case
                     if(m[2]) SYS.program.push({line:l, src:m[2]});
                     IO.prompt();
                 } else {
-                    // Immediate Mode Commands
                     if(c==='LIST') { 
                         SYS.program.sort((a,b)=>a.line-b.line); 
                         SYS.program.forEach(l=>IO.print(`${l.line} ${l.src}`)); 
                         IO.prompt(); 
                     }
                     else if(c==='RUN') ENGINE.run();
-                    else if(c==='NEW') { 
-                        SYS.program=[]; SYS.vars={}; SCREEN.clear(); IO.prompt(); 
-                    }
+                    else if(c==='NEW') { SYS.program=[]; SYS.vars={}; SCREEN.clear(); IO.prompt(); }
                     else {
-                        // Direct Execution (Immediate Mode)
-                        // Pass cRaw so commands like PRINT "Hello" preserve case
-                        try { 
-                            Compiler.compile({line:0, src:cRaw})(SYS,IO,GRAPHICS,FS)?.then?(()=>IO.prompt()):IO.prompt(); 
-                        }
-                        catch(e){ 
-                            IO.print("?SYNTAX ERROR"); 
-                            IO.prompt(); 
-                        }
+                        try { Compiler.compile({line:0, src:cRaw})(SYS,IO,GRAPHICS,FS)?.then?(()=>IO.prompt()):IO.prompt(); }
+                        catch(e){ IO.print("?SYNTAX ERROR"); IO.prompt(); }
                     }
                 }
             },
-            prompt: () => { IO.cursorVisible=true; IO.print("]", false); }
+
+            // --- REPL Input Management ---
+            prompt: () => { 
+                IO.cursorVisible=true; 
+                IO.print("]", false); 
+                // Save where the input area starts
+                IO.promptStartX = SCREEN.cx;
+                IO.promptStartY = SCREEN.cy;
+                IO.lineBuffer = "";
+                IO.lineCursor = 0;
+                IO.historyIdx = IO.history.length;
+                SCREEN.drawCursor();
+            },
+
+            refreshLine: () => {
+                // 1. Move cursor back to start of prompt
+                SCREEN.removeCursor();
+                SCREEN.cx = IO.promptStartX;
+                SCREEN.cy = IO.promptStartY;
+                
+                // 2. Draw the text buffer
+                SCREEN.put(IO.lineBuffer);
+                
+                // 3. Clear any leftover characters from previous longer lines
+                const currentEnd = SCREEN.cx + (SCREEN.cy * CONFIG.cols);
+                SCREEN.put("   "); // Erase a few chars ahead just in case
+                
+                // 4. Calculate visual cursor position based on logic cursor
+                // Total cells from (0,0) to prompt start
+                const startCells = (IO.promptStartY * CONFIG.cols) + IO.promptStartX;
+                // Target cells from (0,0)
+                const targetCells = startCells + IO.lineCursor;
+                
+                const targetY = Math.floor(targetCells / CONFIG.cols);
+                const targetX = targetCells % CONFIG.cols;
+                
+                SCREEN.moveTo(targetX, targetY);
+            }
         };
 
         // --- ENGINE ---
@@ -728,21 +762,29 @@
         };
 
         // --- EVENTS ---
+        // --- Global Key Listener ---
         document.addEventListener('click', (e)=>{ if(e.target.id !== 'help-search') inputTrap.focus(); });
         breakBtn.onclick = (e) => { e.preventDefault(); if(SYS.running) SYS.break=true; inputTrap.focus(); };
         
+        // --- Paste Support ---
+        inputTrap.addEventListener('paste', (e) => {
+            e.preventDefault();
+            const text = (e.clipboardData || window.clipboardData).getData('text');
+            const lines = text.split(/\r?\n/).filter(line => line.trim() !== "");
+            const processLine = async (index) => {
+                if (index >= lines.length) return;
+                IO.print(lines[index]);
+                if (SYS.inputCallback) {
+                    const cb = SYS.inputCallback; SYS.inputCallback = null; cb(lines[index]);
+                } else {
+                    IO.handleCommand(lines[index]);
+                }
+                setTimeout(() => processLine(index + 1), 10);
+            };
+            processLine(0);
+        });
+        
         // --- Global Key Listener ---
-        window.onkeydown = (e) => { 
-            // 1. Handle Break
-            if(e.key==='Escape' && SYS.running) { SYS.break=true; return; }
-
-            // 2. Feed INKEY$ Buffer
-            if(SYS.running) {
-                // Pass key to IO buffer
-                IO.bufferKey(e.key);
-            }
-        };
-
         window.onkeydown = (e) => { 
             // 1. Handle Break (ESC)
             if(e.key === 'Escape' && SYS.running) { 
@@ -750,24 +792,84 @@
                 return; 
             }
 
-            // 2. Handle Runtime Keys (INKEY$)
+            // 2. Handle Runtime Keys (INKEY$ or INPUT)
             if(SYS.running) {
+                // If waiting for INPUT command, let hidden input handle it (simple mode)
+                // If just running loop, handle INKEY$
                 if (!SYS.inputCallback) {
                     IO.bufferKey(e.key);
-                    e.preventDefault();
+                    if(e.key === 'Backspace') e.preventDefault(); // Prevent browser back nav
                 }
+                return;
             } 
-            // 3. NEW: Handle Command Submission (At Prompt)
-            else if (e.key === 'Enter') {
-                e.preventDefault();
-                const cmd = inputTrap.value; // Get command from hidden input
-                inputTrap.value = "";        // Clear input for next time
-                SCREEN.newline();            // Move cursor to next line
-                IO.handleCommand(cmd);       // Execute command
+
+            // 3. Handle Prompt Editing (When NOT running)
+            // Use e.key to manage buffer manually
+            
+            if (e.ctrlKey || e.metaKey) return; // Allow Copy/Paste shortcuts
+
+            e.preventDefault(); // Stop hidden input from doubling chars
+
+            if (e.key === 'Enter') {
+                SCREEN.newline();
+                IO.handleCommand(IO.lineBuffer);
+            }
+            else if (e.key === 'Backspace') {
+                if (IO.lineCursor > 0) {
+                    IO.lineBuffer = IO.lineBuffer.slice(0, IO.lineCursor - 1) + IO.lineBuffer.slice(IO.lineCursor);
+                    IO.lineCursor--;
+                    IO.refreshLine();
+                }
+            }
+            else if (e.key === 'Delete') {
+                if (IO.lineCursor < IO.lineBuffer.length) {
+                    IO.lineBuffer = IO.lineBuffer.slice(0, IO.lineCursor) + IO.lineBuffer.slice(IO.lineCursor + 1);
+                    IO.refreshLine();
+                }
+            }
+            else if (e.key === 'ArrowLeft') {
+                if (IO.lineCursor > 0) {
+                    IO.lineCursor--;
+                    IO.refreshLine();
+                }
+            }
+            else if (e.key === 'ArrowRight') {
+                if (IO.lineCursor < IO.lineBuffer.length) {
+                    IO.lineCursor++;
+                    IO.refreshLine();
+                }
+            }
+            else if (e.key === 'ArrowUp') {
+                if (IO.history.length > 0 && IO.historyIdx > 0) {
+                    IO.historyIdx--;
+                    IO.lineBuffer = IO.history[IO.historyIdx];
+                    IO.lineCursor = IO.lineBuffer.length;
+                    IO.refreshLine();
+                }
+            }
+            else if (e.key === 'ArrowDown') {
+                if (IO.historyIdx < IO.history.length - 1) {
+                    IO.historyIdx++;
+                    IO.lineBuffer = IO.history[IO.historyIdx];
+                    IO.lineCursor = IO.lineBuffer.length;
+                    IO.refreshLine();
+                } else {
+                    // Clear line if going past history
+                    IO.historyIdx = IO.history.length;
+                    IO.lineBuffer = "";
+                    IO.lineCursor = 0;
+                    IO.refreshLine();
+                }
+            }
+            else if (e.key.length === 1) {
+                // Printable characters
+                IO.lineBuffer = IO.lineBuffer.slice(0, IO.lineCursor) + e.key + IO.lineBuffer.slice(IO.lineCursor);
+                IO.lineCursor++;
+                IO.refreshLine();
             }
         };
 
-        inputTrap.oninput = (e) => { if(e.inputType==="insertText" && e.data) SCREEN.put(e.data); };
+        inputTrap.oninput = null;
 
         // --- Paste Support ---
         inputTrap.addEventListener('paste', (e) => {

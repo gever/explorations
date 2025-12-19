@@ -751,6 +751,29 @@
                         IO.prompt(); 
                     }
                     else if(c==='RUN') ENGINE.run();
+                    else if (c.startsWith('EDIT')) {
+                        const mEdit = c.match(/^EDIT\s+(\d+)/);
+                        if (mEdit) {
+                            const ln = parseInt(mEdit[1]);
+                            const found = SYS.program.find(l => l.line === ln);
+                            if (found) {
+                                IO.prompt(); // Draw the prompt ']'
+                                
+                                // Pre-fill buffer with the line number and source
+                                IO.lineBuffer = `${found.line} ${found.src}`;
+                                IO.lineCursor = IO.lineBuffer.length;
+                                
+                                // Draw the text
+                                IO.refreshLine();
+                                return; // Return early so we don't draw a blank prompt
+                            } else {
+                                IO.print("?UNDEFINED LINE ERROR");
+                            }
+                        } else {
+                            IO.print("?SYNTAX ERROR");
+                        }
+                        IO.prompt();
+                    }
                     else if(c==='NEW') { SYS.program=[]; SYS.vars={}; SCREEN.clear(); IO.prompt(); }
                     else if(c==='JSPEEK') { 
                         ENGINE.generateOnly(); 
@@ -1001,7 +1024,7 @@
         // Init
         document.fonts.load(CONFIG.font).then(() => {
             SCREEN.init();
-            IO.print("APPLESOFTY BASIC TRANSPILER v18.6");
+            IO.print("APPLESOFTY BASIC TRANSPILER v18.7");
             IO.print("(this work is licensed under CC BY 4.0)")
             IO.print("");
             IO.print("TYPE 'HELP' FOR MANUAL");

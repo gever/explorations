@@ -539,8 +539,16 @@
                     if(cmd==='PRINT'){ 
                         if(!peek()) chunk="IO.print('');"; 
                         else { 
-                            // Check keywords case-insensitively
-                            const p=[]; while(ctx.idx<tokens.length){ if(peek()===';'||peek()===','){next();continue;} if([':','THEN','ELSE'].includes(peekUpper())) break; p.push(Compiler.genExpression(tokens,ctx)); if(peek()===';')next(); } 
+                            const p=[]; 
+                            while(ctx.idx<tokens.length){ 
+                                if(peek()===';'||peek()===','){next();continue;} 
+                                if([':','THEN','ELSE'].includes(peekUpper())) break; 
+                                
+                                // NEW: Wrap the generated expression in IO.format()
+                                p.push(`IO.format(${Compiler.genExpression(tokens,ctx)})`); 
+                                
+                                if(peek()===';')next(); 
+                            } 
                             chunk=`IO.print(${p.length?p.join(' + "" + '):'""'});`; 
                         } 
                         chunk+=` if(SYS.break){SYS.running=false;return;}`; 
@@ -673,6 +681,14 @@
                 return new Promise(r => IO.waiter = r);
             },
             
+            format: (val) => {
+                  if (typeof val === 'number') {
+                      // Round to 3 decimals, strip trailing zeros
+                      return parseFloat(val.toFixed(3));
+                  }
+                  return val;
+            },
+
             // --- Helper Functions ---
             help: () => {
                 const ov = document.getElementById('help-overlay'), ct = document.getElementById('help-content'), search = document.getElementById('help-search');

@@ -382,8 +382,9 @@
         // --- HELP DATA ---
         const HELP_DATA = {
             "SYSTEM & FILES": [
-                { c: "RUN", d: "Executes the program currently in memory. Clears variables.", e: "RUN" },
+                { c: "RUN", d: "Executes the program currently in memory. Clears variables. &lt;ESC&gt; to halt execution.", e: "RUN" },
                 { c: "LIST", d: "Displays the source code of the current program.", e: "LIST" },
+                { c: "EDIT", d: "Edit an existing line.", e: "EDIT 50" },
                 { c: "NEW", d: "Clears the current program from memory and resets variables.", e: "NEW" },
                 { c: "SAVE", d: "Saves current program to browser local storage.", e: "SAVE \"MYGAME\"" },
                 { c: "LOAD", d: "Loads a program from local storage or demo library.", e: "LOAD \"DEMO/GRAPHICS.BAS\"" },
@@ -906,14 +907,46 @@
 
             // 2. Handle Runtime Keys (INKEY$ or INPUT)
             if(SYS.running) {
-                // If waiting for INPUT command, let hidden input handle it (simple mode)
-                // If just running loop, handle INKEY$
+                // CASE A: Program is running normally or waiting for INKEY$
                 if (!SYS.inputCallback) {
                     IO.bufferKey(e.key);
-                    if(e.key === 'Backspace') e.preventDefault(); // Prevent browser back nav
+                    if(e.key === 'Backspace') e.preventDefault(); 
+                } 
+                // CASE B: Program is waiting for INPUT command
+                else {
+                    e.preventDefault(); // Take control of the input
+
+                    if (e.key === 'Enter') {
+                        SCREEN.newline();
+                        const val = inputTrap.value; // Grab the accumulated text
+                        const cb = SYS.inputCallback;
+                        SYS.inputCallback = null;
+                        cb(val); // Send text back to the interpreter
+                    }
+                    else if (e.key === 'Backspace') {
+                        if (inputTrap.value.length > 0) {
+                            // Remove last char from buffer
+                            inputTrap.value = inputTrap.value.slice(0, -1);
+                            
+                            // Visual Backspace: Move cursor back and clear cell
+                            SCREEN.removeCursor();
+                            if (SCREEN.cx > 0) SCREEN.cx--; 
+                            else if (SCREEN.cy > 0) { SCREEN.cy--; SCREEN.cx = CONFIG.cols - 1; }
+                            
+                            // Erase the character visually
+                            ctx.fillStyle = CONFIG.bgColor;
+                            ctx.fillRect(SCREEN.cx * CONFIG.charW, SCREEN.cy * CONFIG.charH, CONFIG.charW, CONFIG.charH);
+                            SCREEN.drawCursor();
+                        }
+                    }
+                    else if (e.key.length === 1) {
+                         // Add to buffer and screen
+                         inputTrap.value += e.key;
+                         SCREEN.put(e.key);
+                    }
                 }
                 return;
-            } 
+            }
 
             // 3. Handle Prompt Editing (When NOT running)
             // Use e.key to manage buffer manually
@@ -975,7 +1008,13 @@
             }
             else if (e.key.length === 1) {
                 // Printable characters
-                IO.lineBuffer = IO.lineBuffer.slice(0, IO.lineCursor) + e.key + IO.lineBuffer.slice(IO.lineCursor);
+                const textBefore = IO.lineBuffer.slice(0, IO.lineCursor);
+                // Count quotes before cursor to see if we are inside a string
+                const quoteCount = (textBefore.match(/"/g) || []).length;
+                // If even quotes, we are outside a string -> Force Uppercase
+                const char = (quoteCount % 2 === 0) ? e.key.toUpperCase() : e.key;
+
+                IO.lineBuffer = textBefore + char + IO.lineBuffer.slice(IO.lineCursor);
                 IO.lineCursor++;
                 IO.refreshLine();
             }

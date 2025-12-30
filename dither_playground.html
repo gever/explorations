@@ -26,6 +26,7 @@
             display: flex;
             gap: 15px;
             align-items: center;
+            flex-wrap: wrap;
         }
 
         select {
@@ -39,7 +40,7 @@
             border: 3px dashed #ccc;
             border-radius: 10px;
             width: 80%;
-            min-width: 300px;
+            max-width: 1000px; /* Limit display width */
             min-height: 200px;
             display: flex;
             justify-content: center;
@@ -47,7 +48,7 @@
             background-color: white;
             transition: all 0.3s ease;
             position: relative;
-            overflow: hidden;
+            padding: 10px;
         }
 
         #drop-zone.dragover {
@@ -64,9 +65,14 @@
         }
 
         canvas {
-            max-width: 100%;
+            /* This ensures the image fits the container visually */
+            width: 100%;
             height: auto;
             display: block;
+            
+            /* CRITICAL: This makes the pixels look blocky/sharp when scaled up */
+            image-rendering: pixelated; 
+            image-rendering: -moz-crisp-edges;
         }
 
         .hidden { display: none !important; }
@@ -84,7 +90,7 @@
             <option value="atkinson">Atkinson</option>
             <option value="none">None (Grayscale)</option>
         </select>
-        <span>(Drag & Drop an image below)</span>
+        <span>(Long axis fixed to 640px)</span>
     </div>
 
     <div id="drop-zone">
@@ -101,10 +107,10 @@
 
         // Store original image data to re-process without reloading
         let originalImage = null;
+        const TARGET_LONG_AXIS = 640;
 
         // --- Event Listeners ---
 
-        // Drag and Drop
         dropZone.addEventListener('dragover', (e) => {
             e.preventDefault();
             dropZone.classList.add('dragover');
@@ -126,28 +132,46 @@
             }
         });
 
-        // Dropdown change
         select.addEventListener('change', () => {
             if (originalImage) {
                 processImage();
             }
         });
 
-        // --- Image Loading ---
+        // --- Image Loading & Resampling ---
 
         function loadImage(src) {
             const img = new Image();
             img.onload = () => {
-                // Resize canvas to match image
-                canvas.width = img.width;
-                canvas.height = img.height;
+                // Calculate new dimensions respecting aspect ratio
+                let w = img.width;
+                let h = img.height;
+                let scale = 1;
+
+                if (w > h) {
+                    if (w > TARGET_LONG_AXIS) {
+                        scale = TARGET_LONG_AXIS / w;
+                        w = TARGET_LONG_AXIS;
+                        h = Math.floor(img.height * scale);
+                    }
+                } else {
+                    if (h > TARGET_LONG_AXIS) {
+                        scale = TARGET_LONG_AXIS / h;
+                        h = TARGET_LONG_AXIS;
+                        w = Math.floor(img.width * scale);
+                    }
+                }
+
+                // Set internal canvas resolution to the small size (640px max)
+                canvas.width = w;
+                canvas.height = h;
                 
-                // Draw image and save original data
-                ctx.drawImage(img, 0, 0);
-                promptText.classList.add('hidden'); // Hide "Drop here" text
+                // Draw image downscaled
+                ctx.drawImage(img, 0, 0, w, h);
+                promptText.classList.add('hidden');
                 
-                // Keep a copy of the raw pixel data for repeated processing
-                originalImage = ctx.getImageData(0, 0, canvas.width, canvas.height);
+                // Store the downsampled data as our "original"
+                originalImage = ctx.getImageData(0, 0, w, h);
                 
                 processImage();
             };
@@ -159,10 +183,8 @@
         function processImage() {
             if (!originalImage) return;
 
-            // 1. Get a fresh copy of the data
             const width = originalImage.width;
             const height = originalImage.height;
-            // Create a structured copy of the data we can manipulate
             const outputData = new ImageData(
                 new Uint8ClampedArray(originalImage.data),
                 width,
@@ -172,13 +194,11 @@
             const data = outputData.data;
             const algo = select.value;
 
-            // 2. Convert to Grayscale first
-            // We iterate 4 bytes at a time (R, G, B, A)
+            // Convert to Grayscale
             for (let i = 0; i < data.length; i += 4) {
                 const r = data[i];
                 const g = data[i + 1];
                 const b = data[i + 2];
-                // Luminance formula
                 const gray = 0.299 * r + 0.587 * g + 0.114 * b;
                 data[i] = data[i + 1] = data[i + 2] = gray;
             }
@@ -188,25 +208,19 @@
                 return;
             }
 
-            // 3. Apply Error Diffusion
-            // Helper to get index of pixel (x, y)
             const getIndex = (x, y) => (y * width + x) * 4;
 
             for (let y = 0; y < height; y++) {
                 for (let x = 0; x < width; x++) {
                     const idx = getIndex(x, y);
-                    const oldPixel = data[idx]; // Already grayscale, so R=G=B
+                    const oldPixel = data[idx];
                     
-                    // Quantize: Black (0) or White (255)
                     const newPixel = oldPixel < 128 ? 0 : 255;
                     
-                    // Set current pixel
                     data[idx] = data[idx+1] = data[idx+2] = newPixel;
 
-                    // Calculate Error
                     const error = oldPixel - newPixel;
 
-                    // Distribute Error based on Matrix
                     if (algo === 'floyd') {
                         distributeError(data, x, y, width, height, error, [
                             { x: 1,  y: 0, w: 7/16 },
@@ -235,18 +249,14 @@
             ctx.putImageData(outputData, 0, 0);
         }
 
-        // Helper to add error to a neighbor pixel
         function distributeError(data, currentX, currentY, w, h, error, distribution) {
             for (let d of distribution) {
                 const nx = currentX + d.x;
                 const ny = currentY + d.y;
 
-                // Check bounds
                 if (nx >= 0 && nx < w && ny >= 0 && ny < h) {
                     const nIdx = (ny * w + nx) * 4;
                     const val = data[nIdx] + (error * d.w);
-                    // We don't clamp here immediately because errors can accumulate
-                    // but Uint8ClampedArray handles clamping automatically upon assignment.
                     data[nIdx] = data[nIdx+1] = data[nIdx+2] = val;
                 }
             }

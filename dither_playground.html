@@ -1,0 +1,256 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dithering Matrix Playground</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            background-color: #f0f2f5;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 20px;
+            color: #333;
+        }
+
+        h1 { margin-bottom: 10px; }
+
+        .controls {
+            margin-bottom: 20px;
+            background: white;
+            padding: 15px;
+            border-radius: 8px;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+            display: flex;
+            gap: 15px;
+            align-items: center;
+        }
+
+        select {
+            padding: 8px;
+            font-size: 16px;
+            border-radius: 4px;
+            border: 1px solid #ccc;
+        }
+
+        #drop-zone {
+            border: 3px dashed #ccc;
+            border-radius: 10px;
+            width: 80%;
+            min-width: 300px;
+            min-height: 200px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            background-color: white;
+            transition: all 0.3s ease;
+            position: relative;
+            overflow: hidden;
+        }
+
+        #drop-zone.dragover {
+            border-color: #007bff;
+            background-color: #e7f1ff;
+        }
+
+        #drop-zone p {
+            pointer-events: none;
+            color: #888;
+            font-size: 1.2rem;
+            position: absolute;
+            z-index: 10;
+        }
+
+        canvas {
+            max-width: 100%;
+            height: auto;
+            display: block;
+        }
+
+        .hidden { display: none !important; }
+    </style>
+</head>
+<body>
+
+    <h1>Image Dithering App</h1>
+
+    <div class="controls">
+        <label for="matrix-select"><strong>Algorithm:</strong></label>
+        <select id="matrix-select">
+            <option value="floyd">Floyd-Steinberg</option>
+            <option value="jarvis">Jarvis-Judice-Ninke</option>
+            <option value="atkinson">Atkinson</option>
+            <option value="none">None (Grayscale)</option>
+        </select>
+        <span>(Drag & Drop an image below)</span>
+    </div>
+
+    <div id="drop-zone">
+        <p>Drop image here</p>
+        <canvas id="canvas"></canvas>
+    </div>
+
+    <script>
+        const dropZone = document.getElementById('drop-zone');
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d', { willReadFrequently: true });
+        const select = document.getElementById('matrix-select');
+        const promptText = dropZone.querySelector('p');
+
+        // Store original image data to re-process without reloading
+        let originalImage = null;
+
+        // --- Event Listeners ---
+
+        // Drag and Drop
+        dropZone.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            dropZone.classList.add('dragover');
+        });
+
+        dropZone.addEventListener('dragleave', () => {
+            dropZone.classList.remove('dragover');
+        });
+
+        dropZone.addEventListener('drop', (e) => {
+            e.preventDefault();
+            dropZone.classList.remove('dragover');
+            
+            const file = e.dataTransfer.files[0];
+            if (file && file.type.startsWith('image/')) {
+                const reader = new FileReader();
+                reader.onload = (event) => loadImage(event.target.result);
+                reader.readAsDataURL(file);
+            }
+        });
+
+        // Dropdown change
+        select.addEventListener('change', () => {
+            if (originalImage) {
+                processImage();
+            }
+        });
+
+        // --- Image Loading ---
+
+        function loadImage(src) {
+            const img = new Image();
+            img.onload = () => {
+                // Resize canvas to match image
+                canvas.width = img.width;
+                canvas.height = img.height;
+                
+                // Draw image and save original data
+                ctx.drawImage(img, 0, 0);
+                promptText.classList.add('hidden'); // Hide "Drop here" text
+                
+                // Keep a copy of the raw pixel data for repeated processing
+                originalImage = ctx.getImageData(0, 0, canvas.width, canvas.height);
+                
+                processImage();
+            };
+            img.src = src;
+        }
+
+        // --- Dithering Logic ---
+
+        function processImage() {
+            if (!originalImage) return;
+
+            // 1. Get a fresh copy of the data
+            const width = originalImage.width;
+            const height = originalImage.height;
+            // Create a structured copy of the data we can manipulate
+            const outputData = new ImageData(
+                new Uint8ClampedArray(originalImage.data),
+                width,
+                height
+            );
+            
+            const data = outputData.data;
+            const algo = select.value;
+
+            // 2. Convert to Grayscale first
+            // We iterate 4 bytes at a time (R, G, B, A)
+            for (let i = 0; i < data.length; i += 4) {
+                const r = data[i];
+                const g = data[i + 1];
+                const b = data[i + 2];
+                // Luminance formula
+                const gray = 0.299 * r + 0.587 * g + 0.114 * b;
+                data[i] = data[i + 1] = data[i + 2] = gray;
+            }
+
+            if (algo === 'none') {
+                ctx.putImageData(outputData, 0, 0);
+                return;
+            }
+
+            // 3. Apply Error Diffusion
+            // Helper to get index of pixel (x, y)
+            const getIndex = (x, y) => (y * width + x) * 4;
+
+            for (let y = 0; y < height; y++) {
+                for (let x = 0; x < width; x++) {
+                    const idx = getIndex(x, y);
+                    const oldPixel = data[idx]; // Already grayscale, so R=G=B
+                    
+                    // Quantize: Black (0) or White (255)
+                    const newPixel = oldPixel < 128 ? 0 : 255;
+                    
+                    // Set current pixel
+                    data[idx] = data[idx+1] = data[idx+2] = newPixel;
+
+                    // Calculate Error
+                    const error = oldPixel - newPixel;
+
+                    // Distribute Error based on Matrix
+                    if (algo === 'floyd') {
+                        distributeError(data, x, y, width, height, error, [
+                            { x: 1,  y: 0, w: 7/16 },
+                            { x: -1, y: 1, w: 3/16 },
+                            { x: 0,  y: 1, w: 5/16 },
+                            { x: 1,  y: 1, w: 1/16 }
+                        ]);
+                    } 
+                    else if (algo === 'jarvis') {
+                        distributeError(data, x, y, width, height, error, [
+                            { x: 1, y: 0, w: 7/48 }, { x: 2, y: 0, w: 5/48 },
+                            { x: -2, y: 1, w: 3/48 }, { x: -1, y: 1, w: 5/48 }, { x: 0, y: 1, w: 7/48 }, { x: 1, y: 1, w: 5/48 }, { x: 2, y: 1, w: 3/48 },
+                            { x: -2, y: 2, w: 1/48 }, { x: -1, y: 2, w: 3/48 }, { x: 0, y: 2, w: 5/48 }, { x: 1, y: 2, w: 3/48 }, { x: 2, y: 2, w: 1/48 }
+                        ]);
+                    }
+                    else if (algo === 'atkinson') {
+                        distributeError(data, x, y, width, height, error, [
+                            { x: 1, y: 0, w: 1/8 }, { x: 2, y: 0, w: 1/8 },
+                            { x: -1, y: 1, w: 1/8 }, { x: 0, y: 1, w: 1/8 }, { x: 1, y: 1, w: 1/8 },
+                            { x: 0, y: 2, w: 1/8 }
+                        ]);
+                    }
+                }
+            }
+
+            ctx.putImageData(outputData, 0, 0);
+        }
+
+        // Helper to add error to a neighbor pixel
+        function distributeError(data, currentX, currentY, w, h, error, distribution) {
+            for (let d of distribution) {
+                const nx = currentX + d.x;
+                const ny = currentY + d.y;
+
+                // Check bounds
+                if (nx >= 0 && nx < w && ny >= 0 && ny < h) {
+                    const nIdx = (ny * w + nx) * 4;
+                    const val = data[nIdx] + (error * d.w);
+                    // We don't clamp here immediately because errors can accumulate
+                    // but Uint8ClampedArray handles clamping automatically upon assignment.
+                    data[nIdx] = data[nIdx+1] = data[nIdx+2] = val;
+                }
+            }
+        }
+    </script>
+</body>
+</html>

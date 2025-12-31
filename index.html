@@ -3,247 +3,275 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Explorations</title>
-    
+    <title>Dithering Matrix Playground</title>
     <style>
         body {
-            background-color: #1a1a1a; /* Dark background */
-            color: #d4d4d4; /* Off-white text */
-            font-family: 'Courier New', Courier, monospace;
-            padding: 2rem;
-            font-size: 16px;
-        }
-
-        .container {
-            max-width: 800px;
-            margin: 0 auto;
-        }
-
-        /* Title Styling */
-        h1 {
-            font-size: 2.5rem;
-            font-weight: bold;
-            color: #f0f0f0;
-            text-transform: uppercase;
-            margin-bottom: 2rem;
-            text-align: center;
-        }
-
-        /* Typewriter Text Block Styling */
-        .typewriter-text {
-            border-right: 2px solid rgba(255,255,255,.75); /* Blinking cursor */
-            white-space: pre-wrap; /* Respects newlines and spaces */
-            overflow: hidden;
-            font-family: 'Courier New', Courier, monospace; /* Standard Courier */
-            line-height: 1.6;
-        }
-        
-        /* Distressed font effect class */
-        .distressed {
-             /* A more "worn" courier look */
-            font-family: 'American Typewriter', 'Courier New', Courier, monospace;
-            opacity: 0.95;
-        }
-
-        /* Blinking cursor animation */
-        .blinking-cursor {
-            animation: blink-caret .75s step-end infinite;
-        }
-
-        /* Table Styling */
-        table {
-            width: 100%;
-            border-collapse: collapse;
-            margin-top: 3rem;
-            border: 1px solid #555;
-        }
-
-        th, td {
-            border: 1px solid #555;
-            padding: 12px;
-            text-align: left;
-        }
-
-        th {
-            background-color: #333;
-            color: #f0f0f0;
-            font-weight: bold;
-        }
-        
-        td a {
-            color: #76c7c0; /* A nice teal for links */
-            text-decoration: none;
-        }
-
-        td a:hover {
-            text-decoration: underline;
-        }
-
-        .thumbnail {
-            width: 200px;
-            height: 150px;
-            height: auto;
-            display: block;
-        }
-
-        .thumbnail-placeholder {
-            width: 100px;
-            height: 75px;
-            background-color: #444;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            background-color: #f0f2f5;
             display: flex;
+            flex-direction: column;
             align-items: center;
-            justify-content: center;
-            font-size: 0.8rem;
-            color: #888;
+            padding: 20px;
+            color: #333;
         }
 
+        h1 { margin-bottom: 10px; }
+
+        .controls {
+            margin-bottom: 20px;
+            background: white;
+            padding: 15px;
+            border-radius: 8px;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+            display: flex;
+            gap: 15px;
+            align-items: center;
+            flex-wrap: wrap;
+        }
+
+        select {
+            padding: 8px;
+            font-size: 16px;
+            border-radius: 4px;
+            border: 1px solid #ccc;
+        }
+
+        #drop-zone {
+            border: 3px dashed #ccc;
+            border-radius: 10px;
+            width: 80%;
+            max-width: 1000px;
+            /* Fixed height to act as a viewport for the zoomed image */
+            height: 600px; 
+            display: flex;
+            justify-content: center;
+            /* Align-items removed so the large canvas doesn't get centered/clipped awkwardly */
+            background-color: white;
+            transition: all 0.3s ease;
+            position: relative;
+            padding: 10px;
+            
+            /* CHANGE 1: Enable scrolling for the zoomed image */
+            overflow: auto; 
+        }
+
+        #drop-zone.dragover {
+            border-color: #007bff;
+            background-color: #e7f1ff;
+        }
+
+        #drop-zone p {
+            pointer-events: none;
+            color: #888;
+            font-size: 1.2rem;
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            z-index: 10;
+            margin: 0;
+        }
+
+        canvas {
+            /* CHANGE 2: Removed 'width: 100%' so it doesn't auto-shrink */
+            display: block;
+            flex-shrink: 0; /* Prevent flex container from squishing it */
+            
+            /* CRITICAL: This makes the pixels look blocky/sharp when scaled up */
+            image-rendering: pixelated; 
+            image-rendering: -moz-crisp-edges;
+        }
+
+        .hidden { display: none !important; }
     </style>
 </head>
 <body>
 
-    <div class="container">
-        <h1>Explorations</h1>
+    <h1>Image Dithering App</h1>
 
-        <div id="text-block" class="typewriter-text distressed"></div>
+    <div class="controls">
+        <label for="matrix-select"><strong>Algorithm:</strong></label>
+        <select id="matrix-select">
+            <option value="floyd">Floyd-Steinberg</option>
+            <option value="jarvis">Jarvis-Judice-Ninke</option>
+            <option value="atkinson">Atkinson</option>
+            <option value="none">None (Grayscale)</option>
+        </select>
+        <span>(Long axis fixed to 640px, Display Zoom: 4x)</span>
+    </div>
 
-        <table id="projects-table">
-            <tbody>
-            </tbody>
-        </table>
+    <div id="drop-zone">
+        <p>Drop image here</p>
+        <canvas id="canvas"></canvas>
     </div>
 
     <script>
-/**
- * Adds a new row to the specified table's tbody.
- *
- * @param {string} id - The ID of the table element.
- * @param {string} url - The relative or absolute URL for the link.
- * @param {string} link_text - The text to display for the link.
- * @param {string} thumbnail - The relative path to the thumbnail image.
- * @param {string} description - The text content for the description cell.
- * @param {string} [attribution] - Optional attribution text for the description.
- */
-function addRow(id, url, link_text, thumbnail, description, attribution) {
-  const tableBody = document.getElementById(id)?.querySelector('tbody');
+        const dropZone = document.getElementById('drop-zone');
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d', { willReadFrequently: true });
+        const select = document.getElementById('matrix-select');
+        const promptText = dropZone.querySelector('p');
 
-  if (!tableBody) {
-    console.error(`Error: Table with id "${id}" or its tbody not found.`);
-    return;
-  }
+        // Store original image data to re-process without reloading
+        let originalImage = null;
+        const TARGET_LONG_AXIS = 640;
 
-  const newRow = document.createElement('tr');
+        // --- Event Listeners ---
 
-  // Conditionally create the attribution HTML if the parameter is provided
-  const attributionHTML = attribution 
-    ? `<span style="position: absolute; bottom: 8px; right: 12px; font-size: 0.8em; color: #666;">${attribution}</span>` 
-    : '';
+        dropZone.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            dropZone.classList.add('dragover');
+        });
 
-  // The inner HTML now uses the url and link_text parameters directly
-  newRow.innerHTML = `
-    <td><a href="${url}" target="_blank">${link_text}</a></td>
-    <td style="position: relative; padding-right: 30px;">
-      ${description}
-      ${attributionHTML}
-    </td>
-    <td>
-      <div style="background-image: url('${thumbnail}'); width: 150px; height: 100px; background-size: cover; background-position: center;"></div>
-    </td>
-  `;
+        dropZone.addEventListener('dragleave', () => {
+            dropZone.classList.remove('dragover');
+        });
 
-  tableBody.appendChild(newRow);
-}
-        
-document.addEventListener('DOMContentLoaded', function() {
-    // add the rows to the links table
-    addRow(
-        'projects-table',
-        'applesofty.html',
-        'Applesofty',
-        'applesofty_th.png',
-        'A sketch of an Applesoft-like BASIC experience.',
-        'gever + gemini'
-    );
-    addRow(
-        'projects-table',
-        'circle_packing.html',
-        'Circle Packing',
-        'circle_packing_th.png',
-        'Play with how circles relate to polygonal borders.',
-        'gever + gemini'
-    );
-    addRow(
-        'projects-table',
-        'particle_cloud.html',
-        'Particle Cloud',
-        'particle_cloud_th.png',
-        'Watch a cloud of particles spontaneously aggregate into planetoids.',
-        'gever + gemini'
-    );
-    addRow(
-        'projects-table',
-        'tiling.html',
-        'Square Tiling Playground',
-        'tiling_th.png',
-        'Drop an image in and play with rotations and symmetry.',
-        'gever + gemini'
-    );
-    addRow(
-        'projects-table',
-        'gstd/index.html',
-        'Galactic Space Tortoise Doctor',
-        'gstd/splash.png',
-        'Deliver life-saving vaccine to infected planets!',
-        'gever + gemini'
-    );
-    addRow(
-        'projects-table',
-        'https://g.co/gemini/share/1e11bb3ffe9b',
-        'Binary Star Stability',
-        'binary_star_stability_th.png',
-        'knowledge summary, basic concepts, types, and some of the physics (errors in the formulae rendering)',
-        'gemini + gever'
-    );
-    addRow(
-        'projects-table',
-        'https://gemini.google.com/share/73e1efc4a821',
-        'Dry Ice',
-        'dryice_simulation_th.png',
-        'a simulation of dry ice chips floating on water in a circular dish.',
-        'aidan krempetz'
-    );
-    addRow(
-        'projects-table',
-        'binary_playground.html',
-        'Binary Playground',
-        'binary_playground_th.png',
-        'particles, set in circular motion, collide and agglomerate, often producing binary pairs of super-massive "stars".',
-        'gever + gemini'
-    );
-    
-            const textBlockElement = document.getElementById('text-block');
+        dropZone.addEventListener('drop', (e) => {
+            e.preventDefault();
+            dropZone.classList.remove('dragover');
             
-            // EDIT THIS TEXT to change the content that gets typed out.
-            // Use `\n` for new lines.
-            const textToType = `These are some artifacts that emerged from conversations with myself and friends.`;
-            
-            let i = 0;
-            
-            function typeWriter() {
-                if (i < textToType.length) {
-                    textBlockElement.innerHTML += textToType.charAt(i);
-                    i++;
-                    // Adjust timeout for faster/slower typing speed
-                    setTimeout(typeWriter, 50); // 50ms delay between characters
+            const file = e.dataTransfer.files[0];
+            if (file && file.type.startsWith('image/')) {
+                const reader = new FileReader();
+                reader.onload = (event) => loadImage(event.target.result);
+                reader.readAsDataURL(file);
+            }
+        });
+
+        select.addEventListener('change', () => {
+            if (originalImage) {
+                processImage();
+            }
+        });
+
+        // --- Image Loading & Resampling ---
+
+        function loadImage(src) {
+            const img = new Image();
+            img.onload = () => {
+                // Calculate new dimensions respecting aspect ratio
+                let w = img.width;
+                let h = img.height;
+                let scale = 1;
+
+                if (w > h) {
+                    if (w > TARGET_LONG_AXIS) {
+                        scale = TARGET_LONG_AXIS / w;
+                        w = TARGET_LONG_AXIS;
+                        h = Math.floor(img.height * scale);
+                    }
                 } else {
-                    // When typing is done, add a persistent blinking cursor
-                    // textBlockElement.classList.add('blinking-cursor');
+                    if (h > TARGET_LONG_AXIS) {
+                        scale = TARGET_LONG_AXIS / h;
+                        h = TARGET_LONG_AXIS;
+                        w = Math.floor(img.width * scale);
+                    }
+                }
+
+                // Set internal canvas resolution to the small size (640px max)
+                canvas.width = w;
+                canvas.height = h;
+                
+                // CHANGE 3: Force the CSS display size to be exactly 4x the pixel dimensions
+                canvas.style.width = (w * 4) + 'px';
+                canvas.style.height = (h * 4) + 'px';
+                
+                // Draw image downscaled
+                ctx.drawImage(img, 0, 0, w, h);
+                promptText.classList.add('hidden');
+                
+                // Store the downsampled data as our "original"
+                originalImage = ctx.getImageData(0, 0, w, h);
+                
+                processImage();
+            };
+            img.src = src;
+        }
+
+        // --- Dithering Logic ---
+
+        function processImage() {
+            if (!originalImage) return;
+
+            const width = originalImage.width;
+            const height = originalImage.height;
+            const outputData = new ImageData(
+                new Uint8ClampedArray(originalImage.data),
+                width,
+                height
+            );
+            
+            const data = outputData.data;
+            const algo = select.value;
+
+            // Convert to Grayscale
+            for (let i = 0; i < data.length; i += 4) {
+                const r = data[i];
+                const g = data[i + 1];
+                const b = data[i + 2];
+                const gray = 0.299 * r + 0.587 * g + 0.114 * b;
+                data[i] = data[i + 1] = data[i + 2] = gray;
+            }
+
+            if (algo === 'none') {
+                ctx.putImageData(outputData, 0, 0);
+                return;
+            }
+
+            const getIndex = (x, y) => (y * width + x) * 4;
+
+            for (let y = 0; y < height; y++) {
+                for (let x = 0; x < width; x++) {
+                    const idx = getIndex(x, y);
+                    const oldPixel = data[idx];
+                    
+                    const newPixel = oldPixel < 128 ? 0 : 255;
+                    
+                    data[idx] = data[idx+1] = data[idx+2] = newPixel;
+
+                    const error = oldPixel - newPixel;
+
+                    if (algo === 'floyd') {
+                        distributeError(data, x, y, width, height, error, [
+                            { x: 1,  y: 0, w: 7/16 },
+                            { x: -1, y: 1, w: 3/16 },
+                            { x: 0,  y: 1, w: 5/16 },
+                            { x: 1,  y: 1, w: 1/16 }
+                        ]);
+                    } 
+                    else if (algo === 'jarvis') {
+                        distributeError(data, x, y, width, height, error, [
+                            { x: 1, y: 0, w: 7/48 }, { x: 2, y: 0, w: 5/48 },
+                            { x: -2, y: 1, w: 3/48 }, { x: -1, y: 1, w: 5/48 }, { x: 0, y: 1, w: 7/48 }, { x: 1, y: 1, w: 5/48 }, { x: 2, y: 1, w: 3/48 },
+                            { x: -2, y: 2, w: 1/48 }, { x: -1, y: 2, w: 3/48 }, { x: 0, y: 2, w: 5/48 }, { x: 1, y: 2, w: 3/48 }, { x: 2, y: 2, w: 1/48 }
+                        ]);
+                    }
+                    else if (algo === 'atkinson') {
+                        distributeError(data, x, y, width, height, error, [
+                            { x: 1, y: 0, w: 1/8 }, { x: 2, y: 0, w: 1/8 },
+                            { x: -1, y: 1, w: 1/8 }, { x: 0, y: 1, w: 1/8 }, { x: 1, y: 1, w: 1/8 },
+                            { x: 0, y: 2, w: 1/8 }
+                        ]);
+                    }
                 }
             }
-            
-            // Start the effect
-            typeWriter();
-        });
-    </script>
 
+            ctx.putImageData(outputData, 0, 0);
+        }
+
+        function distributeError(data, currentX, currentY, w, h, error, distribution) {
+            for (let d of distribution) {
+                const nx = currentX + d.x;
+                const ny = currentY + d.y;
+
+                if (nx >= 0 && nx < w && ny >= 0 && ny < h) {
+                    const nIdx = (ny * w + nx) * 4;
+                    const val = data[nIdx] + (error * d.w);
+                    data[nIdx] = data[nIdx+1] = data[nIdx+2] = val;
+                }
+            }
+        }
+    </script>
 </body>
 </html>

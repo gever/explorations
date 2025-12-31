@@ -210,6 +210,10 @@
                     <label for="max-lines">Max Density (Lines)</label>
                     <input type="range" id="max-lines" min="2" max="20" value="8">
                 </div>
+                <div class="control-group">
+                    <label for="angle-offset">Angle Offset</label>
+                    <input type="range" id="angle-offset" min="0" max="90" value="0">
+                </div>
             </div>
 
             <div class="buttons">
@@ -249,6 +253,7 @@
     const tabs = document.querySelectorAll('.tab');
     const resolutionSlider = document.getElementById('resolution');
     const maxLinesSlider = document.getElementById('max-lines');
+    const angleOffsetSlider = document.getElementById('angle-offset');
     const hatchedControls = document.getElementById('hatched-controls');
     
     const downloadBtn = document.getElementById('download-btn');
@@ -288,6 +293,7 @@
     // Control Updates
     resolutionSlider.addEventListener('input', () => { if (currentImage) processImage(); });
     maxLinesSlider.addEventListener('input', () => { if (currentImage) processImage(); });
+    angleOffsetSlider.addEventListener('input', () => { if (currentImage) processImage(); });
 
     // Drag & Drop
     dropZone.addEventListener('dragover', (e) => { e.preventDefault(); dropZone.classList.add('dragover'); });
@@ -457,15 +463,11 @@
 
     function renderHatched(ctx, x, y, size, brightness, hue) {
         const MAX_LINES = parseInt(maxLinesSlider.value, 10);
+        const angleOffset = parseInt(angleOffsetSlider.value, 10);
         
         // Map Brightness: 255 -> 1 line, 0 -> MAX_LINES
         const normalizedBright = brightness / 255;
         let numLines = Math.floor( (1 - normalizedBright) * (MAX_LINES - 1) ) + 1;
-        
-        // If it's pure white, maybe we want 0 lines? 
-        // Prompt said "Brightest samples should just have a single line".
-        // But pure white usually implies empty space. I'll stick to prompt (1 line) 
-        // unless it's extremely bright (250+), but prompt logic takes precedence.
         
         const cx = x + size / 2;
         const cy = y + size / 2;
@@ -478,7 +480,7 @@
         ctx.clip();
 
         ctx.translate(cx, cy);
-        ctx.rotate(hue * Math.PI / 180);
+        ctx.rotate((hue + angleOffset) * Math.PI / 180);
 
         // Draw parallel lines
         // We draw them centered on the rotated axis
@@ -488,7 +490,6 @@
         ctx.beginPath();
         for (let i = 0; i < numLines; i++) {
             // Calculate Y offset relative to center
-            // e.g. if 1 line, y=0. If 2 lines, y = -spacing/2, +spacing/2
             const yOffset = (i - (numLines - 1) / 2) * spacing;
             
             // Draw line long enough to cover diagonal rotation
@@ -550,6 +551,7 @@
                 } 
                 else if (currentMode === 'hatched') {
                     const maxLines = parseInt(maxLinesSlider.value, 10);
+                    const angleOffset = parseInt(angleOffsetSlider.value, 10);
                     const normalizedBright = stats.brightness / 255;
                     let numLines = Math.floor( (1 - normalizedBright) * (maxLines - 1) ) + 1;
 
@@ -560,22 +562,11 @@
                     const lineLen = sampleSize * 1.5; // Excess length
                     
                     // Group with transform for rotation
-                    // Note: SVG rotation is rotate(deg, cx, cy) or translate+rotate
-                    // We use translate to center, rotate, then draw lines around 0,0
-                    svgContent += `<g transform="translate(${cx}, ${cy}) rotate(${stats.hue})">`;
-                    
-                    // Optional: Add clipping rect for cleaner SVG?
-                    // Adding clip-paths for every cell increases SVG size massively. 
-                    // We will skip clipping for SVG to keep it lightweight, 
-                    // or we can assume the aesthetic allows lines to float.
-                    // To keep it strict, we can clip. 
-                    // Let's rely on the visual density rather than strict clipping for file size.
+                    svgContent += `<g transform="translate(${cx}, ${cy}) rotate(${stats.hue + angleOffset})">`;
                     
                     for (let i = 0; i < numLines; i++) {
                         const yOffset = (i - (numLines - 1) / 2) * spacing;
-                        // To keep SVG clean, we clamp line length to sampleSize so they don't bleed too much
-                        // or we use the calculated length.
-                         svgContent += `<line x1="${-sampleSize/2}" y1="${yOffset}" x2="${sampleSize/2}" y2="${yOffset}" stroke="black" stroke-width="1" />`;
+                        svgContent += `<line x1="${-sampleSize/2}" y1="${yOffset}" x2="${sampleSize/2}" y2="${yOffset}" stroke="black" stroke-width="1" />`;
                     }
                     svgContent += `</g>`;
                 }

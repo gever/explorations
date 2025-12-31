@@ -102,6 +102,13 @@
             padding-left: 20px;
         }
 
+        /* New styles for stats display */
+        .stats-display {
+            font-variant-numeric: tabular-nums;
+            font-weight: 600;
+            color: var(--accent-color);
+        }
+
         label {
             font-size: 0.8rem;
             font-weight: 700;
@@ -196,11 +203,12 @@
     <div class="tab-container">
         <div class="tab active" data-mode="concentrics">Concentrics</div>
         <div class="tab" data-mode="hatched">Hatched</div>
+        <div class="tab" data-mode="edges">Edges</div>
     </div>
 
     <div class="controls-wrapper">
         <div class="controls">
-            <div class="control-group">
+            <div id="global-controls" class="control-group">
                 <label for="resolution">Grid Size (Sample)</label>
                 <input type="range" id="resolution" min="5" max="50" value="12">
             </div>
@@ -215,6 +223,17 @@
                     <input type="range" id="angle-offset" min="0" max="90" value="0">
                 </div>
             </div>
+
+            <div id="edges-controls" class="mode-controls hidden">
+                <div class="control-group">
+                    <label for="edge-threshold">Edge Threshold</label>
+                    <input type="range" id="edge-threshold" min="10" max="200" value="80">
+                </div>
+                 <div class="control-group" style="justify-content: center;">
+                    <span class="stats-display">Line Count: <span id="line-count">0</span></span>
+                </div>
+            </div>
+
 
             <div class="buttons">
                 <button id="download-btn" disabled>Download SVG</button>
@@ -240,8 +259,9 @@
     const CANVAS_HEIGHT = 850; 
     
     // Algorithm State
-    let currentMode = 'concentrics'; // 'concentrics' or 'hatched'
+    let currentMode = 'concentrics'; // 'concentrics', 'hatched', 'edges'
     let currentImage = null;
+    let thinnedPoints = []; // Store computed edge points
 
     // DOM Elements
     const dropZone = document.getElementById('drop-zone');
@@ -251,10 +271,14 @@
     
     // UI Elements
     const tabs = document.querySelectorAll('.tab');
+    const globalControls = document.getElementById('global-controls');
     const resolutionSlider = document.getElementById('resolution');
     const maxLinesSlider = document.getElementById('max-lines');
     const angleOffsetSlider = document.getElementById('angle-offset');
     const hatchedControls = document.getElementById('hatched-controls');
+    const edgesControls = document.getElementById('edges-controls');
+    const edgeThresholdSlider = document.getElementById('edge-threshold');
+    const lineCountDisplay = document.getElementById('line-count');
     
     const downloadBtn = document.getElementById('download-btn');
     const clearBtn = document.getElementById('clear-btn');
@@ -279,10 +303,15 @@
             currentMode = tab.dataset.mode;
             
             // Toggle Specific Controls
+            hatchedControls.classList.add('hidden');
+            edgesControls.classList.add('hidden');
+            globalControls.classList.remove('hidden');
+
             if (currentMode === 'hatched') {
                 hatchedControls.classList.remove('hidden');
-            } else {
-                hatchedControls.classList.add('hidden');
+            } else if (currentMode === 'edges') {
+                edgesControls.classList.remove('hidden');
+                globalControls.classList.add('hidden'); // Grid size irrelevant for edges
             }
 
             // Re-render
@@ -291,34 +320,28 @@
     });
 
     // Control Updates
-    resolutionSlider.addEventListener('input', () => { if (currentImage) processImage(); });
-    maxLinesSlider.addEventListener('input', () => { if (currentImage) processImage(); });
-    angleOffsetSlider.addEventListener('input', () => { if (currentImage) processImage(); });
+    resolutionSlider.addEventListener('input', () => { if (currentImage && currentMode !== 'edges') processImage(); });
+    maxLinesSlider.addEventListener('input', () => { if (currentImage && currentMode === 'hatched') processImage(); });
+    angleOffsetSlider.addEventListener('input', () => { if (currentImage && currentMode === 'hatched') processImage(); });
+    edgeThresholdSlider.addEventListener('change', () => { if (currentImage && currentMode === 'edges') processImage(); }); // Use 'change' for expensive edge op
 
-    // Drag & Drop
+    // Drag & Drop & File Input (Unchanged)
     dropZone.addEventListener('dragover', (e) => { e.preventDefault(); dropZone.classList.add('dragover'); });
     dropZone.addEventListener('dragleave', () => { dropZone.classList.remove('dragover'); });
-    dropZone.addEventListener('drop', (e) => {
-        e.preventDefault();
-        dropZone.classList.remove('dragover');
-        const file = e.dataTransfer.files[0];
-        if (file && file.type.startsWith('image/')) loadImage(file);
-    });
-
-    // File Input
+    dropZone.addEventListener('drop', (e) => { e.preventDefault(); dropZone.classList.remove('dragover'); const file = e.dataTransfer.files[0]; if (file && file.type.startsWith('image/')) loadImage(file); });
     dropZone.addEventListener('click', () => fileInput.click());
-    fileInput.addEventListener('change', (e) => {
-        if (e.target.files[0]) loadImage(e.target.files[0]);
-    });
+    fileInput.addEventListener('change', (e) => { if (e.target.files[0]) loadImage(e.target.files[0]); });
 
     // Buttons
     clearBtn.addEventListener('click', () => {
         currentImage = null;
+        thinnedPoints = [];
         ctx.clearRect(0, 0, canvas.width, canvas.height);
         instruction.classList.remove('hidden');
         downloadBtn.disabled = true;
         clearBtn.disabled = true;
         fileInput.value = '';
+        lineCountDisplay.textContent = '0';
     });
     downloadBtn.addEventListener('click', generateAndDownloadSVG);
 
@@ -346,117 +369,194 @@
     function processImage() {
         if (!currentImage) return;
 
-        const sampleSize = parseInt(resolutionSlider.value, 10);
-        
-        // 1. Prepare Image Data
+        // 1. Prepare Image Data & Clear Canvas
         const offCanvas = document.createElement('canvas');
-        offCanvas.width = CANVAS_WIDTH;
-        offCanvas.height = CANVAS_HEIGHT;
+        offCanvas.width = CANVAS_WIDTH; offCanvas.height = CANVAS_HEIGHT;
         const offCtx = offCanvas.getContext('2d');
-        
         const scale = Math.max(CANVAS_WIDTH / currentImage.width, CANVAS_HEIGHT / currentImage.height);
-        const drawW = currentImage.width * scale;
-        const drawH = currentImage.height * scale;
-        const offsetX = (CANVAS_WIDTH - drawW) / 2;
-        const offsetY = (CANVAS_HEIGHT - drawH) / 2;
-
-        offCtx.fillStyle = '#FFFFFF';
-        offCtx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
-        offCtx.drawImage(currentImage, offsetX, offsetY, drawW, drawH);
-        
+        const drawW = currentImage.width * scale; const drawH = currentImage.height * scale;
+        offCtx.fillStyle = '#FFFFFF'; offCtx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
+        offCtx.drawImage(currentImage, (CANVAS_WIDTH - drawW) / 2, (CANVAS_HEIGHT - drawH) / 2, drawW, drawH);
         const imgData = offCtx.getImageData(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
         
-        // 2. Clear & Setup Output
         ctx.clearRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
-        ctx.fillStyle = '#FFFFFF';
-        ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
-        ctx.strokeStyle = '#000000';
-        ctx.lineWidth = 1;
+        ctx.fillStyle = '#FFFFFF'; ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
+        ctx.strokeStyle = '#000000'; ctx.lineWidth = 1; ctx.fillStyle = '#000000';
 
-        // 3. Render Loop
-        for (let y = 0; y < CANVAS_HEIGHT; y += sampleSize) {
-            for (let x = 0; x < CANVAS_WIDTH; x += sampleSize) {
-                
-                const stats = getSampleStats(imgData, x, y, sampleSize, CANVAS_WIDTH, CANVAS_HEIGHT);
-                
-                if (currentMode === 'concentrics') {
-                    renderConcentric(ctx, x, y, sampleSize, stats.brightness);
-                } else if (currentMode === 'hatched') {
-                    renderHatched(ctx, x, y, sampleSize, stats.brightness, stats.hue);
+        // 2. Branch based on mode
+        if (currentMode === 'edges') {
+            processEdgesMode(imgData);
+        } else {
+            // Grid based modes
+            const sampleSize = parseInt(resolutionSlider.value, 10);
+            for (let y = 0; y < CANVAS_HEIGHT; y += sampleSize) {
+                for (let x = 0; x < CANVAS_WIDTH; x += sampleSize) {
+                    const stats = getSampleStats(imgData, x, y, sampleSize, CANVAS_WIDTH, CANVAS_HEIGHT);
+                    if (currentMode === 'concentrics') {
+                        renderConcentric(ctx, x, y, sampleSize, stats.brightness);
+                    } else if (currentMode === 'hatched') {
+                        renderHatched(ctx, x, y, sampleSize, stats.brightness, stats.hue);
+                    }
                 }
             }
         }
     }
 
-    // --- Stats Calculation ---
+    // --- EDGES PIPELINE ---
 
+    function processEdgesMode(imgData) {
+        lineCountDisplay.textContent = "Processing...";
+        // Allow UI to update before heavy calculation
+        setTimeout(() => {
+            const threshold = parseInt(edgeThresholdSlider.value, 10);
+            const width = CANVAS_WIDTH;
+            const height = CANVAS_HEIGHT;
+
+            // 1. Grayscale
+            const grayPixels = getGrayscaleData(imgData, width, height);
+            // 2. Sobel Edge Detection & Thresholding to Binary
+            const binaryPixels = applySobelAndThreshold(grayPixels, width, height, threshold);
+            // 3. Skeletonization (Thinning)
+            thinnedPoints = applyThinning(binaryPixels, width, height);
+            
+            // 4. Render points
+            ctx.beginPath();
+            for (const p of thinnedPoints) {
+                // Draw single pixel rectangles for robustness
+                ctx.rect(p.x, p.y, 1, 1);
+            }
+            ctx.fill();
+
+            lineCountDisplay.textContent = thinnedPoints.length;
+        }, 10);
+    }
+
+    function getGrayscaleData(imgData, w, h) {
+        const gray = new Uint8Array(w * h);
+        const data = imgData.data;
+        for (let i = 0; i < w * h; i++) {
+            // Luma conversion
+            gray[i] = 0.299 * data[i * 4] + 0.587 * data[i * 4 + 1] + 0.114 * data[i * 4 + 2];
+        }
+        return gray;
+    }
+
+    function applySobelAndThreshold(gray, w, h, threshold) {
+        const binary = new Uint8Array(w * h); // 0 or 1
+        const gx = [[-1, 0, 1], [-2, 0, 2], [-1, 0, 1]];
+        const gy = [[-1, -2, -1], [0, 0, 0], [1, 2, 1]];
+
+        for (let y = 1; y < h - 1; y++) {
+            for (let x = 1; x < w - 1; x++) {
+                let sumX = 0, sumY = 0;
+                for (let i = -1; i <= 1; i++) {
+                    for (let j = -1; j <= 1; j++) {
+                        const val = gray[(y + i) * w + (x + j)];
+                        sumX += gx[i + 1][j + 1] * val;
+                        sumY += gy[i + 1][j + 1] * val;
+                    }
+                }
+                const magnitude = Math.sqrt(sumX * sumX + sumY * sumY);
+                binary[y * w + x] = magnitude > threshold ? 1 : 0;
+            }
+        }
+        return binary;
+    }
+
+    // Zhang-Suen Thinning Algorithm
+    function applyThinning(binary, w, h) {
+        let pixels = Uint8Array.from(binary);
+        let framing = new Uint8Array(w * h); // To hold results of iter steps
+        let changed = true;
+        const points = [];
+
+        // Helper to get pixel value safely
+        const get = (arr, x, y) => (x >= 0 && x < w && y >= 0 && y < h) ? arr[y * w + x] : 0;
+
+        while (changed) {
+            changed = false;
+            framing.set(pixels);
+            
+            // Sub-iteration 1
+            for (let y = 1; y < h - 1; y++) {
+                for (let x = 1; x < w - 1; x++) {
+                    if (pixels[y * w + x] === 0) continue;
+                    const p2 = get(pixels, x, y - 1), p3 = get(pixels, x + 1, y - 1), p4 = get(pixels, x + 1, y),
+                          p5 = get(pixels, x + 1, y + 1), p6 = get(pixels, x, y + 1), p7 = get(pixels, x - 1, y + 1),
+                          p8 = get(pixels, x - 1, y), p9 = get(pixels, x - 1, y - 1);
+                    const A = (p2 == 0 && p3 == 1) + (p3 == 0 && p4 == 1) + (p4 == 0 && p5 == 1) + (p5 == 0 && p6 == 1) +
+                              (p6 == 0 && p7 == 1) + (p7 == 0 && p8 == 1) + (p8 == 0 && p9 == 1) + (p9 == 0 && p2 == 1);
+                    const B = p2 + p3 + p4 + p5 + p6 + p7 + p8 + p9;
+                    if (A === 1 && B >= 2 && B <= 6 && p2 * p4 * p6 === 0 && p4 * p6 * p8 === 0) {
+                        framing[y * w + x] = 0; changed = true;
+                    }
+                }
+            }
+            pixels.set(framing);
+
+            // Sub-iteration 2 (only if changes happened in step 1 or it's first run, but standard algo runs both)
+            for (let y = 1; y < h - 1; y++) {
+                for (let x = 1; x < w - 1; x++) {
+                    if (pixels[y * w + x] === 0) continue;
+                    const p2 = get(pixels, x, y - 1), p3 = get(pixels, x + 1, y - 1), p4 = get(pixels, x + 1, y),
+                          p5 = get(pixels, x + 1, y + 1), p6 = get(pixels, x, y + 1), p7 = get(pixels, x - 1, y + 1),
+                          p8 = get(pixels, x - 1, y), p9 = get(pixels, x - 1, y - 1);
+                    const A = (p2 == 0 && p3 == 1) + (p3 == 0 && p4 == 1) + (p4 == 0 && p5 == 1) + (p5 == 0 && p6 == 1) +
+                              (p6 == 0 && p7 == 1) + (p7 == 0 && p8 == 1) + (p8 == 0 && p9 == 1) + (p9 == 0 && p2 == 1);
+                    const B = p2 + p3 + p4 + p5 + p6 + p7 + p8 + p9;
+                    if (A === 1 && B >= 2 && B <= 6 && p2 * p4 * p8 === 0 && p2 * p6 * p8 === 0) {
+                        framing[y * w + x] = 0; changed = true;
+                    }
+                }
+            }
+            pixels.set(framing);
+        }
+
+        // Collect remaining pixels
+        for (let y = 0; y < h; y++) {
+            for (let x = 0; x < w; x++) {
+                if (pixels[y * w + x] === 1) points.push({x, y});
+            }
+        }
+        return points;
+    }
+
+
+    // --- Grid Stats Calculation ---
     function getSampleStats(imgData, startX, startY, sampleSize, width, height) {
         let rSum = 0, gSum = 0, bSum = 0, count = 0;
         const data = imgData.data;
-
         for (let y = startY; y < startY + sampleSize && y < height; y++) {
             for (let x = startX; x < startX + sampleSize && x < width; x++) {
                 const i = (y * width + x) * 4;
-                rSum += data[i];
-                gSum += data[i + 1];
-                bSum += data[i + 2];
-                count++;
+                rSum += data[i]; gSum += data[i + 1]; bSum += data[i + 2]; count++;
             }
         }
-        
         if (count === 0) return { brightness: 255, hue: 0 };
-
-        const r = Math.round(rSum / count);
-        const g = Math.round(gSum / count);
-        const b = Math.round(bSum / count);
-
-        // Brightness (Luma)
-        const brightness = 0.299 * r + 0.587 * g + 0.114 * b;
-
-        // Hue
-        const hue = rgbToHue(r, g, b);
-
-        return { brightness, hue };
+        const r = Math.round(rSum / count), g = Math.round(gSum / count), b = Math.round(bSum / count);
+        return { brightness: 0.299 * r + 0.587 * g + 0.114 * b, hue: rgbToHue(r, g, b) };
     }
 
     function rgbToHue(r, g, b) {
         r /= 255; g /= 255; b /= 255;
         const max = Math.max(r, g, b), min = Math.min(r, g, b);
         let h = 0;
-
-        if (max === min) {
-            h = 0; // achromatic
-        } else {
+        if (max !== min) {
             const d = max - min;
-            switch (max) {
-                case r: h = (g - b) / d + (g < b ? 6 : 0); break;
-                case g: h = (b - r) / d + 2; break;
-                case b: h = (r - g) / d + 4; break;
-            }
+            h = max === r ? (g - b) / d + (g < b ? 6 : 0) : max === g ? (b - r) / d + 2 : (r - g) / d + 4;
             h /= 6;
         }
         return h * 360;
     }
 
-    // --- Renderers ---
-
+    // --- Grid Renderers ---
     function renderConcentric(ctx, x, y, size, brightness) {
         const MAX_CIRCLES = 5;
-        const darkness = 1 - (brightness / 255);
-        const numCircles = Math.round(darkness * MAX_CIRCLES);
-        
+        const numCircles = Math.round((1 - (brightness / 255)) * MAX_CIRCLES);
         if (numCircles > 0) {
-            const cx = x + size / 2;
-            const cy = y + size / 2;
-            const maxRadius = (size / 2) * 0.9;
-            const step = maxRadius / MAX_CIRCLES;
-            
+            const cx = x + size / 2, cy = y + size / 2, step = ((size / 2) * 0.9) / MAX_CIRCLES;
             ctx.beginPath();
-            for (let i = 0; i < numCircles; i++) {
-                const radius = step * (MAX_CIRCLES - i);
-                ctx.moveTo(cx + radius, cy);
-                ctx.arc(cx, cy, radius, 0, Math.PI * 2);
-            }
+            for (let i = 0; i < numCircles; i++) ctx.arc(cx, cy, step * (MAX_CIRCLES - i), 0, Math.PI * 2);
             ctx.stroke();
         }
     }
@@ -464,126 +564,76 @@
     function renderHatched(ctx, x, y, size, brightness, hue) {
         const MAX_LINES = parseInt(maxLinesSlider.value, 10);
         const angleOffset = parseInt(angleOffsetSlider.value, 10);
-        
-        // Map Brightness: 255 -> 1 line, 0 -> MAX_LINES
-        const normalizedBright = brightness / 255;
-        let numLines = Math.floor( (1 - normalizedBright) * (MAX_LINES - 1) ) + 1;
-        
-        const cx = x + size / 2;
-        const cy = y + size / 2;
-
+        let numLines = Math.floor( (1 - (brightness / 255)) * (MAX_LINES - 1) ) + 1;
+        const cx = x + size / 2, cy = y + size / 2;
         ctx.save();
-        
-        // Clip to the square to prevent bleeding
-        ctx.beginPath();
-        ctx.rect(x, y, size, size);
-        ctx.clip();
-
-        ctx.translate(cx, cy);
-        ctx.rotate((hue + angleOffset) * Math.PI / 180);
-
-        // Draw parallel lines
-        // We draw them centered on the rotated axis
-        const totalHeight = size * 0.9; // Cover most of the tile
-        const spacing = totalHeight / (numLines + 1);
-
+        ctx.beginPath(); ctx.rect(x, y, size, size); ctx.clip();
+        ctx.translate(cx, cy); ctx.rotate((hue + angleOffset) * Math.PI / 180);
+        const spacing = (size * 0.9) / (numLines + 1), lineLen = size * 1.5;
         ctx.beginPath();
         for (let i = 0; i < numLines; i++) {
-            // Calculate Y offset relative to center
             const yOffset = (i - (numLines - 1) / 2) * spacing;
-            
-            // Draw line long enough to cover diagonal rotation
-            const lineLen = size * 1.5; 
-            ctx.moveTo(-lineLen / 2, yOffset);
-            ctx.lineTo(lineLen / 2, yOffset);
+            ctx.moveTo(-lineLen / 2, yOffset); ctx.lineTo(lineLen / 2, yOffset);
         }
         ctx.stroke();
-
         ctx.restore();
     }
-
 
     /**
      * SVG Export
      */
     function generateAndDownloadSVG() {
         if (!currentImage) return;
+        let svgContent = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${CANVAS_WIDTH} ${CANVAS_HEIGHT}" width="11in" height="8.5in"><rect width="100%" height="100%" fill="white"/>`;
 
-        const sampleSize = parseInt(resolutionSlider.value, 10);
-        
-        // Re-process for data access
-        const offCanvas = document.createElement('canvas');
-        offCanvas.width = CANVAS_WIDTH;
-        offCanvas.height = CANVAS_HEIGHT;
-        const offCtx = offCanvas.getContext('2d');
-        
-        const scale = Math.max(CANVAS_WIDTH / currentImage.width, CANVAS_HEIGHT / currentImage.height);
-        const drawW = currentImage.width * scale;
-        const drawH = currentImage.height * scale;
-        offCtx.fillStyle = '#FFFFFF';
-        offCtx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
-        offCtx.drawImage(currentImage, (CANVAS_WIDTH - drawW)/2, (CANVAS_HEIGHT - drawH)/2, drawW, drawH);
-        const imgData = offCtx.getImageData(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
+        if (currentMode === 'edges') {
+            // Render thinned points as tiny rectangles for SVG robustness
+            for (const p of thinnedPoints) {
+                svgContent += `<rect x="${p.x}" y="${p.y}" width="1" height="1" fill="black" />`;
+            }
+        } else {
+            // Grid based rendering for SVG
+            const sampleSize = parseInt(resolutionSlider.value, 10);
+            // Re-grab image data (omitted reuse for brevity, assuming processImage ran recently is okay for this demo)
+            const offCanvas = document.createElement('canvas'); offCanvas.width = CANVAS_WIDTH; offCanvas.height = CANVAS_HEIGHT;
+            const offCtx = offCanvas.getContext('2d');
+            const scale = Math.max(CANVAS_WIDTH / currentImage.width, CANVAS_HEIGHT / currentImage.height);
+            const drawW = currentImage.width * scale; const drawH = currentImage.height * scale;
+            offCtx.fillStyle = '#FFFFFF'; offCtx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
+            offCtx.drawImage(currentImage, (CANVAS_WIDTH - drawW)/2, (CANVAS_HEIGHT - drawH)/2, drawW, drawH);
+            const imgData = offCtx.getImageData(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
 
-        let svgContent = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${CANVAS_WIDTH} ${CANVAS_HEIGHT}" width="11in" height="8.5in">`;
-        svgContent += `<rect width="100%" height="100%" fill="white"/>`;
+            for (let y = 0; y < CANVAS_HEIGHT; y += sampleSize) {
+                for (let x = 0; x < CANVAS_WIDTH; x += sampleSize) {
+                    const stats = getSampleStats(imgData, x, y, sampleSize, CANVAS_WIDTH, CANVAS_HEIGHT);
+                    const cx = x + sampleSize / 2, cy = y + sampleSize / 2;
 
-        // SVG Generation Loop
-        for (let y = 0; y < CANVAS_HEIGHT; y += sampleSize) {
-            for (let x = 0; x < CANVAS_WIDTH; x += sampleSize) {
-                const stats = getSampleStats(imgData, x, y, sampleSize, CANVAS_WIDTH, CANVAS_HEIGHT);
-
-                if (currentMode === 'concentrics') {
-                    const darkness = 1 - (stats.brightness / 255);
-                    const numCircles = Math.round(darkness * 5); // Hardcoded 5 for concentrics
-                    
-                    if (numCircles > 0) {
-                        const cx = x + sampleSize / 2;
-                        const cy = y + sampleSize / 2;
-                        const maxRadius = (sampleSize / 2) * 0.9;
-                        const step = maxRadius / 5;
-
-                        for (let i = 0; i < numCircles; i++) {
-                            const radius = step * (5 - i);
-                            svgContent += `<circle cx="${cx}" cy="${cy}" r="${radius}" fill="none" stroke="black" stroke-width="1" />`;
+                    if (currentMode === 'concentrics') {
+                        const numCircles = Math.round((1 - (stats.brightness / 255)) * 5);
+                        if (numCircles > 0) {
+                            const step = ((sampleSize / 2) * 0.9) / 5;
+                            for (let i = 0; i < numCircles; i++) svgContent += `<circle cx="${cx}" cy="${cy}" r="${step * (5 - i)}" fill="none" stroke="black" stroke-width="1" />`;
                         }
+                    } else if (currentMode === 'hatched') {
+                        const maxLines = parseInt(maxLinesSlider.value, 10);
+                        const angleOffset = parseInt(angleOffsetSlider.value, 10);
+                        let numLines = Math.floor( (1 - (stats.brightness / 255)) * (maxLines - 1) ) + 1;
+                        const spacing = (sampleSize * 0.9) / (numLines + 1);
+                        svgContent += `<g transform="translate(${cx}, ${cy}) rotate(${stats.hue + angleOffset})">`;
+                        for (let i = 0; i < numLines; i++) {
+                            const yOffset = (i - (numLines - 1) / 2) * spacing;
+                            svgContent += `<line x1="${-sampleSize/2}" y1="${yOffset}" x2="${sampleSize/2}" y2="${yOffset}" stroke="black" stroke-width="1" />`;
+                        }
+                        svgContent += `</g>`;
                     }
-                } 
-                else if (currentMode === 'hatched') {
-                    const maxLines = parseInt(maxLinesSlider.value, 10);
-                    const angleOffset = parseInt(angleOffsetSlider.value, 10);
-                    const normalizedBright = stats.brightness / 255;
-                    let numLines = Math.floor( (1 - normalizedBright) * (maxLines - 1) ) + 1;
-
-                    const cx = x + sampleSize / 2;
-                    const cy = y + sampleSize / 2;
-                    const totalHeight = sampleSize * 0.9;
-                    const spacing = totalHeight / (numLines + 1);
-                    const lineLen = sampleSize * 1.5; // Excess length
-                    
-                    // Group with transform for rotation
-                    svgContent += `<g transform="translate(${cx}, ${cy}) rotate(${stats.hue + angleOffset})">`;
-                    
-                    for (let i = 0; i < numLines; i++) {
-                        const yOffset = (i - (numLines - 1) / 2) * spacing;
-                        svgContent += `<line x1="${-sampleSize/2}" y1="${yOffset}" x2="${sampleSize/2}" y2="${yOffset}" stroke="black" stroke-width="1" />`;
-                    }
-                    svgContent += `</g>`;
                 }
             }
         }
-
         svgContent += `</svg>`;
-
         const blob = new Blob([svgContent], { type: 'image/svg+xml' });
         const url = URL.createObjectURL(blob);
-        const link = document.createElement('a');
-        link.href = url;
-        link.download = `vector-${currentMode}.svg`;
-        document.body.appendChild(link);
-        link.click();
-        document.body.removeChild(link);
-        URL.revokeObjectURL(url);
+        const link = document.createElement('a'); link.href = url; link.download = `vector-${currentMode}.svg`;
+        document.body.appendChild(link); link.click(); document.body.removeChild(link); URL.revokeObjectURL(url);
     }
 </script>
 </body>

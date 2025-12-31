@@ -3,12 +3,13 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Concentric Circle Vectorizer</title>
+    <title>Vector Art Generator</title>
     <style>
         :root {
-            --bg-color: #f0f0f0;
-            --accent-color: #333;
-            --paper-ratio: calc(11 / 8.5);
+            --bg-color: #f4f4f9;
+            --accent-color: #2c3e50;
+            --active-tab-color: #ffffff;
+            --inactive-tab-color: #e0e0e0;
         }
 
         body {
@@ -21,6 +22,7 @@
             min-height: 100vh;
             padding: 20px;
             box-sizing: border-box;
+            color: #333;
         }
 
         header {
@@ -29,37 +31,94 @@
         }
 
         h1 {
-            margin: 0 0 10px 0;
+            margin: 0 0 5px 0;
             color: var(--accent-color);
         }
 
-        .controls {
+        /* --- Tabs --- */
+        .tab-container {
+            width: 100%;
+            max-width: 800px;
+            display: flex;
+            margin-bottom: 0;
+        }
+
+        .tab {
+            flex: 1;
+            padding: 12px;
+            text-align: center;
+            background-color: var(--inactive-tab-color);
+            cursor: pointer;
+            font-weight: 600;
+            border-top-left-radius: 8px;
+            border-top-right-radius: 8px;
+            margin-right: 2px;
+            transition: background 0.2s;
+            color: #666;
+        }
+
+        .tab:last-child {
+            margin-right: 0;
+        }
+
+        .tab.active {
+            background-color: white;
+            color: var(--accent-color);
+            box-shadow: 0 -2px 5px rgba(0,0,0,0.05);
+        }
+
+        /* --- Controls --- */
+        .controls-wrapper {
             background: white;
-            padding: 15px 25px;
-            border-radius: 8px;
+            width: 100%;
+            max-width: 800px;
+            padding: 20px;
+            border-bottom-left-radius: 8px;
+            border-bottom-right-radius: 8px;
             box-shadow: 0 2px 10px rgba(0,0,0,0.1);
             margin-bottom: 20px;
+            box-sizing: border-box;
+        }
+
+        .controls {
             display: flex;
             gap: 20px;
             align-items: center;
             flex-wrap: wrap;
+            justify-content: center;
         }
 
         .control-group {
             display: flex;
             flex-direction: column;
             gap: 5px;
+            min-width: 150px;
+        }
+
+        .mode-controls {
+            display: flex;
+            gap: 20px;
+            border-left: 1px solid #ddd;
+            padding-left: 20px;
         }
 
         label {
-            font-size: 0.85rem;
-            font-weight: 600;
-            color: #666;
+            font-size: 0.8rem;
+            font-weight: 700;
+            color: #555;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
         }
 
         input[type="range"] {
-            width: 200px;
+            width: 100%;
             cursor: pointer;
+        }
+
+        .buttons {
+            margin-left: auto;
+            display: flex;
+            gap: 10px;
         }
 
         button {
@@ -68,13 +127,14 @@
             border: none;
             padding: 10px 20px;
             border-radius: 4px;
-            font-size: 1rem;
+            font-size: 0.9rem;
+            font-weight: 600;
             cursor: pointer;
             transition: background 0.2s;
         }
 
         button:hover {
-            background-color: #555;
+            background-color: #445D75;
         }
 
         button:disabled {
@@ -82,11 +142,12 @@
             cursor: not-allowed;
         }
 
+        /* --- Canvas --- */
         #drop-zone {
             position: relative;
             width: 100%;
             max-width: 1100px;
-            /* Maintain 11:8.5 aspect ratio via padding-bottom hack */
+            /* 11:8.5 Aspect Ratio */
             aspect-ratio: 11 / 8.5;
             background-color: white;
             border: 2px dashed #ccc;
@@ -100,7 +161,7 @@
 
         #drop-zone.dragover {
             border-color: var(--accent-color);
-            background-color: #e8e8e8;
+            background-color: #eef2f5;
         }
 
         canvas {
@@ -109,7 +170,6 @@
             left: 0;
             width: 100%;
             height: 100%;
-            object-fit: contain;
         }
 
         .instruction {
@@ -118,34 +178,51 @@
             color: #999;
             font-size: 1.2rem;
             text-align: center;
+            line-height: 1.5;
         }
 
         .hidden {
             display: none !important;
         }
-
     </style>
 </head>
 <body>
 
     <header>
-        <h1>Image to Concentric Vectors</h1>
-        <p>Drop an image below to convert it to 11x8.5 vector art.</p>
+        <h1>Vector Art Generator</h1>
+        <p>Convert images to 11x8.5" plotter-friendly vector art.</p>
     </header>
 
-    <div class="controls">
-        <div class="control-group">
-            <label for="resolution">Grid Resolution (Sample Size)</label>
-            <input type="range" id="resolution" min="5" max="50" value="12">
+    <div class="tab-container">
+        <div class="tab active" data-mode="concentrics">Concentrics</div>
+        <div class="tab" data-mode="hatched">Hatched</div>
+    </div>
+
+    <div class="controls-wrapper">
+        <div class="controls">
+            <div class="control-group">
+                <label for="resolution">Grid Size (Sample)</label>
+                <input type="range" id="resolution" min="5" max="50" value="12">
+            </div>
+
+            <div id="hatched-controls" class="mode-controls hidden">
+                <div class="control-group">
+                    <label for="max-lines">Max Density (Lines)</label>
+                    <input type="range" id="max-lines" min="2" max="20" value="8">
+                </div>
+            </div>
+
+            <div class="buttons">
+                <button id="download-btn" disabled>Download SVG</button>
+                <button id="clear-btn" disabled>Clear</button>
+            </div>
         </div>
-        <button id="download-btn" disabled>Download SVG</button>
-        <button id="clear-btn" disabled>Clear</button>
     </div>
 
     <div id="drop-zone">
         <div class="instruction">
             Drag & Drop an Image Here<br>
-            (or click to upload)
+            <span style="font-size: 0.9rem">(or click to browse)</span>
         </div>
         <input type="file" id="file-input" accept="image/*" class="hidden">
         <canvas id="output-canvas"></canvas>
@@ -155,58 +232,80 @@
     /**
      * Configuration & State
      */
-    const CANVAS_WIDTH = 1100; // Represents 11 inches
-    const CANVAS_HEIGHT = 850; // Represents 8.5 inches
-    const MAX_CIRCLES = 5;
+    const CANVAS_WIDTH = 1100; 
+    const CANVAS_HEIGHT = 850; 
+    
+    // Algorithm State
+    let currentMode = 'concentrics'; // 'concentrics' or 'hatched'
+    let currentImage = null;
 
+    // DOM Elements
     const dropZone = document.getElementById('drop-zone');
     const fileInput = document.getElementById('file-input');
     const canvas = document.getElementById('output-canvas');
     const ctx = canvas.getContext('2d');
+    
+    // UI Elements
+    const tabs = document.querySelectorAll('.tab');
+    const resolutionSlider = document.getElementById('resolution');
+    const maxLinesSlider = document.getElementById('max-lines');
+    const hatchedControls = document.getElementById('hatched-controls');
+    
     const downloadBtn = document.getElementById('download-btn');
     const clearBtn = document.getElementById('clear-btn');
-    const resolutionSlider = document.getElementById('resolution');
     const instruction = dropZone.querySelector('.instruction');
 
-    let currentImage = null;
-
-    // Initialize Canvas Resolution
+    // Initialize
     canvas.width = CANVAS_WIDTH;
     canvas.height = CANVAS_HEIGHT;
 
     /**
      * Event Listeners
      */
+    
+    // Tab Switching
+    tabs.forEach(tab => {
+        tab.addEventListener('click', () => {
+            // UI Update
+            tabs.forEach(t => t.classList.remove('active'));
+            tab.classList.add('active');
+            
+            // Logic Update
+            currentMode = tab.dataset.mode;
+            
+            // Toggle Specific Controls
+            if (currentMode === 'hatched') {
+                hatchedControls.classList.remove('hidden');
+            } else {
+                hatchedControls.classList.add('hidden');
+            }
+
+            // Re-render
+            if (currentImage) processImage();
+        });
+    });
+
+    // Control Updates
+    resolutionSlider.addEventListener('input', () => { if (currentImage) processImage(); });
+    maxLinesSlider.addEventListener('input', () => { if (currentImage) processImage(); });
+
     // Drag & Drop
-    dropZone.addEventListener('dragover', (e) => {
-        e.preventDefault();
-        dropZone.classList.add('dragover');
-    });
-
-    dropZone.addEventListener('dragleave', () => {
-        dropZone.classList.remove('dragover');
-    });
-
+    dropZone.addEventListener('dragover', (e) => { e.preventDefault(); dropZone.classList.add('dragover'); });
+    dropZone.addEventListener('dragleave', () => { dropZone.classList.remove('dragover'); });
     dropZone.addEventListener('drop', (e) => {
         e.preventDefault();
         dropZone.classList.remove('dragover');
         const file = e.dataTransfer.files[0];
-        if (file && file.type.startsWith('image/')) {
-            loadImage(file);
-        }
+        if (file && file.type.startsWith('image/')) loadImage(file);
     });
 
-    // Click to Upload
+    // File Input
     dropZone.addEventListener('click', () => fileInput.click());
     fileInput.addEventListener('change', (e) => {
         if (e.target.files[0]) loadImage(e.target.files[0]);
     });
 
-    // Controls
-    resolutionSlider.addEventListener('input', () => {
-        if (currentImage) processImage();
-    });
-
+    // Buttons
     clearBtn.addEventListener('click', () => {
         currentImage = null;
         ctx.clearRect(0, 0, canvas.width, canvas.height);
@@ -215,12 +314,13 @@
         clearBtn.disabled = true;
         fileInput.value = '';
     });
-
     downloadBtn.addEventListener('click', generateAndDownloadSVG);
+
 
     /**
      * Logic
      */
+
     function loadImage(file) {
         const reader = new FileReader();
         reader.onload = (e) => {
@@ -242,135 +342,242 @@
 
         const sampleSize = parseInt(resolutionSlider.value, 10);
         
-        // 1. Draw image to offscreen canvas to extract pixel data
-        // We scale the image to fit the 11x8.5 canvas first ("cover" style)
+        // 1. Prepare Image Data
+        const offCanvas = document.createElement('canvas');
+        offCanvas.width = CANVAS_WIDTH;
+        offCanvas.height = CANVAS_HEIGHT;
+        const offCtx = offCanvas.getContext('2d');
+        
         const scale = Math.max(CANVAS_WIDTH / currentImage.width, CANVAS_HEIGHT / currentImage.height);
         const drawW = currentImage.width * scale;
         const drawH = currentImage.height * scale;
         const offsetX = (CANVAS_WIDTH - drawW) / 2;
         const offsetY = (CANVAS_HEIGHT - drawH) / 2;
 
-        const offCanvas = document.createElement('canvas');
-        offCanvas.width = CANVAS_WIDTH;
-        offCanvas.height = CANVAS_HEIGHT;
-        const offCtx = offCanvas.getContext('2d');
-        
-        // Fill white first
         offCtx.fillStyle = '#FFFFFF';
         offCtx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
         offCtx.drawImage(currentImage, offsetX, offsetY, drawW, drawH);
-
+        
         const imgData = offCtx.getImageData(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
         
-        // 2. Clear Display Canvas
+        // 2. Clear & Setup Output
         ctx.clearRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
         ctx.fillStyle = '#FFFFFF';
         ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
         ctx.strokeStyle = '#000000';
         ctx.lineWidth = 1;
 
-        // 3. Grid Sampling
-        // Loop through the grid
+        // 3. Render Loop
         for (let y = 0; y < CANVAS_HEIGHT; y += sampleSize) {
             for (let x = 0; x < CANVAS_WIDTH; x += sampleSize) {
                 
-                const brightness = getAverageBrightness(imgData, x, y, sampleSize, CANVAS_WIDTH, CANVAS_HEIGHT);
+                const stats = getSampleStats(imgData, x, y, sampleSize, CANVAS_WIDTH, CANVAS_HEIGHT);
                 
-                // Map Brightness (0-255) to Circles (5-0)
-                // 0 (Black) -> 5 circles
-                // 255 (White) -> 0 circles
-                const darkness = 1 - (brightness / 255); 
-                const numCircles = Math.round(darkness * MAX_CIRCLES);
-
-                if (numCircles > 0) {
-                    drawConcentricCircles(ctx, x + sampleSize/2, y + sampleSize/2, sampleSize, numCircles);
+                if (currentMode === 'concentrics') {
+                    renderConcentric(ctx, x, y, sampleSize, stats.brightness);
+                } else if (currentMode === 'hatched') {
+                    renderHatched(ctx, x, y, sampleSize, stats.brightness, stats.hue);
                 }
             }
         }
     }
 
-    function getAverageBrightness(imgData, startX, startY, sampleSize, width, height) {
-        let sum = 0;
-        let count = 0;
+    // --- Stats Calculation ---
+
+    function getSampleStats(imgData, startX, startY, sampleSize, width, height) {
+        let rSum = 0, gSum = 0, bSum = 0, count = 0;
         const data = imgData.data;
 
         for (let y = startY; y < startY + sampleSize && y < height; y++) {
             for (let x = startX; x < startX + sampleSize && x < width; x++) {
                 const i = (y * width + x) * 4;
-                // Standard Luma formula: 0.299R + 0.587G + 0.114B
-                const luma = 0.299 * data[i] + 0.587 * data[i + 1] + 0.114 * data[i + 2];
-                sum += luma;
+                rSum += data[i];
+                gSum += data[i + 1];
+                bSum += data[i + 2];
                 count++;
             }
         }
-        return count === 0 ? 255 : sum / count;
-    }
-
-    function drawConcentricCircles(context, cx, cy, size, count) {
-        const maxRadius = (size / 2) * 0.9; // 0.9 for a little padding
-        const step = maxRadius / MAX_CIRCLES;
         
-        context.beginPath();
-        for (let i = 0; i < count; i++) {
-            // Calculate radius. 
-            // We want the circles to be distinct. 
-            // If count is 1, draw the smallest circle? Or the largest? 
-            // Usually "darker" means "more ink", so we draw circles 1 through N.
-            // Let's draw the N largest circles or N smallest? 
-            // Concentric usually implies filling from outside in or inside out.
-            // To make it look "darker", we should just add more rings.
-            // Let's draw rings with radii based on steps.
-            
-            // Approach: Draw the 5 possible rings. 
-            // If count is 1, draw the innermost? Or outermost?
-            // Visually, drawing evenly spaced rings accumulates density better.
-            
-            const radius = step * (MAX_CIRCLES - i); // Draw outside in
-            context.moveTo(cx + radius, cy);
-            context.arc(cx, cy, radius, 0, Math.PI * 2);
-        }
-        context.stroke();
+        if (count === 0) return { brightness: 255, hue: 0 };
+
+        const r = Math.round(rSum / count);
+        const g = Math.round(gSum / count);
+        const b = Math.round(bSum / count);
+
+        // Brightness (Luma)
+        const brightness = 0.299 * r + 0.587 * g + 0.114 * b;
+
+        // Hue
+        const hue = rgbToHue(r, g, b);
+
+        return { brightness, hue };
     }
 
+    function rgbToHue(r, g, b) {
+        r /= 255; g /= 255; b /= 255;
+        const max = Math.max(r, g, b), min = Math.min(r, g, b);
+        let h = 0;
+
+        if (max === min) {
+            h = 0; // achromatic
+        } else {
+            const d = max - min;
+            switch (max) {
+                case r: h = (g - b) / d + (g < b ? 6 : 0); break;
+                case g: h = (b - r) / d + 2; break;
+                case b: h = (r - g) / d + 4; break;
+            }
+            h /= 6;
+        }
+        return h * 360;
+    }
+
+    // --- Renderers ---
+
+    function renderConcentric(ctx, x, y, size, brightness) {
+        const MAX_CIRCLES = 5;
+        const darkness = 1 - (brightness / 255);
+        const numCircles = Math.round(darkness * MAX_CIRCLES);
+        
+        if (numCircles > 0) {
+            const cx = x + size / 2;
+            const cy = y + size / 2;
+            const maxRadius = (size / 2) * 0.9;
+            const step = maxRadius / MAX_CIRCLES;
+            
+            ctx.beginPath();
+            for (let i = 0; i < numCircles; i++) {
+                const radius = step * (MAX_CIRCLES - i);
+                ctx.moveTo(cx + radius, cy);
+                ctx.arc(cx, cy, radius, 0, Math.PI * 2);
+            }
+            ctx.stroke();
+        }
+    }
+
+    function renderHatched(ctx, x, y, size, brightness, hue) {
+        const MAX_LINES = parseInt(maxLinesSlider.value, 10);
+        
+        // Map Brightness: 255 -> 1 line, 0 -> MAX_LINES
+        const normalizedBright = brightness / 255;
+        let numLines = Math.floor( (1 - normalizedBright) * (MAX_LINES - 1) ) + 1;
+        
+        // If it's pure white, maybe we want 0 lines? 
+        // Prompt said "Brightest samples should just have a single line".
+        // But pure white usually implies empty space. I'll stick to prompt (1 line) 
+        // unless it's extremely bright (250+), but prompt logic takes precedence.
+        
+        const cx = x + size / 2;
+        const cy = y + size / 2;
+
+        ctx.save();
+        
+        // Clip to the square to prevent bleeding
+        ctx.beginPath();
+        ctx.rect(x, y, size, size);
+        ctx.clip();
+
+        ctx.translate(cx, cy);
+        ctx.rotate(hue * Math.PI / 180);
+
+        // Draw parallel lines
+        // We draw them centered on the rotated axis
+        const totalHeight = size * 0.9; // Cover most of the tile
+        const spacing = totalHeight / (numLines + 1);
+
+        ctx.beginPath();
+        for (let i = 0; i < numLines; i++) {
+            // Calculate Y offset relative to center
+            // e.g. if 1 line, y=0. If 2 lines, y = -spacing/2, +spacing/2
+            const yOffset = (i - (numLines - 1) / 2) * spacing;
+            
+            // Draw line long enough to cover diagonal rotation
+            const lineLen = size * 1.5; 
+            ctx.moveTo(-lineLen / 2, yOffset);
+            ctx.lineTo(lineLen / 2, yOffset);
+        }
+        ctx.stroke();
+
+        ctx.restore();
+    }
+
+
+    /**
+     * SVG Export
+     */
     function generateAndDownloadSVG() {
         if (!currentImage) return;
 
         const sampleSize = parseInt(resolutionSlider.value, 10);
-        // Re-process image data for SVG generation (redundant but cleaner code separation)
-        const scale = Math.max(CANVAS_WIDTH / currentImage.width, CANVAS_HEIGHT / currentImage.height);
-        const drawW = currentImage.width * scale;
-        const drawH = currentImage.height * scale;
-        const offsetX = (CANVAS_WIDTH - drawW) / 2;
-        const offsetY = (CANVAS_HEIGHT - drawH) / 2;
-
+        
+        // Re-process for data access
         const offCanvas = document.createElement('canvas');
         offCanvas.width = CANVAS_WIDTH;
         offCanvas.height = CANVAS_HEIGHT;
         const offCtx = offCanvas.getContext('2d');
+        
+        const scale = Math.max(CANVAS_WIDTH / currentImage.width, CANVAS_HEIGHT / currentImage.height);
+        const drawW = currentImage.width * scale;
+        const drawH = currentImage.height * scale;
         offCtx.fillStyle = '#FFFFFF';
         offCtx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
-        offCtx.drawImage(currentImage, offsetX, offsetY, drawW, drawH);
+        offCtx.drawImage(currentImage, (CANVAS_WIDTH - drawW)/2, (CANVAS_HEIGHT - drawH)/2, drawW, drawH);
         const imgData = offCtx.getImageData(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
 
         let svgContent = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${CANVAS_WIDTH} ${CANVAS_HEIGHT}" width="11in" height="8.5in">`;
         svgContent += `<rect width="100%" height="100%" fill="white"/>`;
 
+        // SVG Generation Loop
         for (let y = 0; y < CANVAS_HEIGHT; y += sampleSize) {
             for (let x = 0; x < CANVAS_WIDTH; x += sampleSize) {
-                const brightness = getAverageBrightness(imgData, x, y, sampleSize, CANVAS_WIDTH, CANVAS_HEIGHT);
-                const darkness = 1 - (brightness / 255);
-                const numCircles = Math.round(darkness * MAX_CIRCLES);
+                const stats = getSampleStats(imgData, x, y, sampleSize, CANVAS_WIDTH, CANVAS_HEIGHT);
 
-                if (numCircles > 0) {
+                if (currentMode === 'concentrics') {
+                    const darkness = 1 - (stats.brightness / 255);
+                    const numCircles = Math.round(darkness * 5); // Hardcoded 5 for concentrics
+                    
+                    if (numCircles > 0) {
+                        const cx = x + sampleSize / 2;
+                        const cy = y + sampleSize / 2;
+                        const maxRadius = (sampleSize / 2) * 0.9;
+                        const step = maxRadius / 5;
+
+                        for (let i = 0; i < numCircles; i++) {
+                            const radius = step * (5 - i);
+                            svgContent += `<circle cx="${cx}" cy="${cy}" r="${radius}" fill="none" stroke="black" stroke-width="1" />`;
+                        }
+                    }
+                } 
+                else if (currentMode === 'hatched') {
+                    const maxLines = parseInt(maxLinesSlider.value, 10);
+                    const normalizedBright = stats.brightness / 255;
+                    let numLines = Math.floor( (1 - normalizedBright) * (maxLines - 1) ) + 1;
+
                     const cx = x + sampleSize / 2;
                     const cy = y + sampleSize / 2;
-                    const maxRadius = (sampleSize / 2) * 0.9;
-                    const step = maxRadius / MAX_CIRCLES;
-
-                    for (let i = 0; i < numCircles; i++) {
-                        const radius = step * (MAX_CIRCLES - i);
-                        svgContent += `<circle cx="${cx}" cy="${cy}" r="${radius}" fill="none" stroke="black" stroke-width="1" />`;
+                    const totalHeight = sampleSize * 0.9;
+                    const spacing = totalHeight / (numLines + 1);
+                    const lineLen = sampleSize * 1.5; // Excess length
+                    
+                    // Group with transform for rotation
+                    // Note: SVG rotation is rotate(deg, cx, cy) or translate+rotate
+                    // We use translate to center, rotate, then draw lines around 0,0
+                    svgContent += `<g transform="translate(${cx}, ${cy}) rotate(${stats.hue})">`;
+                    
+                    // Optional: Add clipping rect for cleaner SVG?
+                    // Adding clip-paths for every cell increases SVG size massively. 
+                    // We will skip clipping for SVG to keep it lightweight, 
+                    // or we can assume the aesthetic allows lines to float.
+                    // To keep it strict, we can clip. 
+                    // Let's rely on the visual density rather than strict clipping for file size.
+                    
+                    for (let i = 0; i < numLines; i++) {
+                        const yOffset = (i - (numLines - 1) / 2) * spacing;
+                        // To keep SVG clean, we clamp line length to sampleSize so they don't bleed too much
+                        // or we use the calculated length.
+                         svgContent += `<line x1="${-sampleSize/2}" y1="${yOffset}" x2="${sampleSize/2}" y2="${yOffset}" stroke="black" stroke-width="1" />`;
                     }
+                    svgContent += `</g>`;
                 }
             }
         }
@@ -381,7 +588,7 @@
         const url = URL.createObjectURL(blob);
         const link = document.createElement('a');
         link.href = url;
-        link.download = 'vector-art.svg';
+        link.download = `vector-${currentMode}.svg`;
         document.body.appendChild(link);
         link.click();
         document.body.removeChild(link);

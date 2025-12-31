@@ -10,6 +10,8 @@
             --accent-color: #2c3e50;
             --active-tab-color: #ffffff;
             --inactive-tab-color: #e0e0e0;
+            --status-green: #2ecc71;
+            --status-red: #e74c3c;
         }
 
         body {
@@ -102,12 +104,27 @@
             padding-left: 20px;
         }
 
-        /* New styles for stats display */
+        /* Stats Display */
         .stats-display {
             font-variant-numeric: tabular-nums;
             font-weight: 600;
             color: var(--accent-color);
+            display: flex;
+            align-items: center;
+            gap: 8px;
         }
+
+        /* Status Indicator Dot */
+        .status-dot {
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            background-color: #ccc; /* Default grey */
+            display: inline-block;
+            transition: background-color 0.3s;
+        }
+        .status-dot.ok { background-color: var(--status-green); }
+        .status-dot.limit { background-color: var(--status-red); }
 
         label {
             font-size: 0.8rem;
@@ -230,7 +247,10 @@
                     <input type="range" id="edge-threshold" min="10" max="200" value="80">
                 </div>
                  <div class="control-group" style="justify-content: center;">
-                    <span class="stats-display">Line Count: <span id="line-count">0</span></span>
+                    <span class="stats-display">
+                        Line Count: <span id="line-count">0</span>
+                        <div id="status-indicator" class="status-dot" title="Green: OK, Red: Limit Reached"></div>
+                    </span>
                 </div>
             </div>
 
@@ -257,11 +277,12 @@
      */
     const CANVAS_WIDTH = 1100; 
     const CANVAS_HEIGHT = 850; 
+    const MAX_EDGE_POINTS = 20000;
     
     // Algorithm State
     let currentMode = 'concentrics'; // 'concentrics', 'hatched', 'edges'
     let currentImage = null;
-    let thinnedPoints = []; // Store computed edge points
+    let thinnedPoints = []; 
 
     // DOM Elements
     const dropZone = document.getElementById('drop-zone');
@@ -279,6 +300,7 @@
     const edgesControls = document.getElementById('edges-controls');
     const edgeThresholdSlider = document.getElementById('edge-threshold');
     const lineCountDisplay = document.getElementById('line-count');
+    const statusIndicator = document.getElementById('status-indicator');
     
     const downloadBtn = document.getElementById('download-btn');
     const clearBtn = document.getElementById('clear-btn');
@@ -292,17 +314,12 @@
      * Event Listeners
      */
     
-    // Tab Switching
     tabs.forEach(tab => {
         tab.addEventListener('click', () => {
-            // UI Update
             tabs.forEach(t => t.classList.remove('active'));
             tab.classList.add('active');
-            
-            // Logic Update
             currentMode = tab.dataset.mode;
             
-            // Toggle Specific Controls
             hatchedControls.classList.add('hidden');
             edgesControls.classList.add('hidden');
             globalControls.classList.remove('hidden');
@@ -311,28 +328,24 @@
                 hatchedControls.classList.remove('hidden');
             } else if (currentMode === 'edges') {
                 edgesControls.classList.remove('hidden');
-                globalControls.classList.add('hidden'); // Grid size irrelevant for edges
+                globalControls.classList.add('hidden');
             }
 
-            // Re-render
             if (currentImage) processImage();
         });
     });
 
-    // Control Updates
     resolutionSlider.addEventListener('input', () => { if (currentImage && currentMode !== 'edges') processImage(); });
     maxLinesSlider.addEventListener('input', () => { if (currentImage && currentMode === 'hatched') processImage(); });
     angleOffsetSlider.addEventListener('input', () => { if (currentImage && currentMode === 'hatched') processImage(); });
-    edgeThresholdSlider.addEventListener('change', () => { if (currentImage && currentMode === 'edges') processImage(); }); // Use 'change' for expensive edge op
+    edgeThresholdSlider.addEventListener('change', () => { if (currentImage && currentMode === 'edges') processImage(); });
 
-    // Drag & Drop & File Input (Unchanged)
     dropZone.addEventListener('dragover', (e) => { e.preventDefault(); dropZone.classList.add('dragover'); });
     dropZone.addEventListener('dragleave', () => { dropZone.classList.remove('dragover'); });
     dropZone.addEventListener('drop', (e) => { e.preventDefault(); dropZone.classList.remove('dragover'); const file = e.dataTransfer.files[0]; if (file && file.type.startsWith('image/')) loadImage(file); });
     dropZone.addEventListener('click', () => fileInput.click());
     fileInput.addEventListener('change', (e) => { if (e.target.files[0]) loadImage(e.target.files[0]); });
 
-    // Buttons
     clearBtn.addEventListener('click', () => {
         currentImage = null;
         thinnedPoints = [];
@@ -342,6 +355,7 @@
         clearBtn.disabled = true;
         fileInput.value = '';
         lineCountDisplay.textContent = '0';
+        statusIndicator.className = 'status-dot';
     });
     downloadBtn.addEventListener('click', generateAndDownloadSVG);
 
@@ -369,7 +383,6 @@
     function processImage() {
         if (!currentImage) return;
 
-        // 1. Prepare Image Data & Clear Canvas
         const offCanvas = document.createElement('canvas');
         offCanvas.width = CANVAS_WIDTH; offCanvas.height = CANVAS_HEIGHT;
         const offCtx = offCanvas.getContext('2d');
@@ -383,11 +396,9 @@
         ctx.fillStyle = '#FFFFFF'; ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
         ctx.strokeStyle = '#000000'; ctx.lineWidth = 1; ctx.fillStyle = '#000000';
 
-        // 2. Branch based on mode
         if (currentMode === 'edges') {
             processEdgesMode(imgData);
         } else {
-            // Grid based modes
             const sampleSize = parseInt(resolutionSlider.value, 10);
             for (let y = 0; y < CANVAS_HEIGHT; y += sampleSize) {
                 for (let x = 0; x < CANVAS_WIDTH; x += sampleSize) {
@@ -405,29 +416,38 @@
     // --- EDGES PIPELINE ---
 
     function processEdgesMode(imgData) {
-        lineCountDisplay.textContent = "Processing...";
-        // Allow UI to update before heavy calculation
+        lineCountDisplay.textContent = "...";
+        statusIndicator.className = 'status-dot'; 
+        
         setTimeout(() => {
             const threshold = parseInt(edgeThresholdSlider.value, 10);
             const width = CANVAS_WIDTH;
             const height = CANVAS_HEIGHT;
 
-            // 1. Grayscale
             const grayPixels = getGrayscaleData(imgData, width, height);
-            // 2. Sobel Edge Detection & Thresholding to Binary
             const binaryPixels = applySobelAndThreshold(grayPixels, width, height, threshold);
-            // 3. Skeletonization (Thinning)
-            thinnedPoints = applyThinning(binaryPixels, width, height);
             
-            // 4. Render points
+            // Process thinning and get result object { points: [], limitReached: bool }
+            const result = applyThinning(binaryPixels, width, height);
+            thinnedPoints = result.points;
+            
             ctx.beginPath();
             for (const p of thinnedPoints) {
-                // Draw single pixel rectangles for robustness
                 ctx.rect(p.x, p.y, 1, 1);
             }
             ctx.fill();
 
             lineCountDisplay.textContent = thinnedPoints.length;
+            
+            // UI Feedback
+            if (result.limitReached) {
+                statusIndicator.className = 'status-dot limit';
+                statusIndicator.title = "Limit reached: Output truncated";
+            } else {
+                statusIndicator.className = 'status-dot ok';
+                statusIndicator.title = "All lines generated";
+            }
+
         }, 10);
     }
 
@@ -435,14 +455,13 @@
         const gray = new Uint8Array(w * h);
         const data = imgData.data;
         for (let i = 0; i < w * h; i++) {
-            // Luma conversion
             gray[i] = 0.299 * data[i * 4] + 0.587 * data[i * 4 + 1] + 0.114 * data[i * 4 + 2];
         }
         return gray;
     }
 
     function applySobelAndThreshold(gray, w, h, threshold) {
-        const binary = new Uint8Array(w * h); // 0 or 1
+        const binary = new Uint8Array(w * h); 
         const gx = [[-1, 0, 1], [-2, 0, 2], [-1, 0, 1]];
         const gy = [[-1, -2, -1], [0, 0, 0], [1, 2, 1]];
 
@@ -463,21 +482,17 @@
         return binary;
     }
 
-    // Zhang-Suen Thinning Algorithm
     function applyThinning(binary, w, h) {
         let pixels = Uint8Array.from(binary);
-        let framing = new Uint8Array(w * h); // To hold results of iter steps
+        let framing = new Uint8Array(w * h);
         let changed = true;
         const points = [];
-
-        // Helper to get pixel value safely
         const get = (arr, x, y) => (x >= 0 && x < w && y >= 0 && y < h) ? arr[y * w + x] : 0;
 
+        // Perform full thinning first (iterative morphological op)
         while (changed) {
             changed = false;
             framing.set(pixels);
-            
-            // Sub-iteration 1
             for (let y = 1; y < h - 1; y++) {
                 for (let x = 1; x < w - 1; x++) {
                     if (pixels[y * w + x] === 0) continue;
@@ -493,8 +508,6 @@
                 }
             }
             pixels.set(framing);
-
-            // Sub-iteration 2 (only if changes happened in step 1 or it's first run, but standard algo runs both)
             for (let y = 1; y < h - 1; y++) {
                 for (let x = 1; x < w - 1; x++) {
                     if (pixels[y * w + x] === 0) continue;
@@ -512,17 +525,27 @@
             pixels.set(framing);
         }
 
-        // Collect remaining pixels
+        // Collection Phase: Apply hard limit here
+        let limitReached = false;
         for (let y = 0; y < h; y++) {
             for (let x = 0; x < w; x++) {
-                if (pixels[y * w + x] === 1) points.push({x, y});
+                if (pixels[y * w + x] === 1) {
+                    if (points.length >= MAX_EDGE_POINTS) {
+                        limitReached = true;
+                        // Break out of both loops
+                        y = h; 
+                        break;
+                    }
+                    points.push({x, y});
+                }
             }
         }
-        return points;
+        
+        return { points, limitReached };
     }
 
 
-    // --- Grid Stats Calculation ---
+    // --- Grid Stats Calculation (Unchanged) ---
     function getSampleStats(imgData, startX, startY, sampleSize, width, height) {
         let rSum = 0, gSum = 0, bSum = 0, count = 0;
         const data = imgData.data;
@@ -549,7 +572,6 @@
         return h * 360;
     }
 
-    // --- Grid Renderers ---
     function renderConcentric(ctx, x, y, size, brightness) {
         const MAX_CIRCLES = 5;
         const numCircles = Math.round((1 - (brightness / 255)) * MAX_CIRCLES);
@@ -587,14 +609,11 @@
         let svgContent = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${CANVAS_WIDTH} ${CANVAS_HEIGHT}" width="11in" height="8.5in"><rect width="100%" height="100%" fill="white"/>`;
 
         if (currentMode === 'edges') {
-            // Render thinned points as tiny rectangles for SVG robustness
             for (const p of thinnedPoints) {
                 svgContent += `<rect x="${p.x}" y="${p.y}" width="1" height="1" fill="black" />`;
             }
         } else {
-            // Grid based rendering for SVG
             const sampleSize = parseInt(resolutionSlider.value, 10);
-            // Re-grab image data (omitted reuse for brevity, assuming processImage ran recently is okay for this demo)
             const offCanvas = document.createElement('canvas'); offCanvas.width = CANVAS_WIDTH; offCanvas.height = CANVAS_HEIGHT;
             const offCtx = offCanvas.getContext('2d');
             const scale = Math.max(CANVAS_WIDTH / currentImage.width, CANVAS_HEIGHT / currentImage.height);

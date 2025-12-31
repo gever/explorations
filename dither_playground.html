@@ -40,15 +40,19 @@
             border: 3px dashed #ccc;
             border-radius: 10px;
             width: 80%;
-            max-width: 1000px; /* Limit display width */
-            min-height: 200px;
+            max-width: 1000px;
+            /* Fixed height to act as a viewport for the zoomed image */
+            height: 600px; 
             display: flex;
             justify-content: center;
-            align-items: center;
+            /* Align-items removed so the large canvas doesn't get centered/clipped awkwardly */
             background-color: white;
             transition: all 0.3s ease;
             position: relative;
             padding: 10px;
+            
+            /* CHANGE 1: Enable scrolling for the zoomed image */
+            overflow: auto; 
         }
 
         #drop-zone.dragover {
@@ -61,14 +65,17 @@
             color: #888;
             font-size: 1.2rem;
             position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
             z-index: 10;
+            margin: 0;
         }
 
         canvas {
-            /* This ensures the image fits the container visually */
-            width: auto;
-            height: auto;
+            /* CHANGE 2: Removed 'width: 100%' so it doesn't auto-shrink */
             display: block;
+            flex-shrink: 0; /* Prevent flex container from squishing it */
             
             /* CRITICAL: This makes the pixels look blocky/sharp when scaled up */
             image-rendering: pixelated; 
@@ -90,7 +97,7 @@
             <option value="atkinson">Atkinson</option>
             <option value="none">None (Grayscale)</option>
         </select>
-        <span>(Long axis fixed to 640px)</span>
+        <span>(Long axis fixed to 640px, Display Zoom: 4x)</span>
     </div>
 
     <div id="drop-zone">
@@ -165,6 +172,10 @@
                 // Set internal canvas resolution to the small size (640px max)
                 canvas.width = w;
                 canvas.height = h;
+                
+                // CHANGE 3: Force the CSS display size to be exactly 4x the pixel dimensions
+                canvas.style.width = (w * 4) + 'px';
+                canvas.style.height = (h * 4) + 'px';
                 
                 // Draw image downscaled
                 ctx.drawImage(img, 0, 0, w, h);

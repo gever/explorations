@@ -220,7 +220,7 @@
     <div class="tab-container">
         <div class="tab active" data-mode="concentrics">Concentrics</div>
         <div class="tab" data-mode="hatched">Hatched</div>
-        <div class="tab" data-mode="edges">Edges</div>
+        <div class="tab" data-mode="flow">Flow Field</div> <div class="tab" data-mode="edges">Edges</div>
     </div>
 
     <div class="controls-wrapper">
@@ -240,6 +240,13 @@
                     <input type="range" id="angle-offset" min="0" max="90" value="0">
                 </div>
             </div>
+
+            <div id="flow-controls" class="mode-controls hidden">
+                <div class="control-group">
+                    <label for="flow-scale">Line Scale</label>
+                    <input type="range" id="flow-scale" min="0.5" max="2.0" step="0.1" value="1.0">
+                </div>
+                 </div>
 
             <div id="edges-controls" class="mode-controls hidden">
                 <div class="control-group">
@@ -287,9 +294,9 @@
     const CANVAS_HEIGHT = 850; 
     
     // Algorithm State
-    let currentMode = 'concentrics'; // 'concentrics', 'hatched', 'edges'
+    let currentMode = 'concentrics'; // 'concentrics', 'hatched', 'edges', 'flow'
     let currentImage = null;
-    let vectorPaths = []; // New state for storing optimized lines
+    let vectorPaths = []; 
 
     // DOM Elements
     const dropZone = document.getElementById('drop-zone');
@@ -301,14 +308,18 @@
     const tabs = document.querySelectorAll('.tab');
     const globalControls = document.getElementById('global-controls');
     const resolutionSlider = document.getElementById('resolution');
+    
+    const hatchedControls = document.getElementById('hatched-controls');
     const maxLinesSlider = document.getElementById('max-lines');
     const angleOffsetSlider = document.getElementById('angle-offset');
-    const hatchedControls = document.getElementById('hatched-controls');
+
+    const flowControls = document.getElementById('flow-controls');
+    const flowScaleSlider = document.getElementById('flow-scale');
     
     const edgesControls = document.getElementById('edges-controls');
     const edgeThresholdSlider = document.getElementById('edge-threshold');
     const minLengthSlider = document.getElementById('min-length');
-    const smoothnessSlider = document.getElementById('smoothness'); // New Slider
+    const smoothnessSlider = document.getElementById('smoothness'); 
     const lineCountDisplay = document.getElementById('line-count');
     const statusIndicator = document.getElementById('status-indicator');
     
@@ -332,6 +343,7 @@
             
             hatchedControls.classList.add('hidden');
             edgesControls.classList.add('hidden');
+            flowControls.classList.add('hidden');
             globalControls.classList.remove('hidden');
 
             if (currentMode === 'hatched') {
@@ -339,6 +351,8 @@
             } else if (currentMode === 'edges') {
                 edgesControls.classList.remove('hidden');
                 globalControls.classList.add('hidden');
+            } else if (currentMode === 'flow') {
+                flowControls.classList.remove('hidden');
             }
 
             if (currentImage) processImage();
@@ -348,8 +362,9 @@
     resolutionSlider.addEventListener('input', () => { if (currentImage && currentMode !== 'edges') processImage(); });
     maxLinesSlider.addEventListener('input', () => { if (currentImage && currentMode === 'hatched') processImage(); });
     angleOffsetSlider.addEventListener('input', () => { if (currentImage && currentMode === 'hatched') processImage(); });
-    
-    // Edge controls trigger updates
+    flowScaleSlider.addEventListener('input', () => { if (currentImage && currentMode === 'flow') processImage(); });
+
+    // Edge controls
     edgeThresholdSlider.addEventListener('change', () => { if (currentImage && currentMode === 'edges') processImage(); });
     minLengthSlider.addEventListener('change', () => { if (currentImage && currentMode === 'edges') processImage(); });
     smoothnessSlider.addEventListener('change', () => { if (currentImage && currentMode === 'edges') processImage(); });
@@ -412,7 +427,10 @@
 
         if (currentMode === 'edges') {
             processEdgesMode(imgData);
+        } else if (currentMode === 'flow') {
+            processFlowMode(imgData);
         } else {
+            // Concentrics & Hatched
             const sampleSize = parseInt(resolutionSlider.value, 10);
             for (let y = 0; y < CANVAS_HEIGHT; y += sampleSize) {
                 for (let x = 0; x < CANVAS_WIDTH; x += sampleSize) {
@@ -427,8 +445,74 @@
         }
     }
 
-    // --- EDGES PIPELINE (UPDATED) ---
+    // --- FLOW FIELD MODE (NEW) ---
+    function processFlowMode(imgData) {
+        // Use structure tensor to estimate orientation without cancellation
+        const width = CANVAS_WIDTH;
+        const height = CANVAS_HEIGHT;
+        const step = parseInt(resolutionSlider.value, 10);
+        const lineScale = parseFloat(flowScaleSlider.value);
+        
+        // 1. Get Grayscale
+        const gray = getGrayscaleData(imgData, width, height);
 
+        // 2. Iterate Grid
+        ctx.beginPath();
+        for (let y = step; y < height - step; y += step) {
+            for (let x = step; x < width - step; x += step) {
+                
+                // Calculate Structure Tensor over the window (step x step)
+                let sumE = 0; // Gx^2 - Gy^2
+                let sumF = 0; // 2 * Gx * Gy
+                let weightSum = 0;
+
+                for (let wy = -step/2; wy < step/2; wy++) {
+                    for (let wx = -step/2; wx < step/2; wx++) {
+                        const iy = Math.floor(y + wy);
+                        const ix = Math.floor(x + wx);
+                        const idx = iy * width + ix;
+                        
+                        // Simple central difference gradient
+                        const gx = (gray[idx + 1] - gray[idx - 1]) || 0;
+                        const gy = (gray[idx + width] - gray[idx - width]) || 0;
+                        
+                        sumE += (gx * gx - gy * gy);
+                        sumF += (2 * gx * gy);
+                        weightSum++;
+                    }
+                }
+
+                // Smooth Gradient Angle
+                // Angle of the gradient (normal to edge)
+                const gradientAngle = 0.5 * Math.atan2(sumF, sumE); 
+                
+                // Tangent (Flow) is Gradient + 90 deg
+                const flowAngle = gradientAngle + (Math.PI / 2);
+
+                // Magnitude (Coherence/Strength of edge)
+                const magnitude = Math.sqrt(sumE*sumE + sumF*sumF) / weightSum;
+                
+                // Draw Needle
+                // Scale length by magnitude slightly so flat areas are smaller
+                const len = (step * 0.8) * lineScale; 
+                const cx = x + step/2; 
+                const cy = y + step/2;
+                
+                // Only draw if there is some structure
+                if (magnitude > 10) {
+                   ctx.moveTo(cx - (Math.cos(flowAngle) * len/2), cy - (Math.sin(flowAngle) * len/2));
+                   ctx.lineTo(cx + (Math.cos(flowAngle) * len/2), cy + (Math.sin(flowAngle) * len/2));
+                } else {
+                    // In flat areas, just a dot
+                    ctx.rect(cx, cy, 1, 1);
+                }
+            }
+        }
+        ctx.stroke();
+    }
+
+
+    // --- EDGES PIPELINE ---
     function processEdgesMode(imgData) {
         lineCountDisplay.textContent = "...";
         statusIndicator.className = 'status-dot'; 
@@ -436,17 +520,15 @@
         setTimeout(() => {
             const threshold = parseInt(edgeThresholdSlider.value, 10);
             const minLen = parseInt(minLengthSlider.value, 10);
-            const epsilon = parseFloat(smoothnessSlider.value); // Use the slider value
+            const epsilon = parseFloat(smoothnessSlider.value);
             
             const width = CANVAS_WIDTH;
             const height = CANVAS_HEIGHT;
 
-            // 1. Image Processing
             const grayPixels = getGrayscaleData(imgData, width, height);
             const binaryPixels = applySobelAndThreshold(grayPixels, width, height, threshold);
             const thinnedBinary = applyThinningBinary(binaryPixels, width, height);
 
-            // 2. Vectorization (Trace & Simplify)
             const rawPaths = traceLines(thinnedBinary, width, height, minLen);
             
             if (epsilon > 0) {
@@ -455,7 +537,6 @@
                 vectorPaths = rawPaths;
             }
             
-            // 3. Render
             ctx.beginPath();
             let totalPoints = 0;
             
@@ -469,7 +550,6 @@
             }
             ctx.stroke();
 
-            // 4. Update Stats
             lineCountDisplay.textContent = `${vectorPaths.length} Lines`;
             
             if (vectorPaths.length > 5000) {
@@ -483,14 +563,11 @@
         }, 10);
     }
 
-    // --- VECTOR ALGORITHMS (NEW) ---
-
-    // 1. Path Tracing (DFS/Greedy)
+    // --- VECTOR ALGORITHMS ---
     function traceLines(binaryPixels, w, h, minLen) {
         const paths = [];
-        const pixels = Uint8Array.from(binaryPixels); // Copy to modify
+        const pixels = Uint8Array.from(binaryPixels); 
         const getIdx = (x, y) => y * w + x;
-        
         const dx = [0, 1, 1, 1, 0, -1, -1, -1];
         const dy = [-1, -1, 0, 1, 1, 1, 0, -1];
 
@@ -504,7 +581,7 @@
 
                     while (tracing) {
                         path.push({x: cx, y: cy});
-                        pixels[getIdx(cx, cy)] = 0; // Mark visited
+                        pixels[getIdx(cx, cy)] = 0; 
                         tracing = false;
 
                         for (let i = 0; i < 8; i++) {
@@ -520,20 +597,15 @@
                             }
                         }
                     }
-
-                    if (path.length >= minLen) {
-                        paths.push(path);
-                    }
+                    if (path.length >= minLen) paths.push(path);
                 }
             }
         }
         return paths;
     }
 
-    // 2. Ramer-Douglas-Peucker (RDP) Simplification
     function optimizePath(points, epsilon) {
         if (points.length < 3) return points;
-
         let maxDist = 0;
         let index = 0;
         const start = points[0];
@@ -645,7 +717,7 @@
     }
 
 
-    // --- GRID STATS (For Concentric/Hatched Modes) ---
+    // --- GRID STATS ---
     function getSampleStats(imgData, startX, startY, sampleSize, width, height) {
         let rSum = 0, gSum = 0, bSum = 0, count = 0;
         const data = imgData.data;
@@ -709,13 +781,53 @@
         let svgContent = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${CANVAS_WIDTH} ${CANVAS_HEIGHT}" width="11in" height="8.5in"><rect width="100%" height="100%" fill="white"/>`;
 
         if (currentMode === 'edges') {
-            // UPDATED: Export Polylines
             for (const path of vectorPaths) {
                 if (path.length < 2) continue;
                 const pointsStr = path.map(p => `${p.x},${p.y}`).join(' ');
                 svgContent += `<polyline points="${pointsStr}" fill="none" stroke="black" stroke-width="1" />`;
             }
+        } else if (currentMode === 'flow') {
+            // UPDATED: Export Flow Field
+            const step = parseInt(resolutionSlider.value, 10);
+            const lineScale = parseFloat(flowScaleSlider.value);
+            const width = CANVAS_WIDTH; const height = CANVAS_HEIGHT;
+            
+            // Re-calculate simply for export (could cache this state)
+            const offCanvas = document.createElement('canvas'); offCanvas.width = width; offCanvas.height = height;
+            const offCtx = offCanvas.getContext('2d');
+            const scale = Math.max(width / currentImage.width, height / currentImage.height);
+            const drawW = currentImage.width * scale; const drawH = currentImage.height * scale;
+            offCtx.fillStyle = '#FFFFFF'; offCtx.fillRect(0, 0, width, height);
+            offCtx.drawImage(currentImage, (width - drawW)/2, (height - drawH)/2, drawW, drawH);
+            const gray = getGrayscaleData(offCtx.getImageData(0,0,width,height), width, height);
+
+            for (let y = step; y < height - step; y += step) {
+                for (let x = step; x < width - step; x += step) {
+                    let sumE = 0, sumF = 0, wSum = 0;
+                    for (let wy = -step/2; wy < step/2; wy++) {
+                        for (let wx = -step/2; wx < step/2; wx++) {
+                            const idx = Math.floor(y + wy) * width + Math.floor(x + wx);
+                            const gx = (gray[idx + 1] - gray[idx - 1]) || 0;
+                            const gy = (gray[idx + width] - gray[idx - width]) || 0;
+                            sumE += (gx*gx - gy*gy); sumF += (2*gx*gy); wSum++;
+                        }
+                    }
+                    const mag = Math.sqrt(sumE*sumE + sumF*sumF) / wSum;
+                    const angle = (0.5 * Math.atan2(sumF, sumE)) + (Math.PI / 2);
+                    const len = (step * 0.8) * lineScale;
+                    const cx = x + step/2, cy = y + step/2;
+
+                    if (mag > 10) {
+                        const x1 = cx - Math.cos(angle) * len/2;
+                        const y1 = cy - Math.sin(angle) * len/2;
+                        const x2 = cx + Math.cos(angle) * len/2;
+                        const y2 = cy + Math.sin(angle) * len/2;
+                        svgContent += `<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="black" stroke-width="1"/>`;
+                    }
+                }
+            }
         } else {
+             // Concentrics & Hatched SVG (Keep existing)
             const sampleSize = parseInt(resolutionSlider.value, 10);
             const offCanvas = document.createElement('canvas'); offCanvas.width = CANVAS_WIDTH; offCanvas.height = CANVAS_HEIGHT;
             const offCtx = offCanvas.getContext('2d');

@@ -94,7 +94,7 @@
             display: flex;
             flex-direction: column;
             gap: 5px;
-            min-width: 150px;
+            min-width: 120px;
         }
 
         .mode-controls {
@@ -232,7 +232,7 @@
 
             <div id="hatched-controls" class="mode-controls hidden">
                 <div class="control-group">
-                    <label for="max-lines">Max Density (Lines)</label>
+                    <label for="max-lines">Max Density</label>
                     <input type="range" id="max-lines" min="2" max="20" value="8">
                 </div>
                 <div class="control-group">
@@ -243,16 +243,20 @@
 
             <div id="edges-controls" class="mode-controls hidden">
                 <div class="control-group">
-                    <label for="edge-threshold">Edge Threshold</label>
+                    <label for="edge-threshold">Threshold</label>
                     <input type="range" id="edge-threshold" min="10" max="200" value="80">
                 </div>
                 <div class="control-group">
-                    <label for="min-length">Min Line Length</label>
-                    <input type="range" id="min-length" min="0" max="50" value="5">
+                    <label for="min-length">Min Length</label>
+                    <input type="range" id="min-length" min="0" max="50" value="10">
+                </div>
+                <div class="control-group">
+                    <label for="smoothness">Smoothness</label>
+                    <input type="range" id="smoothness" min="0" max="3" step="0.1" value="1.0">
                 </div>
                  <div class="control-group" style="justify-content: center;">
                     <span class="stats-display">
-                        Points: <span id="line-count">0</span>
+                        <span id="line-count">0</span>
                         <div id="status-indicator" class="status-dot" title="Green: OK, Red: Limit Reached"></div>
                     </span>
                 </div>
@@ -281,12 +285,11 @@
      */
     const CANVAS_WIDTH = 1100; 
     const CANVAS_HEIGHT = 850; 
-    const MAX_EDGE_POINTS = 20000;
     
     // Algorithm State
     let currentMode = 'concentrics'; // 'concentrics', 'hatched', 'edges'
     let currentImage = null;
-    let thinnedPoints = []; 
+    let vectorPaths = []; // New state for storing optimized lines
 
     // DOM Elements
     const dropZone = document.getElementById('drop-zone');
@@ -305,6 +308,7 @@
     const edgesControls = document.getElementById('edges-controls');
     const edgeThresholdSlider = document.getElementById('edge-threshold');
     const minLengthSlider = document.getElementById('min-length');
+    const smoothnessSlider = document.getElementById('smoothness'); // New Slider
     const lineCountDisplay = document.getElementById('line-count');
     const statusIndicator = document.getElementById('status-indicator');
     
@@ -344,8 +348,11 @@
     resolutionSlider.addEventListener('input', () => { if (currentImage && currentMode !== 'edges') processImage(); });
     maxLinesSlider.addEventListener('input', () => { if (currentImage && currentMode === 'hatched') processImage(); });
     angleOffsetSlider.addEventListener('input', () => { if (currentImage && currentMode === 'hatched') processImage(); });
+    
+    // Edge controls trigger updates
     edgeThresholdSlider.addEventListener('change', () => { if (currentImage && currentMode === 'edges') processImage(); });
     minLengthSlider.addEventListener('change', () => { if (currentImage && currentMode === 'edges') processImage(); });
+    smoothnessSlider.addEventListener('change', () => { if (currentImage && currentMode === 'edges') processImage(); });
 
     dropZone.addEventListener('dragover', (e) => { e.preventDefault(); dropZone.classList.add('dragover'); });
     dropZone.addEventListener('dragleave', () => { dropZone.classList.remove('dragover'); });
@@ -355,7 +362,7 @@
 
     clearBtn.addEventListener('click', () => {
         currentImage = null;
-        thinnedPoints = [];
+        vectorPaths = [];
         ctx.clearRect(0, 0, canvas.width, canvas.height);
         instruction.classList.remove('hidden');
         downloadBtn.disabled = true;
@@ -420,7 +427,7 @@
         }
     }
 
-    // --- EDGES PIPELINE ---
+    // --- EDGES PIPELINE (UPDATED) ---
 
     function processEdgesMode(imgData) {
         lineCountDisplay.textContent = "...";
@@ -429,40 +436,140 @@
         setTimeout(() => {
             const threshold = parseInt(edgeThresholdSlider.value, 10);
             const minLen = parseInt(minLengthSlider.value, 10);
+            const epsilon = parseFloat(smoothnessSlider.value); // Use the slider value
+            
             const width = CANVAS_WIDTH;
             const height = CANVAS_HEIGHT;
 
+            // 1. Image Processing
             const grayPixels = getGrayscaleData(imgData, width, height);
             const binaryPixels = applySobelAndThreshold(grayPixels, width, height, threshold);
-            
-            // 1. Thinning (Returns a binary map of 0s and 1s)
             const thinnedBinary = applyThinningBinary(binaryPixels, width, height);
 
-            // 2. Filter by length (Connected Component Analysis)
-            // Returns the final array of points {x,y} limited by MAX_EDGE_POINTS
-            const result = filterPointsByLength(thinnedBinary, width, height, minLen);
+            // 2. Vectorization (Trace & Simplify)
+            const rawPaths = traceLines(thinnedBinary, width, height, minLen);
             
-            thinnedPoints = result.points;
-            
-            ctx.beginPath();
-            for (const p of thinnedPoints) {
-                ctx.rect(p.x, p.y, 1, 1);
+            if (epsilon > 0) {
+                vectorPaths = rawPaths.map(path => optimizePath(path, epsilon));
+            } else {
+                vectorPaths = rawPaths;
             }
-            ctx.fill();
-
-            lineCountDisplay.textContent = thinnedPoints.length;
             
-            if (result.limitReached) {
+            // 3. Render
+            ctx.beginPath();
+            let totalPoints = 0;
+            
+            for (const path of vectorPaths) {
+                if (path.length === 0) continue;
+                ctx.moveTo(path[0].x, path[0].y);
+                for (let i = 1; i < path.length; i++) {
+                    ctx.lineTo(path[i].x, path[i].y);
+                }
+                totalPoints += path.length;
+            }
+            ctx.stroke();
+
+            // 4. Update Stats
+            lineCountDisplay.textContent = `${vectorPaths.length} Lines`;
+            
+            if (vectorPaths.length > 5000) {
                 statusIndicator.className = 'status-dot limit';
-                statusIndicator.title = "Limit reached: Output truncated";
+                statusIndicator.title = "High complexity";
             } else {
                 statusIndicator.className = 'status-dot ok';
-                statusIndicator.title = "All lines generated";
+                statusIndicator.title = "Ready";
             }
 
         }, 10);
     }
 
+    // --- VECTOR ALGORITHMS (NEW) ---
+
+    // 1. Path Tracing (DFS/Greedy)
+    function traceLines(binaryPixels, w, h, minLen) {
+        const paths = [];
+        const pixels = Uint8Array.from(binaryPixels); // Copy to modify
+        const getIdx = (x, y) => y * w + x;
+        
+        const dx = [0, 1, 1, 1, 0, -1, -1, -1];
+        const dy = [-1, -1, 0, 1, 1, 1, 0, -1];
+
+        for (let y = 0; y < h; y++) {
+            for (let x = 0; x < w; x++) {
+                const idx = getIdx(x, y);
+                if (pixels[idx] === 1) {
+                    const path = [];
+                    let cx = x, cy = y;
+                    let tracing = true;
+
+                    while (tracing) {
+                        path.push({x: cx, y: cy});
+                        pixels[getIdx(cx, cy)] = 0; // Mark visited
+                        tracing = false;
+
+                        for (let i = 0; i < 8; i++) {
+                            const nx = cx + dx[i];
+                            const ny = cy + dy[i];
+                            if (nx >= 0 && nx < w && ny >= 0 && ny < h) {
+                                if (pixels[getIdx(nx, ny)] === 1) {
+                                    cx = nx;
+                                    cy = ny;
+                                    tracing = true;
+                                    break;
+                                }
+                            }
+                        }
+                    }
+
+                    if (path.length >= minLen) {
+                        paths.push(path);
+                    }
+                }
+            }
+        }
+        return paths;
+    }
+
+    // 2. Ramer-Douglas-Peucker (RDP) Simplification
+    function optimizePath(points, epsilon) {
+        if (points.length < 3) return points;
+
+        let maxDist = 0;
+        let index = 0;
+        const start = points[0];
+        const end = points[points.length - 1];
+
+        for (let i = 1; i < points.length - 1; i++) {
+            const d = perpendicularDistance(points[i], start, end);
+            if (d > maxDist) {
+                maxDist = d;
+                index = i;
+            }
+        }
+
+        if (maxDist > epsilon) {
+            const left = optimizePath(points.slice(0, index + 1), epsilon);
+            const right = optimizePath(points.slice(index), epsilon);
+            return left.slice(0, left.length - 1).concat(right);
+        } else {
+            return [start, end];
+        }
+    }
+
+    function perpendicularDistance(point, lineStart, lineEnd) {
+        let dx = lineEnd.x - lineStart.x;
+        let dy = lineEnd.y - lineStart.y;
+        if (dx === 0 && dy === 0) {
+            return Math.hypot(point.x - lineStart.x, point.y - lineStart.y);
+        }
+        const num = Math.abs(dy * point.x - dx * point.y + lineEnd.x * lineStart.y - lineEnd.y * lineStart.x);
+        const den = Math.sqrt(dx * dx + dy * dy);
+        return num / den;
+    }
+
+
+    // --- IMAGE PROCESSING HELPERS ---
+    
     function getGrayscaleData(imgData, w, h) {
         const gray = new Uint8Array(w * h);
         const data = imgData.data;
@@ -494,7 +601,6 @@
         return binary;
     }
 
-    // Zhang-Suen Thinning: Returns the binary array, not points list
     function applyThinningBinary(binary, w, h) {
         let pixels = Uint8Array.from(binary);
         let framing = new Uint8Array(w * h);
@@ -538,78 +644,8 @@
         return pixels;
     }
 
-    // Connected Component Analysis to filter short lines
-    function filterPointsByLength(binaryPixels, w, h, minLen) {
-        if (minLen <= 0) {
-            // Fast path if no filtering needed
-            const points = [];
-            let limitReached = false;
-            for (let i = 0; i < binaryPixels.length; i++) {
-                if (binaryPixels[i] === 1) {
-                    if (points.length >= MAX_EDGE_POINTS) { limitReached = true; break; }
-                    points.push({ x: i % w, y: Math.floor(i / w) });
-                }
-            }
-            return { points, limitReached };
-        }
 
-        const visited = new Uint8Array(w * h); // 0 unvisited, 1 visited
-        const validPoints = [];
-        let limitReached = false;
-
-        // Neighbor offsets (8-connectivity)
-        const dx = [-1, 0, 1, -1, 1, -1, 0, 1];
-        const dy = [-1, -1, -1, 0, 0, 1, 1, 1];
-
-        for (let y = 0; y < h; y++) {
-            for (let x = 0; x < w; x++) {
-                const idx = y * w + x;
-                if (binaryPixels[idx] === 1 && visited[idx] === 0) {
-                    // Start BFS for connected component
-                    const component = [];
-                    const queue = [idx];
-                    visited[idx] = 1;
-                    component.push({x, y});
-
-                    let head = 0;
-                    while(head < queue.length) {
-                        const currIdx = queue[head++];
-                        const cx = currIdx % w;
-                        const cy = Math.floor(currIdx / w);
-
-                        for (let k = 0; k < 8; k++) {
-                            const nx = cx + dx[k];
-                            const ny = cy + dy[k];
-                            
-                            if (nx >= 0 && nx < w && ny >= 0 && ny < h) {
-                                const nIdx = ny * w + nx;
-                                if (binaryPixels[nIdx] === 1 && visited[nIdx] === 0) {
-                                    visited[nIdx] = 1;
-                                    queue.push(nIdx);
-                                    component.push({x: nx, y: ny});
-                                }
-                            }
-                        }
-                    }
-
-                    // Filter based on length
-                    if (component.length >= minLen) {
-                        for (const p of component) {
-                            if (validPoints.length >= MAX_EDGE_POINTS) {
-                                limitReached = true;
-                                return { points: validPoints, limitReached };
-                            }
-                            validPoints.push(p);
-                        }
-                    }
-                }
-            }
-        }
-        return { points: validPoints, limitReached };
-    }
-
-
-    // --- Grid Stats Calculation (Unchanged) ---
+    // --- GRID STATS (For Concentric/Hatched Modes) ---
     function getSampleStats(imgData, startX, startY, sampleSize, width, height) {
         let rSum = 0, gSum = 0, bSum = 0, count = 0;
         const data = imgData.data;
@@ -673,8 +709,11 @@
         let svgContent = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${CANVAS_WIDTH} ${CANVAS_HEIGHT}" width="11in" height="8.5in"><rect width="100%" height="100%" fill="white"/>`;
 
         if (currentMode === 'edges') {
-            for (const p of thinnedPoints) {
-                svgContent += `<rect x="${p.x}" y="${p.y}" width="1" height="1" fill="black" />`;
+            // UPDATED: Export Polylines
+            for (const path of vectorPaths) {
+                if (path.length < 2) continue;
+                const pointsStr = path.map(p => `${p.x},${p.y}`).join(' ');
+                svgContent += `<polyline points="${pointsStr}" fill="none" stroke="black" stroke-width="1" />`;
             }
         } else {
             const sampleSize = parseInt(resolutionSlider.value, 10);

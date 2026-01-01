@@ -246,9 +246,13 @@
                     <label for="edge-threshold">Edge Threshold</label>
                     <input type="range" id="edge-threshold" min="10" max="200" value="80">
                 </div>
+                <div class="control-group">
+                    <label for="min-length">Min Line Length</label>
+                    <input type="range" id="min-length" min="0" max="50" value="5">
+                </div>
                  <div class="control-group" style="justify-content: center;">
                     <span class="stats-display">
-                        Line Count: <span id="line-count">0</span>
+                        Points: <span id="line-count">0</span>
                         <div id="status-indicator" class="status-dot" title="Green: OK, Red: Limit Reached"></div>
                     </span>
                 </div>
@@ -297,8 +301,10 @@
     const maxLinesSlider = document.getElementById('max-lines');
     const angleOffsetSlider = document.getElementById('angle-offset');
     const hatchedControls = document.getElementById('hatched-controls');
+    
     const edgesControls = document.getElementById('edges-controls');
     const edgeThresholdSlider = document.getElementById('edge-threshold');
+    const minLengthSlider = document.getElementById('min-length');
     const lineCountDisplay = document.getElementById('line-count');
     const statusIndicator = document.getElementById('status-indicator');
     
@@ -339,6 +345,7 @@
     maxLinesSlider.addEventListener('input', () => { if (currentImage && currentMode === 'hatched') processImage(); });
     angleOffsetSlider.addEventListener('input', () => { if (currentImage && currentMode === 'hatched') processImage(); });
     edgeThresholdSlider.addEventListener('change', () => { if (currentImage && currentMode === 'edges') processImage(); });
+    minLengthSlider.addEventListener('change', () => { if (currentImage && currentMode === 'edges') processImage(); });
 
     dropZone.addEventListener('dragover', (e) => { e.preventDefault(); dropZone.classList.add('dragover'); });
     dropZone.addEventListener('dragleave', () => { dropZone.classList.remove('dragover'); });
@@ -421,14 +428,20 @@
         
         setTimeout(() => {
             const threshold = parseInt(edgeThresholdSlider.value, 10);
+            const minLen = parseInt(minLengthSlider.value, 10);
             const width = CANVAS_WIDTH;
             const height = CANVAS_HEIGHT;
 
             const grayPixels = getGrayscaleData(imgData, width, height);
             const binaryPixels = applySobelAndThreshold(grayPixels, width, height, threshold);
             
-            // Process thinning and get result object { points: [], limitReached: bool }
-            const result = applyThinning(binaryPixels, width, height);
+            // 1. Thinning (Returns a binary map of 0s and 1s)
+            const thinnedBinary = applyThinningBinary(binaryPixels, width, height);
+
+            // 2. Filter by length (Connected Component Analysis)
+            // Returns the final array of points {x,y} limited by MAX_EDGE_POINTS
+            const result = filterPointsByLength(thinnedBinary, width, height, minLen);
+            
             thinnedPoints = result.points;
             
             ctx.beginPath();
@@ -439,7 +452,6 @@
 
             lineCountDisplay.textContent = thinnedPoints.length;
             
-            // UI Feedback
             if (result.limitReached) {
                 statusIndicator.className = 'status-dot limit';
                 statusIndicator.title = "Limit reached: Output truncated";
@@ -482,14 +494,13 @@
         return binary;
     }
 
-    function applyThinning(binary, w, h) {
+    // Zhang-Suen Thinning: Returns the binary array, not points list
+    function applyThinningBinary(binary, w, h) {
         let pixels = Uint8Array.from(binary);
         let framing = new Uint8Array(w * h);
         let changed = true;
-        const points = [];
         const get = (arr, x, y) => (x >= 0 && x < w && y >= 0 && y < h) ? arr[y * w + x] : 0;
 
-        // Perform full thinning first (iterative morphological op)
         while (changed) {
             changed = false;
             framing.set(pixels);
@@ -524,24 +535,77 @@
             }
             pixels.set(framing);
         }
+        return pixels;
+    }
 
-        // Collection Phase: Apply hard limit here
+    // Connected Component Analysis to filter short lines
+    function filterPointsByLength(binaryPixels, w, h, minLen) {
+        if (minLen <= 0) {
+            // Fast path if no filtering needed
+            const points = [];
+            let limitReached = false;
+            for (let i = 0; i < binaryPixels.length; i++) {
+                if (binaryPixels[i] === 1) {
+                    if (points.length >= MAX_EDGE_POINTS) { limitReached = true; break; }
+                    points.push({ x: i % w, y: Math.floor(i / w) });
+                }
+            }
+            return { points, limitReached };
+        }
+
+        const visited = new Uint8Array(w * h); // 0 unvisited, 1 visited
+        const validPoints = [];
         let limitReached = false;
+
+        // Neighbor offsets (8-connectivity)
+        const dx = [-1, 0, 1, -1, 1, -1, 0, 1];
+        const dy = [-1, -1, -1, 0, 0, 1, 1, 1];
+
         for (let y = 0; y < h; y++) {
             for (let x = 0; x < w; x++) {
-                if (pixels[y * w + x] === 1) {
-                    if (points.length >= MAX_EDGE_POINTS) {
-                        limitReached = true;
-                        // Break out of both loops
-                        y = h; 
-                        break;
+                const idx = y * w + x;
+                if (binaryPixels[idx] === 1 && visited[idx] === 0) {
+                    // Start BFS for connected component
+                    const component = [];
+                    const queue = [idx];
+                    visited[idx] = 1;
+                    component.push({x, y});
+
+                    let head = 0;
+                    while(head < queue.length) {
+                        const currIdx = queue[head++];
+                        const cx = currIdx % w;
+                        const cy = Math.floor(currIdx / w);
+
+                        for (let k = 0; k < 8; k++) {
+                            const nx = cx + dx[k];
+                            const ny = cy + dy[k];
+                            
+                            if (nx >= 0 && nx < w && ny >= 0 && ny < h) {
+                                const nIdx = ny * w + nx;
+                                if (binaryPixels[nIdx] === 1 && visited[nIdx] === 0) {
+                                    visited[nIdx] = 1;
+                                    queue.push(nIdx);
+                                    component.push({x: nx, y: ny});
+                                }
+                            }
+                        }
                     }
-                    points.push({x, y});
+
+                    // Filter based on length
+                    if (component.length >= minLen) {
+                        for (const p of component) {
+                            if (validPoints.length >= MAX_EDGE_POINTS) {
+                                limitReached = true;
+                                return { points: validPoints, limitReached };
+                            }
+                            validPoints.push(p);
+                        }
+                    }
                 }
             }
         }
-        
-        return { points, limitReached };
+        return { points: validPoints, limitReached };
     }
 
 

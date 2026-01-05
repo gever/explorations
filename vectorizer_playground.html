@@ -222,6 +222,7 @@
         <div class="tab active" data-mode="concentrics">Concentrics</div>
         <div class="tab" data-mode="hatched">Hatched</div>
         <div class="tab" data-mode="flow">Flow Field</div>
+        <div class="tab" data-mode="density">Feature Density</div>
         <div class="tab" data-mode="edges">Edges</div>
     </div>
 
@@ -254,6 +255,17 @@
                 <div class="control-group">
                     <label for="flow-scale">Density / Scale</label>
                     <input type="range" id="flow-scale" min="0.1" max="2.0" step="0.1" value="1.0">
+                </div>
+            </div>
+
+            <div id="density-controls" class="mode-controls hidden">
+                <div class="control-group">
+                    <label for="density-radius">Feature Size</label>
+                    <input type="range" id="density-radius" min="2" max="50" value="10">
+                </div>
+                <div class="control-group">
+                    <label for="density-contrast">Intensity</label>
+                    <input type="range" id="density-contrast" min="1" max="50" value="15">
                 </div>
             </div>
 
@@ -317,8 +329,12 @@
 
     const flowControls = document.getElementById('flow-controls');
     const flowScaleSlider = document.getElementById('flow-scale');
-    const flowAlgoSelect = document.getElementById('flow-algo'); // New Dropdown
+    const flowAlgoSelect = document.getElementById('flow-algo'); 
     
+    const densityControls = document.getElementById('density-controls');
+    const densityRadiusSlider = document.getElementById('density-radius');
+    const densityContrastSlider = document.getElementById('density-contrast');
+
     const edgesControls = document.getElementById('edges-controls');
     const edgeThresholdSlider = document.getElementById('edge-threshold');
     const minLengthSlider = document.getElementById('min-length');
@@ -342,25 +358,33 @@
             hatchedControls.classList.add('hidden');
             edgesControls.classList.add('hidden');
             flowControls.classList.add('hidden');
+            densityControls.classList.add('hidden');
             globalControls.classList.remove('hidden');
 
             if (currentMode === 'hatched') hatchedControls.classList.remove('hidden');
             else if (currentMode === 'edges') {
                 edgesControls.classList.remove('hidden');
                 globalControls.classList.add('hidden');
-            } else if (currentMode === 'flow') flowControls.classList.remove('hidden');
+            } else if (currentMode === 'flow') {
+                flowControls.classList.remove('hidden');
+            } else if (currentMode === 'density') {
+                densityControls.classList.remove('hidden');
+                globalControls.classList.add('hidden');
+            }
 
             if (currentImage) processImage();
         });
     });
 
-    resolutionSlider.addEventListener('input', () => { if (currentImage && currentMode !== 'edges') processImage(); });
+    resolutionSlider.addEventListener('input', () => { if (currentImage && currentMode !== 'edges' && currentMode !== 'density') processImage(); });
     maxLinesSlider.addEventListener('input', () => { if (currentImage && currentMode === 'hatched') processImage(); });
     angleOffsetSlider.addEventListener('input', () => { if (currentImage && currentMode === 'hatched') processImage(); });
     
-    // Flow Controls
     flowScaleSlider.addEventListener('input', () => { if (currentImage && currentMode === 'flow') processImage(); });
     flowAlgoSelect.addEventListener('change', () => { if (currentImage && currentMode === 'flow') processImage(); });
+
+    densityRadiusSlider.addEventListener('input', () => { if (currentImage && currentMode === 'density') processImage(); });
+    densityContrastSlider.addEventListener('input', () => { if (currentImage && currentMode === 'density') processImage(); });
 
     edgeThresholdSlider.addEventListener('change', () => { if (currentImage && currentMode === 'edges') processImage(); });
     minLengthSlider.addEventListener('change', () => { if (currentImage && currentMode === 'edges') processImage(); });
@@ -421,6 +445,8 @@
             processEdgesMode(imgData);
         } else if (currentMode === 'flow') {
             processFlowMode(imgData);
+        } else if (currentMode === 'density') {
+            processDensityMode(imgData);
         } else {
             const sampleSize = parseInt(resolutionSlider.value, 10);
             for (let y = 0; y < CANVAS_HEIGHT; y += sampleSize) {
@@ -436,7 +462,100 @@
         }
     }
 
-    // --- FLOW FIELD (UPDATED) ---
+    // --- FEATURE DENSITY MODE ---
+    function processDensityMode(imgData) {
+        const radius = parseInt(densityRadiusSlider.value, 10);
+        const contrast = parseInt(densityContrastSlider.value, 10);
+        const width = CANVAS_WIDTH;
+        const height = CANVAS_HEIGHT;
+
+        // 1. Get Grayscale
+        const gray = getGrayscaleData(imgData, width, height);
+
+        // 2. Calculate Mean (Low Pass) using fast separable blur
+        // Variance = (Pixel - Mean)^2. We use Abs diff for speed and similar visual effect.
+        const mean = fastBoxBlur(gray, width, height, radius);
+
+        // 3. Calculate Difference (High Pass components / Edges)
+        const diff = new Float32Array(width * height);
+        for(let i=0; i<width*height; i++) {
+            diff[i] = Math.abs(gray[i] - mean[i]);
+        }
+
+        // 4. Smooth the difference to create a "Field" or "Density Map"
+        // We blur the difference map so it becomes a region map rather than just thin lines
+        const density = fastBoxBlur(diff, width, height, radius);
+
+        // 5. Render to Canvas
+        const output = ctx.createImageData(width, height);
+        const outData = output.data;
+        
+        for (let i = 0; i < width * height; i++) {
+            // Apply contrast scaling
+            let val = density[i] * contrast;
+            
+            // Clamp
+            if (val > 255) val = 255;
+            if (val < 0) val = 0;
+
+            // Render Grayscale: High Variance = White (Bright), Low = Black
+            outData[i * 4] = val;     // R
+            outData[i * 4 + 1] = val; // G
+            outData[i * 4 + 2] = val; // B
+            outData[i * 4 + 3] = 255; // Alpha
+        }
+        ctx.putImageData(output, 0, 0);
+    }
+
+    // Fast Separable Box Blur O(1) per pixel dependent on radius
+    function fastBoxBlur(source, w, h, r) {
+        const target = new Float32Array(w * h);
+        
+        // Horizontal Pass
+        for (let y = 0; y < h; y++) {
+            let sum = 0;
+            // Pre-fill
+            for(let i=0; i<r; i++) sum += source[y*w]; 
+            for(let i=0; i<=r; i++) sum += source[y*w + i];
+            
+            for (let x = 0; x < w; x++) {
+                target[y*w + x] = sum / (2*r+1);
+                
+                let outgoing = x - r; 
+                let incoming = x + r + 1;
+                
+                let valOut = (outgoing < 0) ? source[y*w] : source[y*w + outgoing];
+                let valIn = (incoming >= w) ? source[y*w + w - 1] : source[y*w + incoming];
+                
+                sum -= valOut;
+                sum += valIn;
+            }
+        }
+
+        // Vertical Pass (Read from target, Write to new buffer)
+        const output = new Float32Array(w * h);
+        for (let x = 0; x < w; x++) {
+            let sum = 0;
+            for(let i=0; i<r; i++) sum += target[x]; 
+            for(let i=0; i<=r; i++) sum += target[i*w + x];
+            
+            for (let y = 0; y < h; y++) {
+                output[y*w + x] = sum / (2*r+1);
+                
+                let outgoing = y - r;
+                let incoming = y + r + 1;
+                
+                let valOut = (outgoing < 0) ? target[x] : target[outgoing*w + x];
+                let valIn = (incoming >= h) ? target[(h-1)*w + x] : target[incoming*w + x];
+                
+                sum -= valOut;
+                sum += valIn;
+            }
+        }
+        return output;
+    }
+
+    // --- FLOW FIELD ---
     function processFlowMode(imgData) {
         const algo = flowAlgoSelect.value;
         const gray = getGrayscaleData(imgData, CANVAS_WIDTH, CANVAS_HEIGHT);
@@ -471,54 +590,35 @@
     }
 
     function renderFlowDithered(gray) {
-        // Floyd-Steinberg Dithering to place flow lines
         const width = CANVAS_WIDTH;
         const height = CANVAS_HEIGHT;
-        const lineLen = parseInt(resolutionSlider.value, 10); // Use grid size slider as Line Length
-        const contrast = parseFloat(flowScaleSlider.value); // Use scale slider as Density/Contrast
-        
-        // Sampling step (not pixel by pixel, but fine grid)
+        const lineLen = parseInt(resolutionSlider.value, 10);
+        const contrast = parseFloat(flowScaleSlider.value);
         const step = 4; 
         
-        // Error buffer (Float32 for precision)
         const errorBuffer = new Float32Array(width * height);
-        
-        // Copy initial brightness to error buffer
-        // Invert: 0 (black) -> 255 (high density target), 255 (white) -> 0 (low density)
         for(let i=0; i<gray.length; i++) {
             errorBuffer[i] = (255 - gray[i]) * contrast;
         }
 
         ctx.beginPath();
-        
-        // Iterate with small steps
         for (let y = 0; y < height - step; y += step) {
             for (let x = 0; x < width - step; x += step) {
                 const idx = y * width + x;
                 const oldVal = errorBuffer[idx];
-                
-                // Threshold: If accumulated "ink need" > 128, place a line
                 const threshold = 128;
                 let error = 0;
 
                 if (oldVal > threshold) {
-                    // PLACE LINE
-                    const { angle } = calculateStructureTensor(gray, x, y, width, 5); // Window size 5
+                    const { angle } = calculateStructureTensor(gray, x, y, width, 5); 
                     const cx = x, cy = y;
-                    
-                    // Draw
                     ctx.moveTo(cx - (Math.cos(angle) * lineLen/2), cy - (Math.sin(angle) * lineLen/2));
                     ctx.lineTo(cx + (Math.cos(angle) * lineLen/2), cy + (Math.sin(angle) * lineLen/2));
-                    
-                    // We placed ink (255), so subtract that from the buffer
                     error = oldVal - 255;
                 } else {
-                    // No ink placed
                     error = oldVal - 0;
                 }
 
-                // Floyd-Steinberg Diffusion
-                // 7, 3, 5, 1 (/16)
                 if (x + step < width) errorBuffer[y * width + (x + step)] += error * 7/16;
                 if (x - step >= 0 && y + step < height) errorBuffer[(y + step) * width + (x - step)] += error * 3/16;
                 if (y + step < height) errorBuffer[(y + step) * width + x] += error * 5/16;
@@ -528,10 +628,9 @@
         ctx.stroke();
     }
 
-    // Helper for Flow Logic
     function calculateStructureTensor(gray, x, y, width, windowSize) {
-        let sumE = 0; // Gx^2 - Gy^2
-        let sumF = 0; // 2 * Gx * Gy
+        let sumE = 0; 
+        let sumF = 0; 
         let weightSum = 0;
         const half = Math.floor(windowSize / 2);
 
@@ -709,6 +808,13 @@
 
     function generateAndDownloadSVG() {
         if (!currentImage) return;
+        // Basic implementation supports download for Concentrics, Hatched, and Flow.
+        // Feature Density mode renders raster data which is not converted to vector SVG here.
+        if (currentMode === 'density') {
+            alert("Feature Density mode displays a raster field and does not export to SVG in this version.");
+            return;
+        }
+
         let svgContent = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${CANVAS_WIDTH} ${CANVAS_HEIGHT}" width="11in" height="8.5in"><rect width="100%" height="100%" fill="white"/>`;
 
         if (currentMode === 'edges') {
@@ -774,7 +880,6 @@
                 }
             }
         } else {
-            // ... (Previous SVG code for concentrics/hatched)
              const sampleSize = parseInt(resolutionSlider.value, 10);
             const offCanvas = document.createElement('canvas'); offCanvas.width = CANVAS_WIDTH; offCanvas.height = CANVAS_HEIGHT;
             const offCtx = offCanvas.getContext('2d');

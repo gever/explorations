@@ -6,14 +6,13 @@ import sys
 
 def get_grayscale(img):
     """
-    Convert PIL image to grayscale numpy array:
+    Convert PIL image to grayscale numpy array matching the JS logic:
     0.299*R + 0.587*G + 0.114*B
     """
     # Convert to RGB to ensure 3 channels
     img = img.convert('RGB')
     
-    # Create array first (as uint8), THEN cast to float32.
-    # This avoids passing arguments to __array__ that Numpy 2.0 no longer likes.
+    # NumPy 2.0 Fix: Create array first, then cast
     data = np.array(img).astype(np.float32)
     
     # Perform the weighted sum
@@ -35,23 +34,16 @@ def calculate_structure_tensor(gray, x, y, w, h, window_size=5):
     x_min = max(0, x - half)
     x_max = min(w, x + half + 1)
 
-    # Extract the window
-    # Note: We need neighbors +1/-1 for gradient, so we must be careful at edges of the image
-    # For simplicity/speed matching the JS, we'll iterate locally.
-    
     for iy in range(y_min, y_max):
         for ix in range(x_min, x_max):
-            # Boundary checks for gradient calculation
             if ix <= 0 or ix >= w - 1 or iy <= 0 or iy >= h - 1:
                 continue
 
             # Calculate Gradients (Central Difference)
-            # gx = right - left
             val_plus_x = gray[iy, ix + 1]
             val_minus_x = gray[iy, ix - 1]
             gx = val_plus_x - val_minus_x
 
-            # gy = down - up
             val_plus_y = gray[iy + 1, ix]
             val_minus_y = gray[iy - 1, ix]
             gy = val_plus_y - val_minus_y
@@ -59,8 +51,7 @@ def calculate_structure_tensor(gray, x, y, w, h, window_size=5):
             sum_e += (gx * gx - gy * gy)
             sum_f += (2 * gx * gy)
 
-    # Calculate Angle
-    # + PI/2 rotates it to flow *along* the edge rather than across it
+    # Calculate Angle (+ PI/2 rotates it to flow along the edge)
     angle = (0.5 * math.atan2(sum_f, sum_e)) + (math.pi / 2)
     return angle
 
@@ -70,6 +61,7 @@ def main():
     parser.add_argument("output_svg", help="Path to save output SVG")
     parser.add_argument("--grid-size", type=int, default=12, help="Length of the drawn lines (default: 12)")
     parser.add_argument("--density", type=float, default=1.0, help="Density/Contrast scale (default: 1.0)")
+    parser.add_argument("--max-dim", type=int, default=1024, help="Maximum dimension for resizing (default: 1024)")
     
     args = parser.parse_args()
 
@@ -79,25 +71,40 @@ def main():
         print(f"Error: Could not open image {args.input_image}")
         sys.exit(1)
 
-    width, height = img.size
-    print(f"Processing image: {width}x{height}")
+    # --- Resizing Logic ---
+    original_width, original_height = img.size
+    max_dim = args.max_dim
 
+    if max(original_width, original_height) > max_dim:
+        scale_factor = max_dim / max(original_width, original_height)
+        new_width = int(original_width * scale_factor)
+        new_height = int(original_height * scale_factor)
+        
+        print(f"Resizing image from {original_width}x{original_height} to {new_width}x{new_height}...")
+        
+        # Use Resampling.LANCZOS for high quality downsampling
+        # (Fallbacks to Image.LANCZOS for older Pillow versions)
+        resample_method = getattr(Image, 'Resampling', Image).LANCZOS
+        img = img.resize((new_width, new_height), resample_method)
+    else:
+        print(f"Image size {original_width}x{original_height} is within limit ({max_dim}).")
+
+    width, height = img.size
+    
     # 1. Get Grayscale Data
     gray = get_grayscale(img)
 
     # 2. Initialize Error Buffer
-    # In JS: errorBuffer[i] = (255 - gray[i]) * contrast
     error_buffer = (255.0 - gray) * args.density
 
     # Constants
-    step = 4  # Hardcoded in the JS loop for dithering resolution
+    step = 4  
     line_len = args.grid_size
     threshold = 128.0
     
     lines = []
 
     # 3. Dithering Loop
-    # We must iterate sequentially because error diffuses forward
     print("Tracing flow lines...")
     
     for y in range(0, height - step, step):
@@ -107,10 +114,8 @@ def main():
             error = 0.0
 
             if old_val > threshold:
-                # 1. Calculate Angle
                 angle = calculate_structure_tensor(gray, x, y, width, height)
                 
-                # 2. Calculate Line Coordinates
                 cx, cy = x, y
                 x1 = cx - (math.cos(angle) * line_len / 2)
                 y1 = cy - (math.sin(angle) * line_len / 2)
@@ -119,25 +124,17 @@ def main():
                 
                 lines.append(((x1, y1), (x2, y2)))
                 
-                # 3. Determine Error
                 error = old_val - 255.0
             else:
                 error = old_val - 0.0
 
-            # 4. Distribute Error (Ostromoukhov / Floyd-Steinberg variant)
-            # (x + step, y) -> 7/16
+            # Distribute Error
             if x + step < width:
                 error_buffer[y, x + step] += error * (7/16)
-            
-            # (x - step, y + step) -> 3/16
             if x - step >= 0 and y + step < height:
                 error_buffer[y + step, x - step] += error * (3/16)
-                
-            # (x, y + step) -> 5/16
             if y + step < height:
                 error_buffer[y + step, x] += error * (5/16)
-                
-            # (x + step, y + step) -> 1/16
             if x + step < width and y + step < height:
                 error_buffer[y + step, x + step] += error * (1/16)
 
@@ -145,13 +142,11 @@ def main():
     print(f"Generated {len(lines)} lines. Saving to {args.output_svg}...")
     
     with open(args.output_svg, "w") as f:
-        # Standard SVG Header
         f.write(f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {width} {height}" width="{width}px" height="{height}px">\n')
         f.write(f'<rect width="100%" height="100%" fill="white"/>\n')
         f.write(f'<g stroke="black" stroke-width="1" fill="none">\n')
         
         for (p1, p2) in lines:
-            # Simple optimization: Don't write NaN coordinates
             if math.isnan(p1[0]) or math.isnan(p2[0]):
                 continue
             f.write(f'<line x1="{p1[0]:.2f}" y1="{p1[1]:.2f}" x2="{p2[0]:.2f}" y2="{p2[1]:.2f}" />\n')

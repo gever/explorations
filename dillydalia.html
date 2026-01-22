@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Pareidolia Evolution v3</title>
+    <title>Pareidolia Evolution v4</title>
     <style>
         /* --- DEFAULT STATE (Cells White, Margins Black) --- */
         body {
@@ -23,9 +23,7 @@
 
         /* --- TOGGLED STATE (Cells Black, Margins White) --- */
         body.inverted {
-            /* Margin Color (Toggled: Light) */
             background-color: #e0e0e0;
-            /* Text Color (Toggled: Dark) */
             color: #111;
         }
 
@@ -51,13 +49,10 @@
             overflow: hidden;
             transition: background-color 0.3s, border-color 0.2s;
             cursor: pointer;
-
-            /* Cell Background (Default: White) */
             background: #ffffff;
             border: 1px solid #333;
         }
 
-        /* Cell Background (Toggled: Black) */
         body.inverted .cell {
             background: #000000;
             border: 1px solid #ccc;
@@ -77,20 +72,33 @@
             text-align: center;
             padding: 15px;
             border-top: 1px solid;
-            border-color: inherit; /* Matches text color */
+            border-color: inherit;
             font-size: 0.9em;
             flex-shrink: 0;
             user-select: none;
-            background: rgba(0,0,0,0.1); /* Subtle tint */
+            background: rgba(0,0,0,0.1);
         }
 
+        /* --- ANIMATIONS --- */
         .highlight {
             animation: flash 0.3s ease-out;
+        }
+
+        /* Animation for the 'R' key reset */
+        .shake-reset {
+            animation: shake 0.4s cubic-bezier(.36,.07,.19,.97) both;
         }
 
         @keyframes flash {
             0% { border-color: #ff0055; box-shadow: 0 0 20px #ff0055; }
             100% { border-color: inherit; box-shadow: none; }
+        }
+
+        @keyframes shake {
+            10%, 90% { transform: translate3d(-1px, 0, 0); }
+            20%, 80% { transform: translate3d(2px, 0, 0); }
+            30%, 50%, 70% { transform: translate3d(-4px, 0, 0); }
+            40%, 60% { transform: translate3d(4px, 0, 0); }
         }
     </style>
 </head>
@@ -101,7 +109,7 @@
     </div>
 
     <div id="instructions">
-        Generation <span id="gen-count">0</span>: Click a face to select parent. <strong>[SPACE]</strong> to toggle background.
+        Gen <span id="gen-count">0</span>: Click to Evolve. <strong>[SPACE]</strong> Toggle Theme. <strong>[R]</strong> Randomize.
     </div>
 
 <script>
@@ -215,11 +223,16 @@
         });
         ro.observe(document.getElementById('layout-container'));
 
-        // KEYBOARD LISTENER FOR SPACEBAR
+        // --- KEYBOARD CONTROLS ---
         window.addEventListener('keydown', (e) => {
+            // [SPACE] Toggle Background
             if (e.code === 'Space') {
-                e.preventDefault(); // Prevent scrolling
+                e.preventDefault();
                 document.body.classList.toggle('inverted');
+            }
+            // [R] Randomize All
+            if (e.key.toLowerCase() === 'r') {
+                resetPopulation();
             }
         });
     }
@@ -238,6 +251,21 @@
         }
         generation++;
         genDisplay.innerText = generation;
+        drawAll();
+    }
+
+    function resetPopulation() {
+        // Reset Genes
+        population.forEach(p => p.randomize(INITIAL_CIRCLES));
+        // Reset Counter
+        generation = 0;
+        genDisplay.innerText = generation;
+        
+        // Visual Shake Feedback
+        gridTarget.classList.remove('shake-reset');
+        void gridTarget.offsetWidth; 
+        gridTarget.classList.add('shake-reset');
+
         drawAll();
     }
 

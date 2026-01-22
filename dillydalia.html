@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Pareidolia Evolution</title>
+    <title>Pareidolia Evolution v2</title>
     <style>
         body {
             margin: 0;
@@ -11,75 +11,86 @@
             height: 100vh;
             display: flex;
             flex-direction: column;
-            font-family: monospace;
-            color: #ccc;
-            overflow: hidden; /* Prevent scrollbars */
-            height: 100%;
+            font-family: 'Courier New', monospace;
+            color: #888;
+            overflow: hidden;
         }
-        
+
+        /* The main container for the grid */
         #layout-container {
             flex-grow: 1;
-            width: 200px;
-            height: 300px;
-            padding: 10px;
+            width: 100%;
+            height: 100%;
+            padding: 20px;
             box-sizing: border-box;
         }
 
-        table {
+        /* CSS Grid replaces the Table for better responsiveness */
+        #grid-target {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            grid-template-rows: repeat(3, 1fr);
+            gap: 15px;
             width: 100%;
             height: 100%;
-            border-collapse: separate; 
-            border-spacing: 10px; /* The margin between cells */
-            table-layout: fixed; /* Ensures equal cell sizes */
         }
 
-        td {
-            padding: 0;
-            vertical-align: top;
-            width: 200px;
-            height: 250px;
+        .cell {
+            position: relative;
+            border: 1px solid #333;
+            overflow: hidden;
+            background: #000;
+            transition: border-color 0.2s;
         }
 
+        .cell:hover {
+            border-color: #ff0055;
+            cursor: pointer;
+        }
+
+        /* The canvas fills the grid cell */
         canvas {
             display: block;
             width: 100%;
             height: 100%;
-            background-color: #000;
-            cursor: pointer;
-            border: 2px solid white; /* The white border */
-            box-sizing: border-box; 
-        }
-
-        canvas:hover {
-            border-color: #ff0055;
         }
 
         #instructions {
             text-align: center;
-            padding: 10px;
-            background: #222;
-            border-top: 1px solid #444;
+            padding: 15px;
+            background: #1a1a1a;
+            border-top: 1px solid #333;
+            font-size: 0.9em;
             flex-shrink: 0;
+            user-select: none;
+        }
+
+        .highlight {
+            animation: flash 0.3s ease-out;
+        }
+
+        @keyframes flash {
+            0% { border-color: #fff; box-shadow: 0 0 20px #fff; }
+            100% { border-color: #333; box-shadow: none; }
         }
     </style>
 </head>
 <body>
 
-<div>
-    <table id="grid-table">
-        <tbody id="grid-body">
-            </tbody>
-    </table>
-</div>
+    <div id="layout-container">
+        <div id="grid-target"></div>
+    </div>
 
-<div id="instructions">Revision 12: Click a cell to select it as the parent. The others will mutate.</div>
+    <div id="instructions">
+        Generation <span id="gen-count">0</span>: Click a face to select it as parent.
+    </div>
 
 <script>
     /**
      * CONFIGURATION
      */
     const GRID_SIZE = 3; 
-    const INITIAL_CIRCLES = 40;
+    const INITIAL_CIRCLES = 50; // Increased slightly for more detail
     const MUTATION_RATE = 0.05; 
     const MUTATION_CHANCE = 0.5; 
     const ADD_CHANCE = 0.2; 
@@ -112,6 +123,7 @@
 
         clone() {
             const copy = new Genome();
+            // Deep copy the gene objects
             copy.genes = this.genes.map(g => ({...g}));
             return copy;
         }
@@ -122,13 +134,18 @@
                     g.x = this.clamp(g.x + this.drift());
                     g.y = this.clamp(g.y + this.drift());
                     g.rad = this.clamp(g.rad + this.drift());
-                    g.a = this.clamp(g.a + this.drift());
+                    // Alpha mutation is smaller to prevent ghosts
+                    g.a = this.clamp(g.a + (this.drift() * 0.5)); 
                     g.r = this.clamp(g.r + this.drift());
                     g.g = this.clamp(g.g + this.drift());
                     g.b = this.clamp(g.b + this.drift());
                 }
             });
+
+            // Add new gene
             if (Math.random() < ADD_CHANCE) this.genes.push(this.randomGene());
+            
+            // Remove gene (keep at least 1)
             if (Math.random() < DEL_CHANCE && this.genes.length > 1) {
                 this.genes.splice(Math.floor(Math.random() * this.genes.length), 1);
             }
@@ -141,7 +158,9 @@
     /**
      * STATE
      */
-    const tableBody = document.getElementById('grid-body');
+    const gridTarget = document.getElementById('grid-target');
+    const genDisplay = document.getElementById('gen-count');
+    let generation = 0;
     const population = [];
     const canvases = [];
 
@@ -149,41 +168,44 @@
      * INITIALIZATION
      */
     function init() {
-        let globalIndex = 0;
+        const totalCells = GRID_SIZE * GRID_SIZE;
 
-        for (let r = 0; r < GRID_SIZE; r++) {
-            const tr = document.createElement('tr');
+        for (let i = 0; i < totalCells; i++) {
+            // DOM Creation
+            const cellDiv = document.createElement('div');
+            cellDiv.className = 'cell';
             
-            for (let c = 0; c < GRID_SIZE; c++) {
-                const td = document.createElement('td');
-                const cvs = document.createElement('canvas');
-                
-                // Capture index for closure
-                const idx = globalIndex;
-                cvs.id = `cell-${idx}`;
-                
-                // Interaction
-                const interact = (e) => { e.preventDefault(); evolve(idx); };
-                cvs.addEventListener('mousedown', interact);
-                cvs.addEventListener('touchstart', interact);
-                
-                td.appendChild(cvs);
-                tr.appendChild(td);
-                canvases.push(cvs);
+            const cvs = document.createElement('canvas');
+            // ID for debugging
+            cvs.id = `c-${i}`; 
+            
+            // Interaction
+            const interact = (e) => { 
+                e.preventDefault(); 
+                // Visual feedback
+                cellDiv.classList.remove('highlight');
+                void cellDiv.offsetWidth; // Trigger reflow
+                cellDiv.classList.add('highlight');
+                evolve(i); 
+            };
+            
+            cvs.addEventListener('mousedown', interact);
+            cvs.addEventListener('touchstart', interact);
+            
+            cellDiv.appendChild(cvs);
+            gridTarget.appendChild(cellDiv);
+            canvases.push(cvs);
 
-                // Create DNA
-                const genome = new Genome();
-                genome.randomize(INITIAL_CIRCLES);
-                population.push(genome);
-
-                globalIndex++;
-            }
-            tableBody.appendChild(tr);
+            // Genetics
+            const genome = new Genome();
+            genome.randomize(INITIAL_CIRCLES);
+            population.push(genome);
         }
 
-        // Handle Resizing
-        const ro = new ResizeObserver(() => {
-            resize();
+        // Observer for responsive resizing
+        const ro = new ResizeObserver(entries => {
+            // Debounce slightly or just run
+            requestAnimationFrame(resize);
         });
         ro.observe(document.getElementById('layout-container'));
     }
@@ -195,12 +217,14 @@
         const parent = population[selectedIndex];
         
         for (let i = 0; i < population.length; i++) {
-            if (i === selectedIndex) continue; // Elitism: keep parent
+            if (i === selectedIndex) continue; // Keep the parent exactly as is
             
             const child = parent.clone();
             child.mutate();
             population[i] = child;
         }
+        generation++;
+        genDisplay.innerText = generation;
         drawAll();
     }
 
@@ -220,16 +244,23 @@
         ctx.clearRect(0, 0, w, h);
 
         const drawCircles = () => {
+            // Global Composite Operation "lighter" creates nice glowing effects
+            // when circles overlap, similar to additive light
+            ctx.globalCompositeOperation = 'source-over'; 
+
             genome.genes.forEach(g => {
-                const radius = g.rad * (w / 4); 
+                // Radius relative to width
+                const radius = Math.max(1, g.rad * (w / 3)); 
                 const cx = g.x * w; 
                 const cy = g.y * h;
                 
                 ctx.beginPath();
                 ctx.arc(cx, cy, radius, 0, Math.PI * 2);
+                
                 const r = Math.floor(g.r * 255);
                 const gr = Math.floor(g.g * 255);
                 const b = Math.floor(g.b * 255);
+                
                 ctx.fillStyle = `rgba(${r}, ${gr}, ${b}, ${g.a})`;
                 ctx.fill();
             });
@@ -258,10 +289,11 @@
 
     function resize() {
         canvases.forEach(cvs => {
-            // Match internal resolution to display size
-            const rect = cvs.getBoundingClientRect();
-            // Check for valid dimensions to avoid errors if hidden
-            if (rect.width > 0 && rect.height > 0) {
+            // Get the container size provided by CSS Grid
+            const rect = cvs.parentElement.getBoundingClientRect();
+            
+            // Only update if dimensions actually changed (prevents flicker)
+            if (cvs.width !== rect.width || cvs.height !== rect.height) {
                 cvs.width = rect.width;
                 cvs.height = rect.height;
             }

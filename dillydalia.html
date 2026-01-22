@@ -1,0 +1,285 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Pareidolia Evolution</title>
+    <style>
+        body {
+            margin: 0;
+            background-color: #1a1a1a;
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+            font-family: monospace;
+            color: #888;
+        }
+        
+        #grid {
+            flex-grow: 1;
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            grid-template-rows: repeat(3, 1fr);
+            gap: 2px;
+            padding: 2px;
+        }
+
+        canvas {
+            width: 100%;
+            height: 100%;
+            background-color: #000;
+            cursor: crosshair;
+            transition: transform 0.1s;
+        }
+
+        canvas:active {
+            transform: scale(0.98);
+        }
+
+        #instructions {
+            text-align: center;
+            padding: 10px;
+            background: #222;
+            font-size: 0.9em;
+        }
+    </style>
+</head>
+<body>
+
+<div id="grid">
+    </div>
+<div id="instructions">Click a cell to select it as the parent. The others will mutate.</div>
+
+<script>
+    /**
+     * CONFIGURATION
+     */
+    const GRID_SIZE = 3; // 3x3
+    const INITIAL_CIRCLES = 30; // Start with this many circles
+    const MUTATION_RATE = 0.05; // Amount to tweak float values
+    const MUTATION_CHANCE = 0.5; // Probability a gene gets tweaked
+    const ADD_CHANCE = 0.15; // Probability to add a new circle
+    const DEL_CHANCE = 0.15; // Probability to remove a circle
+    
+    /**
+     * DATA STRUCTURES
+     * A Gene represents one circle: [x, y, radius, alpha, r, g, b]
+     * All values are normalized 0.0 - 1.0
+     */
+    
+    class Genome {
+        constructor() {
+            this.genes = [];
+        }
+
+        // Create a completely random genome
+        randomize(count) {
+            this.genes = [];
+            for (let i = 0; i < count; i++) {
+                this.genes.push(this.randomGene());
+            }
+        }
+
+        randomGene() {
+            return {
+                x: Math.random(),
+                y: Math.random(),
+                rad: Math.random(),     // Will be scaled relative to canvas size
+                a: Math.random(),       // Alpha
+                r: Math.random(),       // Red
+                g: Math.random(),       // Green
+                b: Math.random()        // Blue
+            };
+        }
+
+        clone() {
+            const copy = new Genome();
+            // Deep copy the array of objects
+            copy.genes = this.genes.map(g => ({...g}));
+            return copy;
+        }
+
+        mutate() {
+            // 1. Modify existing genes
+            this.genes.forEach(g => {
+                if (Math.random() < MUTATION_CHANCE) {
+                    // Mutate properties with a slight drift, clamped 0-1
+                    g.x = this.clamp(g.x + this.drift());
+                    g.y = this.clamp(g.y + this.drift());
+                    g.rad = this.clamp(g.rad + this.drift());
+                    g.a = this.clamp(g.a + this.drift());
+                    g.r = this.clamp(g.r + this.drift());
+                    g.g = this.clamp(g.g + this.drift());
+                    g.b = this.clamp(g.b + this.drift());
+                }
+            });
+
+            // 2. Addition
+            if (Math.random() < ADD_CHANCE) {
+                this.genes.push(this.randomGene());
+            }
+
+            // 3. Deletion (ensure we don't delete everything)
+            if (Math.random() < DEL_CHANCE && this.genes.length > 1) {
+                const index = Math.floor(Math.random() * this.genes.length);
+                this.genes.splice(index, 1);
+            }
+        }
+
+        drift() {
+            // Returns a random float between -MUTATION_RATE and +MUTATION_RATE
+            return (Math.random() * 2 - 1) * MUTATION_RATE;
+        }
+
+        clamp(val) {
+            return Math.max(0, Math.min(1, val));
+        }
+    }
+
+    /**
+     * APPLICATION STATE
+     */
+    const container = document.getElementById('grid');
+    const population = []; // Array of Genome objects
+    const canvases = [];   // Array of DOM elements
+
+    /**
+     * INITIALIZATION
+     */
+    function init() {
+        for (let i = 0; i < GRID_SIZE * GRID_SIZE; i++) {
+            // Create DOM elements
+            const cvs = document.createElement('canvas');
+            cvs.id = `cell-${i}`;
+            // Handle clicks
+            cvs.addEventListener('mousedown', () => evolve(i));
+            cvs.addEventListener('touchstart', (e) => {
+                e.preventDefault(); // Prevent scrolling on touch
+                evolve(i);
+            });
+            
+            container.appendChild(cvs);
+            canvases.push(cvs);
+
+            // Create Initial Population
+            const genome = new Genome();
+            genome.randomize(INITIAL_CIRCLES);
+            population.push(genome);
+        }
+
+        // Initial sizing and draw
+        resize();
+        window.addEventListener('resize', resize);
+        drawAll();
+    }
+
+    /**
+     * CORE LOGIC
+     */
+    function evolve(selectedIndex) {
+        const parent = population[selectedIndex];
+        
+        // Update population
+        for (let i = 0; i < population.length; i++) {
+            if (i === selectedIndex) {
+                // Keep the parent as is (elitism)
+                continue; 
+            }
+            
+            // Create child from parent
+            const child = parent.clone();
+            child.mutate();
+            population[i] = child;
+        }
+        
+        drawAll();
+    }
+
+    /**
+     * RENDERING
+     */
+    function drawAll() {
+        canvases.forEach((cvs, i) => drawGenome(cvs, population[i]));
+    }
+
+    function drawGenome(canvas, genome) {
+        const ctx = canvas.getContext('2d');
+        const w = canvas.width;
+        const h = canvas.height;
+        const halfW = w / 2;
+
+        // Clear background
+        ctx.clearRect(0, 0, w, h);
+
+        // 1. Draw circles on the LEFT half only
+        ctx.save();
+        
+        // Define clipping region for left half
+        ctx.beginPath();
+        ctx.rect(0, 0, halfW, h);
+        ctx.clip();
+
+        genome.genes.forEach(g => {
+            const radius = g.rad * (w / 5); // Scale max radius relative to width
+            // Map X to 0 -> halfW (so all circles generate on left side originally)
+            // Or Map X to 0 -> W, but we only see what lands in the clip?
+            // To get better mirroring effects, we map x to the full width,
+            // but the clipping hides the right side overflow.
+            const cx = g.x * w; 
+            const cy = g.y * h;
+
+            ctx.beginPath();
+            ctx.arc(cx, cy, radius, 0, Math.PI * 2);
+            
+            // Color string
+            const r = Math.floor(g.r * 255);
+            const gr = Math.floor(g.g * 255);
+            const b = Math.floor(g.b * 255);
+            ctx.fillStyle = `rgba(${r}, ${gr}, ${b}, ${g.a})`;
+            
+            ctx.fill(); // No border as requested
+        });
+        
+        ctx.restore();
+
+        // 2. Mirror the Left half to the Right half
+        // We take the image data from 0,0 to halfW,h
+        // And draw it flipped at halfW,0
+        
+        ctx.save();
+        // Move origin to the right edge
+        ctx.translate(w, 0);
+        // Flip horizontally
+        ctx.scale(-1, 1);
+        // Draw the left half onto the transformed context
+        // Source: 0,0,halfW,h
+        // Dest: 0,0,halfW,h (relative to new origin)
+        // Since origin is at Right Edge and scale is -1, 
+        // drawing at positive x goes 'left' visually towards the center.
+        // Wait, standard drawImage logic:
+        // If we flip context, drawing at 0,0 draws at the origin (Right Edge)
+        // and extends to the left.
+        // We want to draw the IMAGE of the left side.
+        ctx.drawImage(canvas, 0, 0, halfW, h, 0, 0, halfW, h);
+        ctx.restore();
+    }
+
+    /**
+     * UTILS
+     */
+    function resize() {
+        // Make internal canvas resolution match display resolution for sharpness
+        canvases.forEach(cvs => {
+            const rect = cvs.getBoundingClientRect();
+            cvs.width = rect.width;
+            cvs.height = rect.height;
+        });
+        drawAll();
+    }
+
+    // Start
+    init();
+
+</script>
+</body>
+</html>

@@ -7,53 +7,74 @@
     <style>
         body {
             margin: 0;
-            background-color: #111; /* Darker background to make white pop */
+            background-color: #111;
             height: 100vh;
             display: flex;
             flex-direction: column;
             font-family: monospace;
             color: #ccc;
+            overflow: hidden; /* Prevent scrollbars */
         }
         
-        #grid {
+        #layout-container {
             flex-grow: 1;
-            display: grid;
-            grid-template-columns: repeat(3, 1fr);
-            grid-template-rows: repeat(3, 1fr);
-            gap: 10px; /* Increased spacing between cells */
+            width: 100%;
+            height: 100%;
             padding: 10px;
-            box-sizing: border-box; /* Ensures padding doesn't overflow viewport */
+            box-sizing: border-box;
+        }
+
+        table {
+            width: 100%;
+            height: 100%;
+            border-collapse: separate; 
+            border-spacing: 10px; /* The margin between cells */
+            table-layout: fixed; /* Ensures equal cell sizes */
+        }
+
+        td {
+            padding: 0;
+            vertical-align: top;
         }
 
         canvas {
+            display: block;
             width: 100%;
             height: 100%;
             background-color: #000;
             cursor: pointer;
-            border: 2px solid white; /* The requested white border */
-            box-sizing: border-box;
-            transition: border-color 0.1s;
+            border: 2px solid white; /* The white border */
+            box-sizing: border-box; 
         }
 
         canvas:hover {
-            border-color: #ff0055; /* Visual feedback on hover */
+            border-color: #ff0055;
         }
 
         #instructions {
             text-align: center;
-            padding: 15px;
+            padding: 10px;
             background: #222;
             border-top: 1px solid #444;
+            flex-shrink: 0;
         }
     </style>
 </head>
 <body>
 
-<div id="grid">
-    </div>
+<div id="layout-container">
+    <table id="grid-table">
+        <tbody id="grid-body">
+            </tbody>
+    </table>
+</div>
+
 <div id="instructions">Click a cell to select it as the parent. The others will mutate.</div>
 
 <script>
+    /**
+     * CONFIGURATION
+     */
     const GRID_SIZE = 3; 
     const INITIAL_CIRCLES = 40;
     const MUTATION_RATE = 0.05; 
@@ -61,6 +82,9 @@
     const ADD_CHANCE = 0.2; 
     const DEL_CHANCE = 0.2; 
     
+    /**
+     * DATA STRUCTURES
+     */
     class Genome {
         constructor() {
             this.genes = [];
@@ -111,39 +135,65 @@
         clamp(val) { return Math.max(0, Math.min(1, val)); }
     }
 
-    const container = document.getElementById('grid');
+    /**
+     * STATE
+     */
+    const tableBody = document.getElementById('grid-body');
     const population = [];
     const canvases = [];
 
+    /**
+     * INITIALIZATION
+     */
     function init() {
-        for (let i = 0; i < GRID_SIZE * GRID_SIZE; i++) {
-            const cvs = document.createElement('canvas');
-            cvs.id = `cell-${i}`;
-            
-            // Interaction listeners
-            const interact = (e) => { e.preventDefault(); evolve(i); };
-            cvs.addEventListener('mousedown', interact);
-            cvs.addEventListener('touchstart', interact);
-            
-            container.appendChild(cvs);
-            canvases.push(cvs);
+        let globalIndex = 0;
 
-            const genome = new Genome();
-            genome.randomize(INITIAL_CIRCLES);
-            population.push(genome);
+        for (let r = 0; r < GRID_SIZE; r++) {
+            const tr = document.createElement('tr');
+            
+            for (let c = 0; c < GRID_SIZE; c++) {
+                const td = document.createElement('td');
+                const cvs = document.createElement('canvas');
+                
+                // Capture index for closure
+                const idx = globalIndex;
+                cvs.id = `cell-${idx}`;
+                
+                // Interaction
+                const interact = (e) => { e.preventDefault(); evolve(idx); };
+                cvs.addEventListener('mousedown', interact);
+                cvs.addEventListener('touchstart', interact);
+                
+                td.appendChild(cvs);
+                tr.appendChild(td);
+                canvases.push(cvs);
+
+                // Create DNA
+                const genome = new Genome();
+                genome.randomize(INITIAL_CIRCLES);
+                population.push(genome);
+
+                globalIndex++;
+            }
+            tableBody.appendChild(tr);
         }
 
-        // Use ResizeObserver for robust sizing
+        // Handle Resizing
         const ro = new ResizeObserver(() => {
             resize();
         });
-        ro.observe(container);
+        ro.observe(document.getElementById('layout-container'));
     }
 
+    /**
+     * EVOLUTION LOGIC
+     */
     function evolve(selectedIndex) {
         const parent = population[selectedIndex];
+        
         for (let i = 0; i < population.length; i++) {
-            if (i === selectedIndex) continue; 
+            if (i === selectedIndex) continue; // Elitism: keep parent
+            
             const child = parent.clone();
             child.mutate();
             population[i] = child;
@@ -151,6 +201,9 @@
         drawAll();
     }
 
+    /**
+     * DRAWING
+     */
     function drawAll() {
         canvases.forEach((cvs, i) => drawGenome(cvs, population[i]));
     }
@@ -163,7 +216,6 @@
 
         ctx.clearRect(0, 0, w, h);
 
-        // Helper to draw the circles
         const drawCircles = () => {
             genome.genes.forEach(g => {
                 const radius = g.rad * (w / 4); 
@@ -183,7 +235,7 @@
         // 1. LEFT SIDE
         ctx.save();
         ctx.beginPath();
-        ctx.rect(0, 0, halfW, h); // Clip to left half
+        ctx.rect(0, 0, halfW, h); 
         ctx.clip();
         drawCircles();
         ctx.restore();
@@ -191,10 +243,9 @@
         // 2. RIGHT SIDE (Mirrored)
         ctx.save();
         ctx.beginPath();
-        ctx.rect(halfW, 0, halfW, h); // Clip to right half
+        ctx.rect(halfW, 0, halfW, h); 
         ctx.clip();
         
-        // Transform to mirror: Move origin to right edge, flip scale
         ctx.translate(w, 0);
         ctx.scale(-1, 1);
         
@@ -204,15 +255,18 @@
 
     function resize() {
         canvases.forEach(cvs => {
-            // Get the physical pixel size of the container
+            // Match internal resolution to display size
             const rect = cvs.getBoundingClientRect();
-            // Update internal canvas resolution
-            cvs.width = rect.width;
-            cvs.height = rect.height;
+            // Check for valid dimensions to avoid errors if hidden
+            if (rect.width > 0 && rect.height > 0) {
+                cvs.width = rect.width;
+                cvs.height = rect.height;
+            }
         });
         drawAll();
     }
 
+    // Start
     init();
 
 </script>

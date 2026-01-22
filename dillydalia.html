@@ -3,20 +3,32 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Pareidolia Evolution v2</title>
+    <title>Pareidolia Evolution v3</title>
     <style>
+        /* --- DEFAULT STATE (Cells White, Margins Black) --- */
         body {
             margin: 0;
-            background-color: #111;
             height: 100vh;
             display: flex;
             flex-direction: column;
             font-family: 'Courier New', monospace;
-            color: #888;
             overflow: hidden;
+            
+            /* Margin Color (Default: Dark) */
+            background-color: #111; 
+            /* Text Color (Default: Light) */
+            color: #ccc;
+            transition: background-color 0.3s, color 0.3s;
         }
 
-        /* The main container for the grid */
+        /* --- TOGGLED STATE (Cells Black, Margins White) --- */
+        body.inverted {
+            /* Margin Color (Toggled: Light) */
+            background-color: #e0e0e0;
+            /* Text Color (Toggled: Dark) */
+            color: #111;
+        }
+
         #layout-container {
             flex-grow: 1;
             width: 100%;
@@ -25,7 +37,6 @@
             box-sizing: border-box;
         }
 
-        /* CSS Grid replaces the Table for better responsiveness */
         #grid-target {
             display: grid;
             grid-template-columns: repeat(3, 1fr);
@@ -37,18 +48,25 @@
 
         .cell {
             position: relative;
-            border: 1px solid #333;
             overflow: hidden;
-            background: #000;
-            transition: border-color 0.2s;
+            transition: background-color 0.3s, border-color 0.2s;
+            cursor: pointer;
+
+            /* Cell Background (Default: White) */
+            background: #ffffff;
+            border: 1px solid #333;
+        }
+
+        /* Cell Background (Toggled: Black) */
+        body.inverted .cell {
+            background: #000000;
+            border: 1px solid #ccc;
         }
 
         .cell:hover {
-            border-color: #ff0055;
-            cursor: pointer;
+            border-color: #ff0055 !important;
         }
 
-        /* The canvas fills the grid cell */
         canvas {
             display: block;
             width: 100%;
@@ -58,11 +76,12 @@
         #instructions {
             text-align: center;
             padding: 15px;
-            background: #1a1a1a;
-            border-top: 1px solid #333;
+            border-top: 1px solid;
+            border-color: inherit; /* Matches text color */
             font-size: 0.9em;
             flex-shrink: 0;
             user-select: none;
+            background: rgba(0,0,0,0.1); /* Subtle tint */
         }
 
         .highlight {
@@ -70,8 +89,8 @@
         }
 
         @keyframes flash {
-            0% { border-color: #fff; box-shadow: 0 0 20px #fff; }
-            100% { border-color: #333; box-shadow: none; }
+            0% { border-color: #ff0055; box-shadow: 0 0 20px #ff0055; }
+            100% { border-color: inherit; box-shadow: none; }
         }
     </style>
 </head>
@@ -82,7 +101,7 @@
     </div>
 
     <div id="instructions">
-        Generation <span id="gen-count">0</span>: Click a face to select it as parent.
+        Generation <span id="gen-count">0</span>: Click a face to select parent. <strong>[SPACE]</strong> to toggle background.
     </div>
 
 <script>
@@ -90,7 +109,7 @@
      * CONFIGURATION
      */
     const GRID_SIZE = 3; 
-    const INITIAL_CIRCLES = 50; // Increased slightly for more detail
+    const INITIAL_CIRCLES = 50;
     const MUTATION_RATE = 0.05; 
     const MUTATION_CHANCE = 0.5; 
     const ADD_CHANCE = 0.2; 
@@ -123,7 +142,6 @@
 
         clone() {
             const copy = new Genome();
-            // Deep copy the gene objects
             copy.genes = this.genes.map(g => ({...g}));
             return copy;
         }
@@ -134,18 +152,13 @@
                     g.x = this.clamp(g.x + this.drift());
                     g.y = this.clamp(g.y + this.drift());
                     g.rad = this.clamp(g.rad + this.drift());
-                    // Alpha mutation is smaller to prevent ghosts
                     g.a = this.clamp(g.a + (this.drift() * 0.5)); 
                     g.r = this.clamp(g.r + this.drift());
                     g.g = this.clamp(g.g + this.drift());
                     g.b = this.clamp(g.b + this.drift());
                 }
             });
-
-            // Add new gene
             if (Math.random() < ADD_CHANCE) this.genes.push(this.randomGene());
-            
-            // Remove gene (keep at least 1)
             if (Math.random() < DEL_CHANCE && this.genes.length > 1) {
                 this.genes.splice(Math.floor(Math.random() * this.genes.length), 1);
             }
@@ -171,20 +184,16 @@
         const totalCells = GRID_SIZE * GRID_SIZE;
 
         for (let i = 0; i < totalCells; i++) {
-            // DOM Creation
             const cellDiv = document.createElement('div');
             cellDiv.className = 'cell';
             
             const cvs = document.createElement('canvas');
-            // ID for debugging
             cvs.id = `c-${i}`; 
             
-            // Interaction
             const interact = (e) => { 
                 e.preventDefault(); 
-                // Visual feedback
                 cellDiv.classList.remove('highlight');
-                void cellDiv.offsetWidth; // Trigger reflow
+                void cellDiv.offsetWidth; 
                 cellDiv.classList.add('highlight');
                 evolve(i); 
             };
@@ -196,18 +205,23 @@
             gridTarget.appendChild(cellDiv);
             canvases.push(cvs);
 
-            // Genetics
             const genome = new Genome();
             genome.randomize(INITIAL_CIRCLES);
             population.push(genome);
         }
 
-        // Observer for responsive resizing
         const ro = new ResizeObserver(entries => {
-            // Debounce slightly or just run
             requestAnimationFrame(resize);
         });
         ro.observe(document.getElementById('layout-container'));
+
+        // KEYBOARD LISTENER FOR SPACEBAR
+        window.addEventListener('keydown', (e) => {
+            if (e.code === 'Space') {
+                e.preventDefault(); // Prevent scrolling
+                document.body.classList.toggle('inverted');
+            }
+        });
     }
 
     /**
@@ -217,8 +231,7 @@
         const parent = population[selectedIndex];
         
         for (let i = 0; i < population.length; i++) {
-            if (i === selectedIndex) continue; // Keep the parent exactly as is
-            
+            if (i === selectedIndex) continue; 
             const child = parent.clone();
             child.mutate();
             population[i] = child;
@@ -244,12 +257,9 @@
         ctx.clearRect(0, 0, w, h);
 
         const drawCircles = () => {
-            // Global Composite Operation "lighter" creates nice glowing effects
-            // when circles overlap, similar to additive light
             ctx.globalCompositeOperation = 'source-over'; 
 
             genome.genes.forEach(g => {
-                // Radius relative to width
                 const radius = Math.max(1, g.rad * (w / 3)); 
                 const cx = g.x * w; 
                 const cy = g.y * h;
@@ -266,7 +276,6 @@
             });
         };
 
-        // 1. LEFT SIDE
         ctx.save();
         ctx.beginPath();
         ctx.rect(0, 0, halfW, h); 
@@ -274,25 +283,19 @@
         drawCircles();
         ctx.restore();
 
-        // 2. RIGHT SIDE (Mirrored)
         ctx.save();
         ctx.beginPath();
         ctx.rect(halfW, 0, halfW, h); 
         ctx.clip();
-        
         ctx.translate(w, 0);
         ctx.scale(-1, 1);
-        
         drawCircles();
         ctx.restore();
     }
 
     function resize() {
         canvases.forEach(cvs => {
-            // Get the container size provided by CSS Grid
             const rect = cvs.parentElement.getBoundingClientRect();
-            
-            // Only update if dimensions actually changed (prevents flicker)
             if (cvs.width !== rect.width || cvs.height !== rect.height) {
                 cvs.width = rect.width;
                 cvs.height = rect.height;
@@ -301,7 +304,6 @@
         drawAll();
     }
 
-    // Start
     init();
 
 </script>

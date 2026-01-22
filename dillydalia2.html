@@ -1,0 +1,378 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Pareidolia Evolution v10 (Rotated Ellipses)</title>
+    <style>
+        /* --- DEFAULT STATE --- */
+        body {
+            margin: 0;
+            height: 100dvh; 
+            display: flex;
+            flex-direction: column;
+            font-family: 'Courier New', monospace;
+            overflow: hidden;
+            background-color: #111; 
+            color: #ccc;
+            transition: background-color 0.3s, color 0.3s;
+        }
+
+        /* --- TOGGLED STATE --- */
+        body.inverted {
+            background-color: #e0e0e0;
+            color: #111;
+        }
+
+        #layout-container {
+            flex-grow: 1;
+            width: 100%;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            padding: 10px;
+            box-sizing: border-box;
+        }
+
+        #grid-target {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            grid-template-rows: repeat(3, 1fr);
+            gap: 30px;
+            aspect-ratio: 1 / 1;
+            width: min(95vw, 70dvh);
+            height: auto; 
+        }
+
+        .cell {
+            position: relative;
+            overflow: hidden;
+            transition: background-color 0.3s, border-color 0.2s;
+            cursor: pointer;
+            background: #ffffff;
+            border: 1px solid #333;
+            width: 100%;
+            height: 100%;
+            -webkit-tap-highlight-color: transparent;
+        }
+
+        body.inverted .cell {
+            background: #000000;
+            border: 1px solid #ccc;
+        }
+
+        .cell:hover {
+            border-color: #ff0055 !important;
+        }
+
+        canvas {
+            display: block;
+            width: 100%;
+            height: 100%;
+        }
+
+        #instructions {
+            text-align: center;
+            padding: 20px;
+            border-top: 1px solid;
+            border-color: inherit;
+            font-size: 0.85em;
+            flex-shrink: 0;
+            user-select: none;
+            background: rgba(0,0,0,0.1);
+            padding-bottom: env(safe-area-inset-bottom, 20px);
+        }
+
+        /* --- ANIMATIONS --- */
+        .highlight {
+            animation: flash 0.3s ease-out;
+        }
+
+        @keyframes flash {
+            0% { border-color: #ff0055; box-shadow: 0 0 20px #ff0055; }
+            100% { border-color: inherit; box-shadow: none; }
+        }
+    </style>
+</head>
+<body>
+
+    <div id="layout-container">
+        <div id="grid-target"></div>
+    </div>
+
+    <div id="instructions">
+        Gen <span id="gen-count">0</span><br>
+        Tap to Evolve &bull; <strong>[R]</strong> Reset
+    </div>
+
+<script>
+    /**
+     * CONFIGURATION
+     */
+    const GRID_SIZE = 3; 
+    const MIN_INITIAL_SHAPES = 15;
+    const MAX_INITIAL_SHAPES = 60;
+    
+    const MUTATION_RATE = 0.05; 
+    const MUTATION_CHANCE = 0.5; 
+    const ADD_CHANCE = 0.2; 
+    const DEL_CHANCE = 0.2; 
+    
+    /**
+     * DATA STRUCTURES
+     */
+    class Genome {
+        constructor() {
+            this.genes = [];
+        }
+
+        randomize() {
+            this.genes = [];
+            const count = Math.floor(Math.random() * (MAX_INITIAL_SHAPES - MIN_INITIAL_SHAPES + 1)) + MIN_INITIAL_SHAPES;
+            
+            for (let i = 0; i < count; i++) {
+                this.genes.push(this.randomGene());
+            }
+        }
+
+        randomGene() {
+            return {
+                // Morphological Genes
+                type: Math.random(),    // 0.0-0.33: Circle, 0.33-0.66: Triangle, 0.66-1.0: Ellipse
+                x: Math.random(),
+                y: Math.random(),
+                rad: Math.random(),     // Size
+                aspect: Math.random(),  // Ellipse squish factor
+                angle: Math.random(),   // Rotation (Triangles and Ellipses)
+                
+                // Color Genes
+                a: Math.random(),       
+                r: Math.random(),       
+                g: Math.random(),       
+                b: Math.random()        
+            };
+        }
+
+        clone() {
+            const copy = new Genome();
+            copy.genes = this.genes.map(g => ({...g}));
+            return copy;
+        }
+
+        mutate() {
+            this.genes.forEach(g => {
+                if (Math.random() < MUTATION_CHANCE) {
+                    g.type = this.clamp(g.type + this.drift()); 
+                    g.x = this.clamp(g.x + this.drift());
+                    g.y = this.clamp(g.y + this.drift());
+                    g.rad = this.clamp(g.rad + this.drift());
+                    g.aspect = this.clamp(g.aspect + this.drift());
+                    g.angle = this.clamp(g.angle + this.drift());
+                    
+                    g.a = this.clamp(g.a + (this.drift() * 0.5)); 
+                    g.r = this.clamp(g.r + this.drift());
+                    g.g = this.clamp(g.g + this.drift());
+                    g.b = this.clamp(g.b + this.drift());
+                }
+            });
+            if (Math.random() < ADD_CHANCE) this.genes.push(this.randomGene());
+            if (Math.random() < DEL_CHANCE && this.genes.length > 1) {
+                this.genes.splice(Math.floor(Math.random() * this.genes.length), 1);
+            }
+        }
+
+        drift() { return (Math.random() * 2 - 1) * MUTATION_RATE; }
+        clamp(val) { return Math.max(0, Math.min(1, val)); }
+    }
+
+    /**
+     * STATE
+     */
+    const gridTarget = document.getElementById('grid-target');
+    const genDisplay = document.getElementById('gen-count');
+    let generation = 0;
+    const population = [];
+    const canvases = [];
+
+    /**
+     * INITIALIZATION
+     */
+    function init() {
+        const totalCells = GRID_SIZE * GRID_SIZE;
+
+        for (let i = 0; i < totalCells; i++) {
+            const cellDiv = document.createElement('div');
+            cellDiv.className = 'cell';
+            
+            const cvs = document.createElement('canvas');
+            cvs.id = `c-${i}`; 
+            
+            const interact = (e) => { 
+                if (e.cancelable) e.preventDefault(); 
+                cellDiv.classList.remove('highlight');
+                void cellDiv.offsetWidth; 
+                cellDiv.classList.add('highlight');
+                evolve(i); 
+            };
+            
+            cvs.addEventListener('mousedown', interact);
+            cvs.addEventListener('touchstart', interact, { passive: false });
+            
+            cellDiv.appendChild(cvs);
+            gridTarget.appendChild(cellDiv);
+            canvases.push(cvs);
+
+            const genome = new Genome();
+            genome.randomize(); 
+            population.push(genome);
+        }
+
+        const ro = new ResizeObserver(entries => {
+            requestAnimationFrame(resize);
+        });
+        ro.observe(document.getElementById('layout-container'));
+
+        window.addEventListener('keydown', (e) => {
+            if (e.code === 'Space') {
+                e.preventDefault();
+                document.body.classList.toggle('inverted');
+            }
+            if (e.key.toLowerCase() === 'r') {
+                resetPopulation();
+            }
+        });
+    }
+
+    /**
+     * EVOLUTION LOGIC
+     */
+    function evolve(selectedIndex) {
+        const parent = population[selectedIndex];
+        
+        for (let i = 0; i < population.length; i++) {
+            if (i === selectedIndex) continue; 
+            const child = parent.clone();
+            child.mutate();
+            population[i] = child;
+        }
+        generation++;
+        genDisplay.innerText = generation;
+        drawAll();
+    }
+
+    function resetPopulation() {
+        population.forEach(p => p.randomize());
+        generation = 0;
+        genDisplay.innerText = generation;
+        drawAll();
+    }
+
+    /**
+     * DRAWING
+     */
+    function drawAll() {
+        canvases.forEach((cvs, i) => drawGenome(cvs, population[i]));
+    }
+
+    function drawGenome(canvas, genome) {
+        const ctx = canvas.getContext('2d');
+        const w = canvas.width;
+        const h = canvas.height;
+        const halfW = w / 2;
+
+        ctx.clearRect(0, 0, w, h);
+
+        const drawShapes = () => {
+            ctx.globalCompositeOperation = 'source-over'; 
+
+            genome.genes.forEach(g => {
+                const size = Math.max(1, g.rad * (w / 3)); 
+                const cx = g.x * w; 
+                const cy = g.y * h;
+                
+                const r = Math.floor(g.r * 255);
+                const gr = Math.floor(g.g * 255);
+                const b = Math.floor(g.b * 255);
+                ctx.fillStyle = `rgba(${r}, ${gr}, ${b}, ${g.a})`;
+
+                ctx.beginPath();
+
+                if (g.type < 0.33) {
+                    // --- CIRCLE ---
+                    ctx.arc(cx, cy, size, 0, Math.PI * 2);
+                } 
+                else if (g.type < 0.66) {
+                    // --- TRIANGLE ---
+                    // Full 360 rotation for triangles
+                    const angleOffset = g.angle * Math.PI * 2;
+                    for (let k = 0; k < 3; k++) {
+                        const theta = angleOffset + (k * (Math.PI * 2 / 3));
+                        const px = cx + size * Math.cos(theta);
+                        const py = cy + size * Math.sin(theta);
+                        if (k === 0) ctx.moveTo(px, py);
+                        else ctx.lineTo(px, py);
+                    }
+                    ctx.closePath();
+                } 
+                else {
+                    // --- ELLIPSE ---
+                    // 1. Define shape: Wider on X (rx) than Y (ry)
+                    const rx = size;
+                    const ry = size * (0.25 + (g.aspect * 0.5)); 
+                    
+                    // 2. Define rotation: Map g.angle (0..1) to -60 to +60 degrees
+                    // 60 deg = PI/3
+                    const rotation = (g.angle * 2 - 1) * (Math.PI / 3);
+
+                    if (ctx.ellipse) {
+                        ctx.ellipse(cx, cy, rx, ry, rotation, 0, Math.PI * 2);
+                    } else {
+                        // Fallback for very old browsers
+                        ctx.save();
+                        ctx.translate(cx, cy);
+                        ctx.rotate(rotation);
+                        ctx.scale(1, (0.25 + g.aspect * 0.5));
+                        ctx.arc(0, 0, size, 0, Math.PI * 2);
+                        ctx.restore();
+                    }
+                }
+                
+                ctx.fill();
+            });
+        };
+
+        // Draw Left Side
+        ctx.save();
+        ctx.beginPath();
+        ctx.rect(0, 0, halfW, h); 
+        ctx.clip();
+        drawShapes();
+        ctx.restore();
+
+        // Draw Right Side (Mirrored)
+        ctx.save();
+        ctx.beginPath();
+        ctx.rect(halfW, 0, halfW, h); 
+        ctx.clip();
+        ctx.translate(w, 0);
+        ctx.scale(-1, 1); 
+        drawShapes();
+        ctx.restore();
+    }
+
+    function resize() {
+        canvases.forEach(cvs => {
+            const rect = cvs.parentElement.getBoundingClientRect();
+            if (cvs.width !== rect.width || cvs.height !== rect.height) {
+                cvs.width = rect.width;
+                cvs.height = rect.height;
+            }
+        });
+        drawAll();
+    }
+
+    init();
+
+</script>
+</body>
+</html>

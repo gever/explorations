@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Pareidolia Evolution v4</title>
+    <title>Pareidolia Evolution v5</title>
     <style>
         /* --- DEFAULT STATE (Cells White, Margins Black) --- */
         body {
@@ -79,6 +79,26 @@
             background: rgba(0,0,0,0.1);
         }
 
+        /* --- ANIMATIONS --- */
+        .highlight {
+            animation: flash 0.3s ease-out;
+        }
+
+        .shake-reset {
+            animation: shake 0.4s cubic-bezier(.36,.07,.19,.97) both;
+        }
+
+        @keyframes flash {
+            0% { border-color: #ff0055; box-shadow: 0 0 20px #ff0055; }
+            100% { border-color: inherit; box-shadow: none; }
+        }
+
+        @keyframes shake {
+            10%, 90% { transform: translate3d(-1px, 0, 0); }
+            20%, 80% { transform: translate3d(2px, 0, 0); }
+            30%, 50%, 70% { transform: translate3d(-4px, 0, 0); }
+            40%, 60% { transform: translate3d(4px, 0, 0); }
+        }
     </style>
 </head>
 <body>
@@ -96,7 +116,11 @@
      * CONFIGURATION
      */
     const GRID_SIZE = 3; 
-    const INITIAL_CIRCLES = 50;
+    
+    // UPDATED: Range for initial random complexity
+    const MIN_INITIAL_CIRCLES = 15;
+    const MAX_INITIAL_CIRCLES = 60;
+    
     const MUTATION_RATE = 0.05; 
     const MUTATION_CHANCE = 0.5; 
     const ADD_CHANCE = 0.2; 
@@ -110,9 +134,15 @@
             this.genes = [];
         }
 
-        randomize(count) {
+        // UPDATED: Randomizes count between MIN and MAX
+        randomize() {
             this.genes = [];
-            for (let i = 0; i < count; i++) this.genes.push(this.randomGene());
+            // Calculate random integer between min and max (inclusive)
+            const count = Math.floor(Math.random() * (MAX_INITIAL_CIRCLES - MIN_INITIAL_CIRCLES + 1)) + MIN_INITIAL_CIRCLES;
+            
+            for (let i = 0; i < count; i++) {
+                this.genes.push(this.randomGene());
+            }
         }
 
         randomGene() {
@@ -179,6 +209,9 @@
             
             const interact = (e) => { 
                 e.preventDefault(); 
+                cellDiv.classList.remove('highlight');
+                void cellDiv.offsetWidth; 
+                cellDiv.classList.add('highlight');
                 evolve(i); 
             };
             
@@ -190,7 +223,7 @@
             canvases.push(cvs);
 
             const genome = new Genome();
-            genome.randomize(INITIAL_CIRCLES);
+            genome.randomize(); // Uses new MIN/MAX logic
             population.push(genome);
         }
 
@@ -199,14 +232,12 @@
         });
         ro.observe(document.getElementById('layout-container'));
 
-        // --- KEYBOARD CONTROLS ---
+        // KEYBOARD CONTROLS
         window.addEventListener('keydown', (e) => {
-            // [SPACE] Toggle Background
             if (e.code === 'Space') {
                 e.preventDefault();
                 document.body.classList.toggle('inverted');
             }
-            // [R] Randomize All
             if (e.key.toLowerCase() === 'r') {
                 resetPopulation();
             }
@@ -231,12 +262,16 @@
     }
 
     function resetPopulation() {
-        // Reset Genes
-        population.forEach(p => p.randomize(INITIAL_CIRCLES));
-        // Reset Counter
+        // Reset Genes with new random counts
+        population.forEach(p => p.randomize());
+        
         generation = 0;
         genDisplay.innerText = generation;
         
+        gridTarget.classList.remove('shake-reset');
+        void gridTarget.offsetWidth; 
+        gridTarget.classList.add('shake-reset');
+
         drawAll();
     }
 

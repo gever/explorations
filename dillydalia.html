@@ -79,27 +79,6 @@
             background: rgba(0,0,0,0.1);
         }
 
-        /* --- ANIMATIONS --- */
-        .highlight {
-            animation: flash 0.3s ease-out;
-        }
-
-        /* Animation for the 'R' key reset */
-        .shake-reset {
-            animation: shake 0.4s cubic-bezier(.36,.07,.19,.97) both;
-        }
-
-        @keyframes flash {
-            0% { border-color: #ff0055; box-shadow: 0 0 20px #ff0055; }
-            100% { border-color: inherit; box-shadow: none; }
-        }
-
-        @keyframes shake {
-            10%, 90% { transform: translate3d(-1px, 0, 0); }
-            20%, 80% { transform: translate3d(2px, 0, 0); }
-            30%, 50%, 70% { transform: translate3d(-4px, 0, 0); }
-            40%, 60% { transform: translate3d(4px, 0, 0); }
-        }
     </style>
 </head>
 <body>
@@ -200,9 +179,6 @@
             
             const interact = (e) => { 
                 e.preventDefault(); 
-                cellDiv.classList.remove('highlight');
-                void cellDiv.offsetWidth; 
-                cellDiv.classList.add('highlight');
                 evolve(i); 
             };
             
@@ -261,11 +237,6 @@
         generation = 0;
         genDisplay.innerText = generation;
         
-        // Visual Shake Feedback
-        gridTarget.classList.remove('shake-reset');
-        void gridTarget.offsetWidth; 
-        gridTarget.classList.add('shake-reset');
-
         drawAll();
     }
 

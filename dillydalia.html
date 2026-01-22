@@ -2,26 +2,24 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Pareidolia Evolution v7</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Pareidolia Evolution v8 (iOS Fix)</title>
     <style>
-        /* --- DEFAULT STATE (Cells White, Margins Black) --- */
+        /* --- DEFAULT STATE --- */
         body {
             margin: 0;
-            height: 100vh;
+            /* Use dvh (Dynamic Viewport Height) for iOS Safari address bar handling */
+            height: 100dvh; 
             display: flex;
             flex-direction: column;
             font-family: 'Courier New', monospace;
             overflow: hidden;
-            
-            /* Margin Color (Default: Dark) */
             background-color: #111; 
-            /* Text Color (Default: Light) */
             color: #ccc;
             transition: background-color 0.3s, color 0.3s;
         }
 
-        /* --- TOGGLED STATE (Cells Black, Margins White) --- */
+        /* --- TOGGLED STATE --- */
         body.inverted {
             background-color: #e0e0e0;
             color: #111;
@@ -30,27 +28,32 @@
         #layout-container {
             flex-grow: 1;
             width: 100%;
-            /* No fixed height, it takes remaining vertical space */
-            padding: 20px;
-            box-sizing: border-box;
-            
-            /* UPDATED: Center the grid in the available space */
+            /* Flex center ensures the grid stays in the middle */
             display: flex;
             justify-content: center;
             align-items: center;
+            padding: 10px;
+            box-sizing: border-box;
         }
 
         #grid-target {
             display: grid;
             grid-template-columns: repeat(3, 1fr);
             grid-template-rows: repeat(3, 1fr);
-            gap: 15px; /* The requested 15px border */
+            gap: 15px;
             
-            /* UPDATED: Force the grid to be square and fit within parent */
+            /* --- THE IOS FIX --- */
+            /* 1. Force the grid to be square */
             aspect-ratio: 1 / 1;
-            height: 100%;
-            max-height: 100%; 
-            max-width: 100%;
+            
+            /* 2. Calculate size based on the SMALLER dimension.
+               It will be 95% of the screen width, OR
+               70% of the screen height (leaving room for text).
+               This prevents it from ever being too tall or too wide. */
+            width: min(95vw, 70dvh);
+            
+            /* 3. Remove height:100% which causes the stretching in Safari */
+            height: auto; 
         }
 
         .cell {
@@ -60,9 +63,10 @@
             cursor: pointer;
             background: #ffffff;
             border: 1px solid #333;
-            /* Ensure cells stay square even if content acts up */
             width: 100%;
             height: 100%;
+            /* Fix for Safari tap highlight color */
+            -webkit-tap-highlight-color: transparent;
         }
 
         body.inverted .cell {
@@ -82,13 +86,15 @@
 
         #instructions {
             text-align: center;
-            padding: 15px;
+            padding: 20px;
             border-top: 1px solid;
             border-color: inherit;
-            font-size: 0.9em;
+            font-size: 0.85em; /* Slightly smaller for mobile */
             flex-shrink: 0;
             user-select: none;
             background: rgba(0,0,0,0.1);
+            /* Handle iPhone X/11/12/13/14 bottom notch area */
+            padding-bottom: env(safe-area-inset-bottom, 20px);
         }
 
         /* --- ANIMATIONS --- */
@@ -109,7 +115,8 @@
     </div>
 
     <div id="instructions">
-        Gen <span id="gen-count">0</span>: Click to Evolve. <strong>[SPACE]</strong> Toggle Theme. <strong>[R]</strong> Randomize.
+        Gen <span id="gen-count">0</span><br>
+        Tap to Evolve &bull; <strong>[R]</strong> Reset
     </div>
 
 <script>
@@ -205,15 +212,17 @@
             cvs.id = `c-${i}`; 
             
             const interact = (e) => { 
-                e.preventDefault(); 
+                if (e.cancelable) e.preventDefault(); 
                 cellDiv.classList.remove('highlight');
                 void cellDiv.offsetWidth; 
                 cellDiv.classList.add('highlight');
                 evolve(i); 
             };
             
+            // Mouse event
             cvs.addEventListener('mousedown', interact);
-            cvs.addEventListener('touchstart', interact);
+            // Touch event (with passive: false to allow preventDefault)
+            cvs.addEventListener('touchstart', interact, { passive: false });
             
             cellDiv.appendChild(cvs);
             gridTarget.appendChild(cellDiv);
@@ -333,3 +342,4 @@
 </script>
 </body>
 </html>
+

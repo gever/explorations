@@ -874,9 +874,31 @@
                     if (m[2]) SYS.program.push({ line: l, src: m[2] });
                     IO.prompt();
                 } else {
-                    if (c === 'LIST') {
+                    if (c.startsWith('LIST')) {
                         SYS.program.sort((a, b) => a.line - b.line);
-                        SYS.program.forEach(l => IO.print(`${l.line} ${l.src}`));
+
+                        let min = 0, max = 65535;
+                        const args = c.substring(4).trim();
+
+                        if (args === ".") {
+                            min = SYS.lastExecLine; max = SYS.lastExecLine;
+                        }
+                        else if (args.length > 0) {
+                            if (args.includes('-')) {
+                                const parts = args.split('-');
+                                if (parts[0].trim() !== "") min = parseInt(parts[0]);
+                                if (parts[1].trim() !== "") max = parseInt(parts[1]);
+                            } else {
+                                min = parseInt(args);
+                                max = parseInt(args);
+                            }
+                        }
+
+                        SYS.program.forEach(l => {
+                            if (l.line >= min && l.line <= max) {
+                                IO.print(`${l.line} ${l.src}`);
+                            }
+                        });
                         IO.prompt();
                     }
                     else if (c === 'RUN') ENGINE.run();

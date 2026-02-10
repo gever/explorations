@@ -538,35 +538,40 @@
                     let chunk = "";
 
                     if(cmd==='PRINT'){ 
-                        // Default: Print a newline at the end
                         let nl = true; 
                         const p = []; 
-                        
+
+                        // PRINT statements are complicated by ';' and ',' separators...
                         while(ctx.idx < tokens.length){ 
-                            // 1. Stop at end of statement
+                            // Stop if we hit a command separator
                             if([':','THEN','ELSE'].includes(peekUpper())) break; 
 
-                            // 2. Handle separators (semicolon or comma)
+                            // 1. Handle leading or consecutive separators
+                            //    (e.g., PRINT ,, X  or  PRINT X,,)
                             if(peek()===';' || peek()===','){
-                                nl = false; // Separator found -> suppress newline
+                                // If comma, push a space string literal into the output list
+                                if(peek()===',') p.push('" "'); 
+                                nl = false; 
                                 next();
                                 continue;
                             } 
                             
-                            // 3. Parse Expression
+                            // 2. Parse the Expression
                             p.push(`IO.format(${Compiler.genExpression(tokens,ctx)})`); 
-                            nl = true; // Expression printed -> reset to newline=true (unless followed by another ;)
+                            nl = true; 
                             
-                            // 4. Check for trailing separator immediately after expression
+                            // 3. Handle trailing separator immediately after expression
+                            //    (e.g., PRINT X, )
                             if(peek()===';' || peek()===','){
-                                nl = false; // Trailing separator -> suppress newline
+                                // If comma, push a space string literal
+                                if(peek()===',') p.push('" "'); 
+                                nl = false; 
                                 next(); 
                             } 
                         } 
                         
-                        // Pass the 'nl' flag as the second argument to IO.print
+                        // Join all parts (expressions + spaces) and print
                         chunk=`IO.print(${p.length ? p.join(' + "" + ') : '""'}, ${nl});`; 
-                        
                         chunk+=` if(SYS.break){SYS.running=false;return;}`; 
                     }
                     else if(cmd==='GOTO'){ 

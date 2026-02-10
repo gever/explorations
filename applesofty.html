@@ -576,15 +576,17 @@
                     }
                     else if(cmd==='GOTO'){ 
                         const tgt = Compiler.genExpression(tokens, ctx); 
-                        // Runtime check: does label exist?
-                        chunk=`var _t=${tgt};if(SYS.labels[_t]!==undefined)SYS.pc=SYS.labels[_t]-1; else IO.print("?UNDEF LINE "+_t);`; 
+                        // Fix: Added { ... SYS.running=false; } to the else block
+                        chunk=`var _t=${tgt};if(SYS.labels[_t]!==undefined)SYS.pc=SYS.labels[_t]-1; else { IO.print("?UNDEF LINE "+_t); SYS.running=false; }`; 
                     }
                     else if(cmd==='GOSUB'){ 
                         const tgt = Compiler.genExpression(tokens, ctx);
-                        chunk=`var _t=${tgt};if(SYS.labels[_t]!==undefined){SYS.stack.push(SYS.pc);SYS.pc=SYS.labels[_t]-1;} else IO.print("?UNDEF LINE "+_t);`; 
-                    }                    
+                        // Fix: Added { ... SYS.running=false; } to the else block
+                        chunk=`var _t=${tgt};if(SYS.labels[_t]!==undefined){SYS.stack.push(SYS.pc);SYS.pc=SYS.labels[_t]-1;} else { IO.print("?UNDEF LINE "+_t); SYS.running=false; }`; 
+                    }
                     else if(cmd==='RETURN'){ 
-                        chunk=`if(SYS.stack.length>0)SYS.pc=SYS.stack.pop(); else IO.print("?RETURN WITHOUT GOSUB");`; 
+                        // Fix: Added { ... SYS.running=false; } to the else block
+                        chunk=`if(SYS.stack.length>0)SYS.pc=SYS.stack.pop(); else { IO.print("?RETURN WITHOUT GOSUB"); SYS.running=false; }`; 
                     }
                     else if(cmd==='IF'){ 
                         const cond=Compiler.genExpression(tokens,ctx); 

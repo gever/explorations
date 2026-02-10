@@ -554,7 +554,18 @@
                         } 
                         chunk+=` if(SYS.break){SYS.running=false;return;}`; 
                     }
-                    else if(cmd==='GOTO'){ const l=Number(next()); chunk=`if(SYS.labels[${l}]!==undefined)SYS.pc=SYS.labels[${l}]-1;`; }
+                    else if(cmd==='GOTO'){ 
+                        const tgt = Compiler.genExpression(tokens, ctx); 
+                        // Runtime check: does label exist?
+                        chunk=`var _t=${tgt};if(SYS.labels[_t]!==undefined)SYS.pc=SYS.labels[_t]-1; else IO.print("?UNDEF LINE "+_t);`; 
+                    }
+                    else if(cmd==='GOSUB'){ 
+                        const tgt = Compiler.genExpression(tokens, ctx);
+                        chunk=`var _t=${tgt};if(SYS.labels[_t]!==undefined){SYS.stack.push(SYS.pc);SYS.pc=SYS.labels[_t]-1;} else IO.print("?UNDEF LINE "+_t);`; 
+                    }                    
+                    else if(cmd==='RETURN'){ 
+                        chunk=`if(SYS.stack.length>0)SYS.pc=SYS.stack.pop(); else IO.print("?RETURN WITHOUT GOSUB");`; 
+                    }
                     else if(cmd==='IF'){ 
                         const cond=Compiler.genExpression(tokens,ctx); 
                         // Case-insensitive 'THEN'

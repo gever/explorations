@@ -787,6 +787,25 @@
                         IO.prompt();
                     }
                     else if(c==='NEW') { SYS.program=[]; SYS.vars={}; SCREEN.clear(); IO.prompt(); }
+                    else if(c==='COPY') {
+                        // 1. Sort the program lines to ensure correct order
+                        SYS.program.sort((a,b) => a.line - b.line);
+                        
+                        // 2. Convert program objects back to text format
+                        const text = SYS.program.map(l => `${l.line} ${l.src}`).join("\n");
+                        
+                        // 3. Write to system clipboard
+                        navigator.clipboard.writeText(text)
+                            .then(() => {
+                                IO.print("COPIED TO CLIPBOARD");
+                                IO.prompt();
+                            })
+                            .catch(err => {
+                                IO.print("?CLIPBOARD ERROR: " + err);
+                                IO.prompt();
+                            });
+                        return; // Return early so we don't double-prompt
+                    }
                     else if(c==='JSPEEK') { 
                         ENGINE.generateOnly(); 
                         const ov = document.getElementById('js-overlay');

@@ -346,6 +346,7 @@
             vars: {}, arrays: {}, program: [], compiled: [],
             transpiledSource: "", // NEW: Storage for JSPEEK
             pc: 0, labels: {}, stack: [], forStack: {},
+            lastExecLine: 0, // NEW: Track last executed line for WHERE
             running: false, break: false, inputCallback: null,
             getArray: (n, i) => { if (!SYS.arrays[n]) throw `UNDEFINED ARRAY ${n}`; return SYS.arrays[n][i]; },
             setArray: (n, i, v) => { if (!SYS.arrays[n]) throw `UNDEFINED ARRAY ${n}`; SYS.arrays[n][i] = v; }
@@ -390,6 +391,7 @@
                 { c: "LOAD", d: "Loads a program from local storage or demo library.", e: "LOAD \"DEMO/GRAPHICS.BAS\"" },
                 { c: "DIR", d: "Lists all saved files and available demos.", e: "DIR" },
                 { c: "DOWNLOAD", d: "Downloads the program as a .BAS text file to your computer.", e: "DOWNLOAD \"GAME\"" },
+                { c: "WHERE", d: "Shows the line number where the last program stopped.", e: "WHERE" },
                 { c: "HELP", d: "Opens this reference manual.", e: "HELP" },
                 { c: "REM", d: "Remark/Comment. Line is ignored by interpreter.", e: "10 REM SETUP VARIABLES" }
             ],
@@ -828,6 +830,14 @@
                             });
                         return; // Return early so we don't double-prompt
                     }
+                    else if(c==='WHERE') {
+                        if (SYS.lastExecLine) {
+                            IO.print("BREAK IN " + SYS.lastExecLine);
+                        } else {
+                            IO.print("?NO RUN DATA");
+                        }
+                        IO.prompt();
+                    }
                     else if(c==='JSPEEK') { 
                         ENGINE.generateOnly(); 
                         const ov = document.getElementById('js-overlay');
@@ -912,9 +922,16 @@
                 });
                 
                 SYS.pc=0; SYS.running=true; SYS.break=false; SYS.vars={}; SYS.arrays={}; SYS.stack=[]; SYS.forStack={};
+                
+                // NEW: Reset the tracker
+                SYS.lastExecLine = 0; 
+                
                 breakBtn.style.display='block'; IO.cursorVisible=false; SCREEN.removeCursor();
                 const t0=performance.now(); let ly=t0; let ops=0;
                 while(SYS.running && SYS.pc < SYS.compiled.length) {
+                    // NEW: Track the line about to be executed
+                    if(SYS.program[SYS.pc]) SYS.lastExecLine = SYS.program[SYS.pc].line;
+
                     const res = SYS.compiled[SYS.pc](SYS,IO,GRAPHICS,FS);
                     if(res && res.then) { await res; ly=performance.now(); }
                     SYS.pc++; ops++;

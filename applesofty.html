@@ -447,30 +447,10 @@
 
         // --- DEMOS ---
         const DEMOS = {
-            "DEMO/ANIM.BAS": [
-                { line: 10, src: 'HOME' }, { line: 20, src: 'PRINT "ANIMATION DEMO - USE SETPOS"' },
-                { line: 30, src: 'FOR I = 1 TO 22' }, { line: 40, src: 'SETPOS I, I : PRINT "O"' },
-                { line: 50, src: 'SETPOS 39-I, I : PRINT "X"' }, { line: 60, src: 'NEXT I' },
-                { line: 70, src: 'VTAB 23 : PRINT "DONE"' }, { line: 80, src: 'END' }
-            ],
-            "DEMO/PERFORMANCE.BAS": [
-                { line: 10, src: 'HOME: PRINT "BENCHMARKING..."' }, { line: 20, src: 'SUM = 0' },
-                { line: 30, src: 'FOR I = 1 TO 10000 : SUM = SUM + 1 : NEXT I' },
-                { line: 40, src: 'PRINT "SUM: "; SUM' }, { line: 50, src: 'END' }
-            ],
-            "DEMO/GRAPHICS.BAS": [
-                { line: 10, src: 'HGR2 : HCOLOR=3' }, { line: 20, src: 'FOR I=0 TO 191 STEP 5' },
-                { line: 30, src: 'HPLOT 0,0 TO 279,I' }, { line: 40, src: 'NEXT I' },
-                { line: 50, src: 'INPUT ""; X$ : TEXT : END' }
-            ],
-            "DEMO/MIXED.BAS": [
-                { line: 10, src: 'HOME : HCOLOR=3' },
-                { line: 20, src: 'FOR I=0 TO 190 STEP 10' },
-                { line: 30, src: 'HPLOT 0,I TO 279,190-I' },
-                { line: 40, src: 'NEXT I' },
-                { line: 50, src: 'VTAB 12 : HTAB 12 : PRINT "MIXED TEXT & GRAPHICS"' },
-                { line: 60, src: 'HPLOT 0,0 TO 279,191' }
-            ]
+            "ANIM.BAS": "demo/anim.bas",
+            "PERFORMANCE.BAS": "demo/performance.bas",
+            "GRAPHICS.BAS": "demo/graphics.bas",
+            "MIXED.BAS": "demo/mixed.bas"
         };
 
         // --- HELP DATA ---
@@ -538,11 +518,48 @@
         const FS = {
             PREFIX: 'APPLESOFT_PROG_',
             save: (fn) => { try { localStorage.setItem(FS.PREFIX + fn.toUpperCase(), JSON.stringify(SYS.program)); IO.print("SAVED " + fn); } catch (e) { IO.print("?DISK FULL"); } },
-            load: (fn) => {
+            load: async (fn) => {
                 const f = fn.toUpperCase();
-                if (DEMOS[f]) { SYS.program = JSON.parse(JSON.stringify(DEMOS[f])); SYS.vars = {}; SYS.arrays = {}; SCREEN.clear(); IO.print("LOADED DEMO"); return; }
+                // Check if it's a known demo
+                let path = DEMOS[f];
+
+                // If not in DEMOS map, check if user provided a specific path (e.g. "demo/foo.bas")
+                if (!path && (f.startsWith("/") || f.includes("/"))) {
+                    path = fn;
+                }
+
+                if (path) {
+                    try {
+                        const response = await fetch(path);
+                        if (!response.ok) throw new Error("404");
+                        const text = await response.text();
+
+                        // Parse BASIC text file entry
+                        const lines = text.split(/\r\n|\n|\r/);
+                        const prog = [];
+                        for (let line of lines) {
+                            line = line.trim();
+                            if (!line) continue;
+                            const m = line.match(/^(\d+)\s+(.*)/);
+                            if (m) {
+                                prog.push({ line: parseInt(m[1]), src: m[2] });
+                            }
+                        }
+
+                        SYS.program = prog;
+                        SYS.vars = {}; SYS.arrays = {};
+                        SCREEN.clear();
+                        IO.print("LOADED");
+                        return;
+                    } catch (e) {
+                        // Fall out to check local storage
+                    }
+                }
+
+                // Fallback to Local Storage
                 const d = localStorage.getItem(FS.PREFIX + f);
-                if (d) { SYS.program = JSON.parse(d); SYS.vars = {}; SYS.arrays = {}; SCREEN.clear(); IO.print("LOADED"); } else IO.print("?FILE NOT FOUND");
+                if (d) { SYS.program = JSON.parse(d); SYS.vars = {}; SYS.arrays = {}; SCREEN.clear(); IO.print("LOADED"); }
+                else IO.print("?FILE NOT FOUND");
             },
             dir: () => {
                 IO.print("CATALOG");
@@ -762,7 +779,7 @@
                     else if (cmd === 'END') chunk = "SYS.running=false;";
                     else if (cmd === 'DELAY') { async = true; chunk = `await new Promise(r=>setTimeout(r,${Compiler.genExpression(tokens, ctx)}));`; }
                     else if (cmd === 'SAVE') chunk = `FS.save(${Compiler.genExpression(tokens, ctx)});`;
-                    else if (cmd === 'LOAD') chunk = `FS.load(${Compiler.genExpression(tokens, ctx)});`;
+                    else if (cmd === 'LOAD') { async = true; chunk = `await FS.load(${Compiler.genExpression(tokens, ctx)});`; }
                     else if (cmd === 'DIR' || cmd === 'CATALOG') chunk = `FS.dir();`;
                     else if (cmd === 'DOWNLOAD') chunk = `FS.download(${Compiler.genExpression(tokens, ctx)});`;
                     else if (cmd === 'HELP') chunk = `IO.help();`;
@@ -962,7 +979,10 @@
                         IO.prompt();
                     }
                     else {
-                        try { Compiler.compile({ line: 0, src: cRaw })(SYS, IO, GRAPHICS, FS)?.then ? (() => IO.prompt()) : IO.prompt(); }
+                        try {
+                            const res = Compiler.compile({ line: 0, src: cRaw })(SYS, IO, GRAPHICS, FS);
+                            if (res && res.then) res.then(() => IO.prompt()); else IO.prompt();
+                        }
                         catch (e) { IO.print("?SYNTAX ERROR"); IO.prompt(); }
                     }
                 }

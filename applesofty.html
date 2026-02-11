@@ -561,6 +561,7 @@
             "I/O & CONTROL": [
                 { c: "PRINT", d: "Outputs text or variables. Use ; to suppress newline.", e: "10 PRINT \"SCORE: \"; S" },
                 { c: "INPUT", d: "Pauses to get value from user.", e: "20 INPUT \"NAME? \"; N$" },
+                { c: "INKEY(M)", d: "Reads char. M=1 wait, M=0 async.", e: "A$ = INKEY(1)" },
                 { c: "GOTO", d: "Unconditional jump to line number.", e: "50 GOTO 10" },
                 { c: "GOSUB", d: "Jump to subroutine. Returns on RETURN.", e: "10 GOSUB 1000" },
                 { c: "RETURN", d: "Return from subroutine.", e: "1000 RETURN" },
@@ -677,8 +678,8 @@
                         // Normalize token for Keyword/Function checks
                         const tu = t.toUpperCase();
 
-                        // Handle INKEY$
-                        if (tu === 'INKEY$') {
+                        // Handle INKEY$ and INKEY
+                        if (tu === 'INKEY$' || tu === 'INKEY') {
                             ctx.setAsync();
                             next(); // consume '('
                             const mode = parseExp();
@@ -1098,10 +1099,28 @@
                     }
                     else {
                         try {
-                            const res = Compiler.compile({ line: 0, src: cRaw })(SYS, IO, GRAPHICS, FS);
-                            if (res && res.then) res.then(() => IO.prompt()); else IO.prompt();
+                            const func = Compiler.compile({ line: 0, src: cRaw });
+                            SYS.running = true;
+                            const res = func(SYS, IO, GRAPHICS, FS);
+                            if (res && res.then) {
+                                res.then(() => {
+                                    SYS.running = false;
+                                    IO.prompt();
+                                }).catch((e) => {
+                                    SYS.running = false;
+                                    IO.print("?RUNTIME ERROR"); // Catch async errors
+                                    IO.prompt();
+                                });
+                            } else {
+                                SYS.running = false;
+                                IO.prompt();
+                            }
                         }
-                        catch (e) { IO.print("?SYNTAX ERROR"); IO.prompt(); }
+                        catch (e) {
+                            SYS.running = false;
+                            IO.print("?SYNTAX ERROR");
+                            IO.prompt();
+                        }
                     }
                 }
             },

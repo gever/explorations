@@ -413,10 +413,19 @@
             mapY: (y) => Math.floor(y * CONFIG.scaleY),
             setMode: (m) => { if (m > 0) SCREEN.clear(); },
             clear: () => SCREEN.clear(),
-            setColor: (c) => { GRAPHICS.colorIdx = Math.floor(c) % 8; console.log("colorIdx = ", GRAPHICS.colorIdx); },
+            clearToColor: () => {
+                SCREEN.removeCursor();
+                ctx.fillStyle = GRAPHICS.colors[GRAPHICS.colorIdx];
+                ctx.fillRect(0, 0, CONFIG.width, CONFIG.height);
+            },
+            setColor: (c) => { GRAPHICS.colorIdx = Math.floor(c) % 8; },
+            moveTo: (x, y) => {
+                GRAPHICS.lastX = GRAPHICS.mapX(x);
+                GRAPHICS.lastY = GRAPHICS.mapY(y);
+            },
             plot: (x, y) => {
                 SCREEN.removeCursor();
-                ctx.globalCompositeOperation = 'source-over'; // <--- ADD THIS
+                ctx.globalCompositeOperation = 'source-over';
                 ctx.fillStyle = GRAPHICS.colors[GRAPHICS.colorIdx];
                 const cx = GRAPHICS.mapX(x), cy = GRAPHICS.mapY(y);
                 ctx.fillRect(cx, cy, Math.ceil(CONFIG.scaleX), Math.ceil(CONFIG.scaleY));
@@ -424,7 +433,7 @@
             },
             lineTo: (x, y) => {
                 SCREEN.removeCursor();
-                ctx.globalCompositeOperation = 'source-over'; // <--- ADD THIS
+                ctx.globalCompositeOperation = 'source-over';
                 ctx.strokeStyle = GRAPHICS.colors[GRAPHICS.colorIdx]; ctx.lineWidth = 2; ctx.beginPath();
                 const tx = GRAPHICS.mapX(x), ty = GRAPHICS.mapY(y);
                 ctx.moveTo(GRAPHICS.lastX + (CONFIG.scaleX / 2), GRAPHICS.lastY + (CONFIG.scaleY / 2));
@@ -432,6 +441,65 @@
                 ctx.stroke();
                 GRAPHICS.lastX = tx; GRAPHICS.lastY = ty;
             },
+            rect: (w, h, fill) => {
+                SCREEN.removeCursor();
+                ctx.globalCompositeOperation = 'source-over';
+                const gw = w * CONFIG.scaleX;
+                const gh = h * CONFIG.scaleY;
+                if (fill) {
+                    ctx.fillStyle = GRAPHICS.colors[GRAPHICS.colorIdx];
+                    ctx.fillRect(GRAPHICS.lastX, GRAPHICS.lastY, gw, gh);
+                } else {
+                    ctx.strokeStyle = GRAPHICS.colors[GRAPHICS.colorIdx];
+                    ctx.lineWidth = 2;
+                    ctx.strokeRect(GRAPHICS.lastX, GRAPHICS.lastY, gw, gh);
+                }
+            },
+            ellipse: (w, h, fill) => {
+                SCREEN.removeCursor();
+                ctx.globalCompositeOperation = 'source-over';
+                const gw = Math.abs(w * CONFIG.scaleX);
+                const gh = Math.abs(h * CONFIG.scaleY);
+                const cx = GRAPHICS.lastX + (gw / 2);
+                const cy = GRAPHICS.lastY + (gh / 2);
+
+                ctx.beginPath();
+                ctx.ellipse(cx, cy, gw / 2, gh / 2, 0, 0, 2 * Math.PI);
+
+                if (fill) {
+                    ctx.fillStyle = GRAPHICS.colors[GRAPHICS.colorIdx];
+                    ctx.fill();
+                } else {
+                    ctx.strokeStyle = GRAPHICS.colors[GRAPHICS.colorIdx];
+                    ctx.lineWidth = 2;
+                    ctx.stroke();
+                }
+            },
+            triangle: (x2, y2, x3, y3, fill) => {
+                SCREEN.removeCursor();
+                ctx.globalCompositeOperation = 'source-over';
+                const tx1 = GRAPHICS.lastX;
+                const ty1 = GRAPHICS.lastY;
+                const tx2 = GRAPHICS.mapX(x2);
+                const ty2 = GRAPHICS.mapY(y2);
+                const tx3 = GRAPHICS.mapX(x3);
+                const ty3 = GRAPHICS.mapY(y3);
+
+                ctx.beginPath();
+                ctx.moveTo(tx1, ty1);
+                ctx.lineTo(tx2, ty2);
+                ctx.lineTo(tx3, ty3);
+                ctx.closePath();
+
+                if (fill) {
+                    ctx.fillStyle = GRAPHICS.colors[GRAPHICS.colorIdx];
+                    ctx.fill();
+                } else {
+                    ctx.strokeStyle = GRAPHICS.colors[GRAPHICS.colorIdx];
+                    ctx.lineWidth = 2;
+                    ctx.stroke();
+                }
+            }
         };
 
         // --- MEMORY & STATE ---
@@ -450,7 +518,8 @@
             "ANIM.BAS": "demo/anim.bas",
             "PERFORMANCE.BAS": "demo/performance.bas",
             "GRAPHICS.BAS": "demo/graphics.bas",
-            "MIXED.BAS": "demo/mixed.bas"
+            "MIXED.BAS": "demo/mixed.bas",
+            "GRAPHICS_API.BAS": "demo/graphics_api.bas"
         };
 
         // --- HELP DATA ---
@@ -470,11 +539,21 @@
             ],
             "SCREEN & GRAPHICS": [
                 { c: "HOME", d: "Clears the text screen and moves cursor to top-left.", e: "10 HOME" },
+                { c: "GR_CLEAR", d: "Clears screen to current GR_COLOR.", e: "10 GR_CLEAR" },
+                { c: "GR_COLOR", d: "Sets color (0-7).", e: "20 GR_COLOR=3" },
+                { c: "GR_MOVETO", d: "Moves graphics cursor to X,Y.", e: "30 GR_MOVETO 100,100" },
+                { c: "GR_LINETO", d: "Draws line to X,Y.", e: "40 GR_LINETO 200,200" },
+                { c: "GR_RECT", d: "Draws outline rectangle W,H at cursor.", e: "50 GR_RECT 50,50" },
+                { c: "GR_FRECT", d: "Draws filled rectangle W,H at cursor.", e: "60 GR_FRECT 50,50" },
+                { c: "GR_ELLIPSE", d: "Draws outline ellipse W,H at cursor.", e: "70 GR_ELLIPSE 50,30" },
+                { c: "GR_FELLIPSE", d: "Draws filled ellipse W,H at cursor.", e: "80 GR_FELLIPSE 50,30" },
+                { c: "GR_TRI", d: "Draws triangle (x2,y2,x3,y3) from cursor.", e: "90 GR_TRI 200,200,100,200" },
+                { c: "GR_FTRI", d: "Draws filled triangle.", e: "95 GR_FTRI 200,200,100,200" },
                 { c: "TEXT", d: "Legacy command (Clears screen in Mixed Mode).", e: "100 TEXT" },
                 { c: "HGR", d: "Legacy command (Clears screen in Mixed Mode).", e: "10 HGR" },
                 { c: "HGR2", d: "Legacy command (Clears screen in Mixed Mode).", e: "10 HGR2" },
-                { c: "HCOLOR", d: "Sets drawing color (0-7) for HPLOT.", e: "20 HCOLOR = 3" },
-                { c: "HPLOT", d: "Plots a point or draws lines on the graphics screen.", e: "30 HPLOT 0,0 TO 100,100" },
+                { c: "HCOLOR", d: "Legacy: Sets drawing color (0-7).", e: "20 HCOLOR = 3" },
+                { c: "HPLOT", d: "Legacy: Plots a point or draws lines.", e: "30 HPLOT 0,0 TO 100,100" },
                 { c: "HTAB", d: "Moves cursor to horizontal column X (1-40).", e: "10 HTAB 20" },
                 { c: "VTAB", d: "Moves cursor to vertical row Y (1-24).", e: "20 VTAB 12" },
                 { c: "SETPOS", d: "Moves cursor to X, Y coordinates (Custom).", e: "30 SETPOS 15, 10" }
@@ -758,6 +837,45 @@
                             lc += `GRAPHICS.lineTo(${x},${Compiler.genExpression(tokens, ctx)});`;
                         }
                         chunk = (sl ? "" : sc) + lc;
+                    }
+
+                    // --- NEW STATEFUL GRAPHICS API ---
+                    else if (cmd === 'GR_CLEAR' || cmd === 'GR_CLS') chunk = `GRAPHICS.clearToColor();`;
+                    else if (cmd === 'GR_COLOR') {
+                        if (peek() === '=') next();
+                        chunk = `GRAPHICS.setColor(${Compiler.genExpression(tokens, ctx)});`;
+                    }
+                    else if (cmd === 'GR_MOVETO') {
+                        const x = Compiler.genExpression(tokens, ctx);
+                        if (peek() === ',') next();
+                        chunk = `GRAPHICS.moveTo(${x},${Compiler.genExpression(tokens, ctx)});`;
+                    }
+                    else if (cmd === 'GR_LINETO') {
+                        const x = Compiler.genExpression(tokens, ctx);
+                        if (peek() === ',') next();
+                        chunk = `GRAPHICS.lineTo(${x},${Compiler.genExpression(tokens, ctx)});`;
+                    }
+                    else if (cmd === 'GR_RECT' || cmd === 'GR_FRECT') {
+                        const filled = cmd === 'GR_FRECT';
+                        const w = Compiler.genExpression(tokens, ctx);
+                        if (peek() === ',') next();
+                        chunk = `GRAPHICS.rect(${w},${Compiler.genExpression(tokens, ctx)},${filled});`;
+                    }
+                    else if (cmd === 'GR_ELLIPSE' || cmd === 'GR_FELLIPSE') {
+                        const filled = cmd === 'GR_FELLIPSE';
+                        const w = Compiler.genExpression(tokens, ctx);
+                        if (peek() === ',') next();
+                        chunk = `GRAPHICS.ellipse(${w},${Compiler.genExpression(tokens, ctx)},${filled});`;
+                    }
+                    else if (cmd === 'GR_TRI' || cmd === 'GR_FTRI') {
+                        const filled = cmd === 'GR_FTRI';
+                        const x2 = Compiler.genExpression(tokens, ctx);
+                        if (peek() === ',') next();
+                        const y2 = Compiler.genExpression(tokens, ctx);
+                        if (peek() === ',') next();
+                        const x3 = Compiler.genExpression(tokens, ctx);
+                        if (peek() === ',') next();
+                        chunk = `GRAPHICS.triangle(${x2},${y2},${x3},${Compiler.genExpression(tokens, ctx)},${filled});`;
                     }
 
                     else if (cmd === 'LET' || (cmd && peek() === '=') || (cmd && peek() === '(')) {

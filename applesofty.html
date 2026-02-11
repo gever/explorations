@@ -534,6 +534,7 @@
                 { c: "DIR", d: "Lists all saved files and available demos.", e: "DIR" },
                 { c: "DOWNLOAD", d: "Downloads the program as a .BAS text file to your computer.", e: "DOWNLOAD \"GAME\"" },
                 { c: "WHERE", d: "Shows the line number where the last program stopped.", e: "WHERE" },
+                { c: "JSECHO", d: "Toggles echoing of output to the browser console for debugging.", e: "JSECHO" },
                 { c: "HELP", d: "Opens this reference manual.", e: "HELP" },
                 { c: "REM", d: "Remark/Comment. Line is ignored by interpreter.", e: "10 REM SETUP VARIABLES" }
             ],
@@ -695,7 +696,7 @@
                         if (LIB[tu]) {
                             next(); const a = [];
                             if (peek() !== ')') do { a.push(parseExp()); if (peek() === ',') next(); else break; } while (true);
-                            next(); return `${LIB[tu]}(${a.join(',')})`;
+                            next(); return `(${LIB[tu]})(${a.join(',')})`;
                         }
 
                         // Handle Array Access (Use raw 't' to preserve case)
@@ -901,6 +902,7 @@
                     else if (cmd === 'LOAD') { async = true; chunk = `await FS.load(${Compiler.genExpression(tokens, ctx)});`; }
                     else if (cmd === 'DIR' || cmd === 'CATALOG') chunk = `FS.dir();`;
                     else if (cmd === 'DOWNLOAD') chunk = `FS.download(${Compiler.genExpression(tokens, ctx)});`;
+                    else if (cmd === 'JSECHO') chunk = `IO.jsEcho = !IO.jsEcho; IO.print("JSECHO " + (IO.jsEcho ? "ON" : "OFF"));`;
                     else if (cmd === 'HELP') chunk = `IO.help();`;
                     else chunk = `IO.print("?SYNTAX ERROR");`;
 
@@ -978,7 +980,21 @@
                 render(); search.onkeyup = (e) => render(e.target.value);
             },
 
-            print: (txt, newline = true) => { SCREEN.put(txt.toString()); if (newline) SCREEN.newline(); },
+            jsEcho: false,
+            jsBuffer: "",
+
+            print: (txt, newline = true) => {
+                const s = txt.toString();
+                if (IO.jsEcho) {
+                    IO.jsBuffer += s;
+                    if (newline) {
+                        console.log(IO.jsBuffer);
+                        IO.jsBuffer = "";
+                    }
+                }
+                SCREEN.put(s);
+                if (newline) SCREEN.newline();
+            },
 
             input: () => {
                 IO.cursorVisible = true; SCREEN.drawCursor();

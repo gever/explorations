@@ -836,10 +836,81 @@
                     else if (cmd === 'IF') {
                         const cond = Compiler.genExpression(tokens, ctx);
                         // Case-insensitive 'THEN'
-                        if (next().toUpperCase() !== 'THEN') throw "SYNTAX"; let tb;
-                        if (!isNaN(peek())) tb = `if(SYS.labels[${Number(next())}]!==undefined)SYS.pc=SYS.labels[${Number(next())}]-1;`;
-                        else { const sid = "SUB_" + Math.random().toString(36).substr(2, 9); SYS[sid] = Compiler.compile({ line: lineObj.line, src: remain().join(" ") }); tb = `return SYS['${sid}'](SYS,IO,GRAPHICS,FS);`; }
-                        chunk = `if(${cond}){${tb}}`; ctx.idx = tokens.length;
+                        if (next().toUpperCase() !== 'THEN') throw "SYNTAX";
+
+                        // Scan for ELSE, respecting nesting
+                        let elseIdx = -1;
+                        let depth = 0;
+                        for (let i = ctx.idx; i < tokens.length; i++) {
+                            const t = tokens[i].toUpperCase();
+                            if (t === 'IF') depth++;
+                            else if (t === 'ELSE') {
+                                if (depth === 0) { elseIdx = i; break; }
+                            }
+                            // Note: We don't decrement depth on 'ENDIF' because this BASIC doesn't use ENDIF blocks
+                            // But usually single-line IF nesting is: IF ... THEN IF ... THEN ... ELSE ...
+                            // The inner IF consumes the ELSE.
+                            // The logic here is: A nested IF means we are entering a new statement.
+                            // BUT wait, in single-line BASIC:
+                            // IF X THEN IF Y THEN P ELSE Q
+                            // The ELSE Q binds to IF Y.
+                            // IF X THEN IF Y THEN P ELSE Q ELSE R
+                            // The ELSE R binds to IF X.
+                            // So 'depth' logic is correct: seeing an IF increases depth.
+                            // But when does depth decrease?
+                            // In single-line BASIC, nesting is just part of the THEN clause.
+                            // Actually, scanning for ELSE in single line context:
+                            // IF ... THEN <statements> ELSE <statements>
+                            // <statements> can contain IF.
+                            // IF <cond> THEN ...
+                            // If we see "IF", we are entering a nested IF which *might* consume an ELSE.
+                            // The nested IF *must* have a THEN.
+                            // BASIC parsing is tricky.
+                            // Simple heuristic for now: Match ELSE to the nearest preceding IF.
+                            // Since we are recursive:
+                            // 1. We are at the current IF.
+                            // 2. We search forward for ELSE at depth 0.
+                            // 3. If we encounter IF, depth++.
+                            // 4. If we encounter ELSE at depth > 0, depth-- (it matched the nested IF).
+                            else if (t === 'ELSE' && depth > 0) {
+                                depth--; // This ELSE belongs to a nested IF
+                            }
+                        }
+
+                        let matchThen, matchElse;
+
+                        if (elseIdx !== -1) {
+                            // Split tokens into THEN and ELSE parts
+                            matchThen = tokens.slice(ctx.idx, elseIdx);
+                            matchElse = tokens.slice(elseIdx + 1);
+                            // Consume all tokens
+                            ctx.idx = tokens.length;
+                        } else {
+                            matchThen = tokens.slice(ctx.idx);
+                            matchElse = null;
+                            ctx.idx = tokens.length;
+                        }
+
+                        const compileBranch = (branchTokens) => {
+                            if (!branchTokens || branchTokens.length === 0) return "";
+                            // Check for single line number (GOTO shorthand)
+                            if (branchTokens.length === 1 && !isNaN(branchTokens[0])) {
+                                return `if(SYS.labels[${Number(branchTokens[0])}]!==undefined)SYS.pc=SYS.labels[${Number(branchTokens[0])}]-1; else { IO.print("?UNDEF LINE ${branchTokens[0]}"); SYS.running=false; }`;
+                            }
+                            // Compile as sub-program
+                            const src = branchTokens.join(" "); // Reconstruct source
+                            // We need to use recursion but safely.
+                            // The issue is 'tokens' in Compiler.compile is local.
+                            // We can use a recursive helper or just call Compiler.compile again with a fake object.
+                            const sid = "SUB_" + Math.random().toString(36).substr(2, 9);
+                            SYS[sid] = Compiler.compile({ line: lineObj.line, src: src });
+                            return `return SYS['${sid}'](SYS,IO,GRAPHICS,FS);`;
+                        };
+
+                        const tb = compileBranch(matchThen);
+                        const eb = matchElse ? compileBranch(matchElse) : "";
+
+                        chunk = `if(${cond}){${tb}} ${eb ? `else {${eb}}` : ""}`;
                     }
                     else if (cmd === 'FOR') {
                         const v = next(); // Variable name (keep case)

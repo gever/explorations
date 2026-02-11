@@ -406,19 +406,47 @@
         };
 
         // --- GRAPHICS ---
+        // --- GRAPHICS ---
         const GRAPHICS = {
-            lastX: 0, lastY: 0, colorIdx: 3,
-            colors: ['#000000', '#14F53C', '#A040A0', '#FFFFFF', '#000000', '#FF6000', '#3040FF', '#FFFFFF'],
+            lastX: 0, lastY: 0,
+            color: '#FFFFFF', // Current RGB color
+            legacyColors: ['#000000', '#14F53C', '#A040A0', '#FFFFFF', '#000000', '#FF6000', '#3040FF', '#FFFFFF'],
+            palette: [], // Populated on init
+
+            init: () => {
+                // Generate 64-color palette (2 bits per channel: R, G, B)
+                // 0, 85, 170, 255
+                for (let r = 0; r < 4; r++) {
+                    for (let g = 0; g < 4; g++) {
+                        for (let b = 0; b < 4; b++) {
+                            const hex = (v) => { const h = (v * 85).toString(16); return h.length === 1 ? '0' + h : h; };
+                            GRAPHICS.palette.push('#' + hex(r) + hex(g) + hex(b));
+                        }
+                    }
+                }
+            },
+
             mapX: (x) => Math.floor(x * CONFIG.scaleX),
             mapY: (y) => Math.floor(y * CONFIG.scaleY),
             setMode: (m) => { if (m > 0) SCREEN.clear(); },
             clear: () => SCREEN.clear(),
+
+            // Sets color from legacy Apple II palette (0-7)
+            setLegacyColor: (c) => {
+                GRAPHICS.color = GRAPHICS.legacyColors[Math.floor(Math.abs(c)) % 8];
+            },
+
+            // Sets color from new 64-color palette (0-63)
+            setPaletteColor: (c) => {
+                GRAPHICS.color = GRAPHICS.palette[Math.floor(Math.abs(c)) % 64];
+            },
+
             clearToColor: () => {
                 SCREEN.removeCursor();
-                ctx.fillStyle = GRAPHICS.colors[GRAPHICS.colorIdx];
+                ctx.fillStyle = GRAPHICS.color;
                 ctx.fillRect(0, 0, CONFIG.width, CONFIG.height);
             },
-            setColor: (c) => { GRAPHICS.colorIdx = Math.floor(c) % 8; },
+
             moveTo: (x, y) => {
                 GRAPHICS.lastX = GRAPHICS.mapX(x);
                 GRAPHICS.lastY = GRAPHICS.mapY(y);
@@ -426,7 +454,7 @@
             plot: (x, y) => {
                 SCREEN.removeCursor();
                 ctx.globalCompositeOperation = 'source-over';
-                ctx.fillStyle = GRAPHICS.colors[GRAPHICS.colorIdx];
+                ctx.fillStyle = GRAPHICS.color;
                 const cx = GRAPHICS.mapX(x), cy = GRAPHICS.mapY(y);
                 ctx.fillRect(cx, cy, Math.ceil(CONFIG.scaleX), Math.ceil(CONFIG.scaleY));
                 GRAPHICS.lastX = cx; GRAPHICS.lastY = cy;
@@ -434,7 +462,7 @@
             lineTo: (x, y) => {
                 SCREEN.removeCursor();
                 ctx.globalCompositeOperation = 'source-over';
-                ctx.strokeStyle = GRAPHICS.colors[GRAPHICS.colorIdx]; ctx.lineWidth = 2; ctx.beginPath();
+                ctx.strokeStyle = GRAPHICS.color; ctx.lineWidth = 2; ctx.beginPath();
                 const tx = GRAPHICS.mapX(x), ty = GRAPHICS.mapY(y);
                 ctx.moveTo(GRAPHICS.lastX + (CONFIG.scaleX / 2), GRAPHICS.lastY + (CONFIG.scaleY / 2));
                 ctx.lineTo(tx + (CONFIG.scaleX / 2), ty + (CONFIG.scaleY / 2));
@@ -447,10 +475,10 @@
                 const gw = w * CONFIG.scaleX;
                 const gh = h * CONFIG.scaleY;
                 if (fill) {
-                    ctx.fillStyle = GRAPHICS.colors[GRAPHICS.colorIdx];
+                    ctx.fillStyle = GRAPHICS.color;
                     ctx.fillRect(GRAPHICS.lastX, GRAPHICS.lastY, gw, gh);
                 } else {
-                    ctx.strokeStyle = GRAPHICS.colors[GRAPHICS.colorIdx];
+                    ctx.strokeStyle = GRAPHICS.color;
                     ctx.lineWidth = 2;
                     ctx.strokeRect(GRAPHICS.lastX, GRAPHICS.lastY, gw, gh);
                 }
@@ -467,10 +495,10 @@
                 ctx.ellipse(cx, cy, gw / 2, gh / 2, 0, 0, 2 * Math.PI);
 
                 if (fill) {
-                    ctx.fillStyle = GRAPHICS.colors[GRAPHICS.colorIdx];
+                    ctx.fillStyle = GRAPHICS.color;
                     ctx.fill();
                 } else {
-                    ctx.strokeStyle = GRAPHICS.colors[GRAPHICS.colorIdx];
+                    ctx.strokeStyle = GRAPHICS.color;
                     ctx.lineWidth = 2;
                     ctx.stroke();
                 }
@@ -492,13 +520,22 @@
                 ctx.closePath();
 
                 if (fill) {
-                    ctx.fillStyle = GRAPHICS.colors[GRAPHICS.colorIdx];
+                    ctx.fillStyle = GRAPHICS.color;
                     ctx.fill();
                 } else {
-                    ctx.strokeStyle = GRAPHICS.colors[GRAPHICS.colorIdx];
+                    ctx.strokeStyle = GRAPHICS.color;
                     ctx.lineWidth = 2;
                     ctx.stroke();
                 }
+            },
+            print: (str) => {
+                SCREEN.removeCursor();
+                ctx.globalCompositeOperation = 'source-over';
+                ctx.fillStyle = GRAPHICS.color;
+                ctx.font = CONFIG.font;
+                ctx.textBaseline = 'top';
+                ctx.fillText(str, GRAPHICS.lastX, GRAPHICS.lastY);
+                GRAPHICS.lastX += ctx.measureText(str).width;
             }
         };
 
@@ -529,6 +566,7 @@
             "PERFORMANCE.BAS": "demo/performance.bas",
             "GRAPHICS.BAS": "demo/graphics.bas",
             "MIXED.BAS": "demo/mixed.bas",
+            "PALETTE.BAS": "demo/palette.bas",
             "GRAPHICS_API.BAS": "demo/graphics_api.bas"
         };
 
@@ -551,7 +589,7 @@
             "SCREEN & GRAPHICS": [
                 { c: "HOME", d: "Clears the text screen and moves cursor to top-left.", e: "10 HOME" },
                 { c: "GR_CLEAR", d: "Clears screen to current GR_COLOR.", e: "10 GR_CLEAR" },
-                { c: "GR_COLOR", d: "Sets color (0-7).", e: "20 GR_COLOR=3" },
+                { c: "GR_COLOR", d: "Sets color (0-63).", e: "20 GR_COLOR=3" },
                 { c: "GR_MOVETO", d: "Moves graphics cursor to X,Y.", e: "30 GR_MOVETO 100,100" },
                 { c: "GR_LINETO", d: "Draws line to X,Y.", e: "40 GR_LINETO 200,200" },
                 { c: "GR_RECT", d: "Draws outline rectangle W,H at cursor.", e: "50 GR_RECT 50,50" },
@@ -560,6 +598,7 @@
                 { c: "GR_FELLIPSE", d: "Draws filled ellipse W,H at cursor.", e: "80 GR_FELLIPSE 50,30" },
                 { c: "GR_TRI", d: "Draws triangle (x2,y2,x3,y3) from cursor.", e: "90 GR_TRI 200,200,100,200" },
                 { c: "GR_FTRI", d: "Draws filled triangle.", e: "95 GR_FTRI 200,200,100,200" },
+                { c: "GR_PRINT", d: "Prints text at graphics cursor.", e: "10 GR_PRINT \"SCORE: \"; S" },
                 { c: "TEXT", d: "Legacy command (Clears screen in Mixed Mode).", e: "100 TEXT" },
                 { c: "HGR", d: "Legacy command (Clears screen in Mixed Mode).", e: "10 HGR" },
                 { c: "HGR2", d: "Legacy command (Clears screen in Mixed Mode).", e: "10 HGR2" },
@@ -832,10 +871,33 @@
                     else if (cmd === 'DIM') { const v = next(); next(); const sz = Compiler.genExpression(tokens, ctx); next(); chunk = `SYS.arrays['${v}']=new Array(${sz}+1).fill(0);`; }
                     else if (cmd === 'INPUT') { async = true; let p = "?"; if (peek().startsWith('"')) { p = next().replace(/"/g, ''); if (peek() === ';') next(); } const v = next(), str = v.endsWith('$'); chunk = `IO.print("${p}",false);var val=await IO.input();SYS.vars['${v}']=${str ? 'val' : 'parseFloat(val)'};`; }
 
+                    else if (cmd === 'GR_PRINT') {
+                        const p = [];
+                        // Support standard print arguments (expressions, semicolons, commas)
+                        while (ctx.idx < tokens.length) {
+                            if ([':', 'THEN', 'ELSE'].includes(peekUpper())) break;
+
+                            if (peek() === ';' || peek() === ',') {
+                                // Treat comma as space for GR_PRINT for simplicity, or just ignore logic for tabs
+                                if (peek() === ',') p.push('" "');
+                                next();
+                                continue;
+                            }
+
+                            p.push(`IO.format(${Compiler.genExpression(tokens, ctx)})`);
+
+                            if (peek() === ';' || peek() === ',') {
+                                if (peek() === ',') p.push('" "');
+                                next();
+                            }
+                        }
+                        chunk = `GRAPHICS.print(${p.length ? p.join(' + "" + ') : '""'});`;
+                    }
+
                     else if (cmd === 'HGR' || cmd === 'HGR2' || cmd === 'TEXT') chunk = `GRAPHICS.setMode(1);`;
                     else if (cmd === 'HCOLOR') {
                         if (peek() === '=') next();
-                        chunk = `GRAPHICS.setColor(${Compiler.genExpression(tokens, ctx)});`;
+                        chunk = `GRAPHICS.setLegacyColor(${Compiler.genExpression(tokens, ctx)});`;
                     }
                     else if (cmd === 'HPLOT') {
                         let sc = "", sl = false;
@@ -858,7 +920,7 @@
                     else if (cmd === 'GR_CLEAR' || cmd === 'GR_CLS') chunk = `GRAPHICS.clearToColor();`;
                     else if (cmd === 'GR_COLOR') {
                         if (peek() === '=') next();
-                        chunk = `GRAPHICS.setColor(${Compiler.genExpression(tokens, ctx)});`;
+                        chunk = `GRAPHICS.setPaletteColor(${Compiler.genExpression(tokens, ctx)});`;
                     }
                     else if (cmd === 'GR_MOVETO') {
                         const x = Compiler.genExpression(tokens, ctx);
@@ -1430,6 +1492,7 @@
 
         // Init
         document.fonts.load(CONFIG.font).then(() => {
+            GRAPHICS.init();
             SCREEN.init();
             IO.print("APPLESOFTY BASIC TRANSPILER v0.5");
             IO.print("");

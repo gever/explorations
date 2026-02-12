@@ -599,7 +599,8 @@
             "GRAPHICS.BAS": "demo/graphics.bas",
             "MIXED.BAS": "demo/mixed.bas",
             "PALETTE.BAS": "demo/palette.bas",
-            "GRAPHICS_API.BAS": "demo/graphics_api.bas"
+            "GRAPHICS_API.BAS": "demo/graphics_api.bas",
+            "REGRESSION.BAS": "demo/regression.bas"
         };
 
         // --- HELP DATA ---
@@ -850,6 +851,8 @@
                     if (!t) return "0";
                     if (!isNaN(t) || t.startsWith('"')) return t;
                     if (t === '(') { const e = parseExp(); next(); return `(${e})`; }
+                    if (t === '-') return `-${parseFactor()}`;
+                    if (t === '+') return parseFactor();
 
                     if (/^[a-zA-Z]/.test(t)) {
                         // Normalize token for Keyword/Function checks

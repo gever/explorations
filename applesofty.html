@@ -1376,13 +1376,18 @@
                 breakBtn.style.display = 'block'; IO.cursorVisible = false; SCREEN.removeCursor();
                 const t0 = performance.now(); let ly = t0; let ops = 0;
                 while (SYS.running && SYS.pc < SYS.compiled.length) {
+                    if (SYS.break) { IO.print(`\nBREAK IN ${SYS.program[SYS.pc]?.line}`); SYS.running = false; break; }
+
                     // NEW: Track the line about to be executed
                     if (SYS.program[SYS.pc]) SYS.lastExecLine = SYS.program[SYS.pc].line;
 
                     const res = SYS.compiled[SYS.pc](SYS, IO, GRAPHICS, FS);
-                    if (res && res.then) { await res; ly = performance.now(); }
+                    if (res && res.then) {
+                        await res;
+                        ly = performance.now();
+                        if (SYS.break) { IO.print(`\nBREAK IN ${SYS.program[SYS.pc]?.line}`); SYS.running = false; break; }
+                    }
                     SYS.pc++; ops++;
-                    if ((ops % 100) === 0 && SYS.break) { IO.print(`\nBREAK IN ${SYS.program[SYS.pc - 1]?.line}`); SYS.running = false; break; }
                     if ((ops & 4095) === 0 && (performance.now() - ly) > 14) { await new Promise(r => setTimeout(r, 0)); ly = performance.now(); }
                 }
                 breakBtn.style.display = 'none';
@@ -1393,7 +1398,15 @@
         // --- EVENTS ---
         // --- Global Key Listener ---
         document.addEventListener('click', (e) => { if (e.target.id !== 'help-search') inputTrap.focus(); });
-        breakBtn.onclick = (e) => { e.preventDefault(); if (SYS.running) SYS.break = true; inputTrap.focus(); };
+        breakBtn.onclick = (e) => {
+            e.preventDefault();
+            if (SYS.running) {
+                SYS.break = true;
+                if (IO.waiter) { IO.waiter(""); IO.waiter = null; }
+                if (SYS.inputCallback) { SYS.inputCallback(""); SYS.inputCallback = null; }
+            }
+            inputTrap.focus();
+        };
 
         // --- Paste Support ---
 
@@ -1403,6 +1416,8 @@
             // 1. Handle Break (ESC)
             if (e.key === 'Escape' && SYS.running) {
                 SYS.break = true;
+                if (IO.waiter) { IO.waiter(""); IO.waiter = null; }
+                if (SYS.inputCallback) { SYS.inputCallback(""); SYS.inputCallback = null; }
                 return;
             }
 

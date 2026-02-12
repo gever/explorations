@@ -1572,24 +1572,31 @@
 
                 breakBtn.style.display = 'block'; IO.cursorVisible = false; SCREEN.removeCursor();
                 const t0 = performance.now(); let ly = t0; let ops = 0;
-                while (SYS.running && SYS.pc < SYS.compiled.length) {
-                    if (SYS.break) {
-                        IO.print(`\nBREAK IN ${SYS.program[SYS.pc]?.line}`);
-                        SYS.running = false;
-                        break;
-                    }
+                try {
+                    while (SYS.running && SYS.pc < SYS.compiled.length) {
+                        if (SYS.break) {
+                            IO.print(`\nBREAK IN ${SYS.program[SYS.pc]?.line}`);
+                            SYS.running = false;
+                            break;
+                        }
 
-                    // NEW: Track the line about to be executed
-                    if (SYS.program[SYS.pc]) SYS.lastExecLine = SYS.program[SYS.pc].line;
+                        // NEW: Track the line about to be executed
+                        if (SYS.program[SYS.pc]) SYS.lastExecLine = SYS.program[SYS.pc].line;
 
-                    const res = SYS.compiled[SYS.pc](SYS, IO, GRAPHICS, FS);
-                    if (res && res.then) {
-                        await res;
-                        ly = performance.now();
-                        if (SYS.break) { IO.print(`\nBREAK IN ${SYS.program[SYS.pc]?.line}`); SYS.running = false; break; }
+                        const res = SYS.compiled[SYS.pc](SYS, IO, GRAPHICS, FS);
+                        if (res && res.then) {
+                            await res;
+                            ly = performance.now();
+                            if (SYS.break) { IO.print(`\nBREAK IN ${SYS.program[SYS.pc]?.line}`); SYS.running = false; break; }
+                        }
+                        SYS.pc++; ops++;
+                        if ((ops & 4095) === 0 && (performance.now() - ly) > 14) { await new Promise(r => setTimeout(r, 0)); ly = performance.now(); }
                     }
-                    SYS.pc++; ops++;
-                    if ((ops & 4095) === 0 && (performance.now() - ly) > 14) { await new Promise(r => setTimeout(r, 0)); ly = performance.now(); }
+                } catch (e) {
+                    IO.print("\n?" + e);
+                    SYS.running = false;
+                    IO.prompt();
+                    return;
                 }
                 breakBtn.style.display = 'none';
                 SYS.running = false; IO.prompt();

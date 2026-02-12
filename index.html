@@ -1,14 +1,17 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Explorations</title>
-    
+
     <style>
         body {
-            background-color: #1a1a1a; /* Dark background */
-            color: #d4d4d4; /* Off-white text */
+            background-color: #1a1a1a;
+            /* Dark background */
+            color: #d4d4d4;
+            /* Off-white text */
             font-family: 'Courier New', Courier, monospace;
             padding: 2rem;
             font-size: 16px;
@@ -31,16 +34,19 @@
 
         /* Typewriter Text Block Styling */
         .typewriter-text {
-            border-right: 2px solid rgba(255,255,255,.75); /* Blinking cursor */
-            white-space: pre-wrap; /* Respects newlines and spaces */
+            border-right: 2px solid rgba(255, 255, 255, .75);
+            /* Blinking cursor */
+            white-space: pre-wrap;
+            /* Respects newlines and spaces */
             overflow: hidden;
-            font-family: 'Courier New', Courier, monospace; /* Standard Courier */
+            font-family: 'Courier New', Courier, monospace;
+            /* Standard Courier */
             line-height: 1.6;
         }
-        
+
         /* Distressed font effect class */
         .distressed {
-             /* A more "worn" courier look */
+            /* A more "worn" courier look */
             font-family: 'American Typewriter', 'Courier New', Courier, monospace;
             opacity: 0.95;
         }
@@ -58,7 +64,8 @@
             border: 1px solid #555;
         }
 
-        th, td {
+        th,
+        td {
             border: 1px solid #555;
             padding: 12px;
             text-align: left;
@@ -69,9 +76,10 @@
             color: #f0f0f0;
             font-weight: bold;
         }
-        
+
         td a {
-            color: #76c7c0; /* A nice teal for links */
+            color: #76c7c0;
+            /* A nice teal for links */
             text-decoration: none;
         }
 
@@ -96,9 +104,9 @@
             font-size: 0.8rem;
             color: #888;
         }
-
     </style>
 </head>
+
 <body>
 
     <div class="container">
@@ -113,33 +121,33 @@
     </div>
 
     <script>
-/**
- * Adds a new row to the specified table's tbody.
- *
- * @param {string} id - The ID of the table element.
- * @param {string} url - The relative or absolute URL for the link.
- * @param {string} link_text - The text to display for the link.
- * @param {string} thumbnail - The relative path to the thumbnail image.
- * @param {string} description - The text content for the description cell.
- * @param {string} [attribution] - Optional attribution text for the description.
- */
-function addRow(id, url, link_text, thumbnail, description, attribution) {
-  const tableBody = document.getElementById(id)?.querySelector('tbody');
+        /**
+         * Adds a new row to the specified table's tbody.
+         *
+         * @param {string} id - The ID of the table element.
+         * @param {string} url - The relative or absolute URL for the link.
+         * @param {string} link_text - The text to display for the link.
+         * @param {string} thumbnail - The relative path to the thumbnail image.
+         * @param {string} description - The text content for the description cell.
+         * @param {string} [attribution] - Optional attribution text for the description.
+         */
+        function addRow(id, url, link_text, thumbnail, description, attribution) {
+            const tableBody = document.getElementById(id)?.querySelector('tbody');
 
-  if (!tableBody) {
-    console.error(`Error: Table with id "${id}" or its tbody not found.`);
-    return;
-  }
+            if (!tableBody) {
+                console.error(`Error: Table with id "${id}" or its tbody not found.`);
+                return;
+            }
 
-  const newRow = document.createElement('tr');
+            const newRow = document.createElement('tr');
 
-  // Conditionally create the attribution HTML if the parameter is provided
-  const attributionHTML = attribution 
-    ? `<span style="position: absolute; bottom: 8px; right: 12px; font-size: 0.8em; color: #666;">${attribution}</span>` 
-    : '';
+            // Conditionally create the attribution HTML if the parameter is provided
+            const attributionHTML = attribution
+                ? `<span style="position: absolute; bottom: 8px; right: 12px; font-size: 0.8em; color: #666;">${attribution}</span>`
+                : '';
 
-  // The inner HTML now uses the url and link_text parameters directly
-  newRow.innerHTML = `
+            // The inner HTML now uses the url and link_text parameters directly
+            newRow.innerHTML = `
     <td><a href="${url}" target="_blank">${link_text}</a></td>
     <td style="position: relative; padding-right: 30px;">
       ${description}
@@ -150,108 +158,108 @@ function addRow(id, url, link_text, thumbnail, description, attribution) {
     </td>
   `;
 
-  tableBody.appendChild(newRow);
-}
-        
-document.addEventListener('DOMContentLoaded', function() {
-    // add the rows to the links table
-    addRow(
-        'projects-table',
-        'dillydalia.html',
-        'Pareidolia Playground',
-        'IMG_3024.PNG',
-        'What makes a face a face?',
-        'gever + gemini'
-    );
-    addRow(
-        'projects-table',
-        'vectorizer_playground.html',
-        'Vectorizer Playground',
-        'vectorizer_playground_th.png',
-        'Interpret image as vectors (for plotting); a messy collection of tweaks and algorithms.',
-        'gever + gemini'
-    );
-    addRow(
-        'projects-table',
-        'dither_playground.html',
-        'Dither Playground',
-        'dither_playground_th.png',
-        'Exploring the application of different dither patterns.',
-        'gever + gemini'
-    );
-    addRow(
-        'projects-table',
-        'applesofty.html',
-        'Applesofty',
-        'applesofty_th.png',
-        'A sketch of an Applesoft-like BASIC experience.',
-        'gever + gemini'
-    );
-    addRow(
-        'projects-table',
-        'circle_packing.html',
-        'Circle Packing',
-        'circle_packing_th.png',
-        'Play with how circles relate to polygonal borders.',
-        'gever + gemini'
-    );
-    addRow(
-        'projects-table',
-        'particle_cloud.html',
-        'Particle Cloud',
-        'particle_cloud_th.png',
-        'Watch a cloud of particles spontaneously aggregate into planetoids.',
-        'gever + gemini'
-    );
-    addRow(
-        'projects-table',
-        'tiling.html',
-        'Square Tiling Playground',
-        'tiling_th.png',
-        'Drop an image in and play with rotations and symmetry.',
-        'gever + gemini'
-    );
-    addRow(
-        'projects-table',
-        'gstd/index.html',
-        'Galactic Space Tortoise Doctor',
-        'gstd/splash.png',
-        'Deliver life-saving vaccine to infected planets!',
-        'gever + gemini'
-    );
-    addRow(
-        'projects-table',
-        'https://g.co/gemini/share/1e11bb3ffe9b',
-        'Binary Star Stability',
-        'binary_star_stability_th.png',
-        'knowledge summary, basic concepts, types, and some of the physics (errors in the formulae rendering)',
-        'gemini + gever'
-    );
-    addRow(
-        'projects-table',
-        'https://gemini.google.com/share/73e1efc4a821',
-        'Dry Ice',
-        'dryice_simulation_th.png',
-        'a simulation of dry ice chips floating on water in a circular dish.',
-        'aidan krempetz'
-    );
-    addRow(
-        'projects-table',
-        'binary_playground.html',
-        'Binary Playground',
-        'binary_playground_th.png',
-        'particles, set in circular motion, collide and agglomerate, often producing binary pairs of super-massive "stars".',
-        'gever + gemini'
-    );
-    
+            tableBody.appendChild(newRow);
+        }
+
+        document.addEventListener('DOMContentLoaded', function () {
+            // add the rows to the links table
+            addRow(
+                'projects-table',
+                'dillydalia.html',
+                'Pareidolia Playground',
+                'IMG_3024.PNG',
+                'What makes a face a face?',
+                'gever + gemini'
+            );
+            addRow(
+                'projects-table',
+                'vectorizer_playground.html',
+                'Vectorizer Playground',
+                'vectorizer_playground_th.png',
+                'Interpret image as vectors (for plotting); a messy collection of tweaks and algorithms.',
+                'gever + gemini'
+            );
+            addRow(
+                'projects-table',
+                'dither_playground.html',
+                'Dither Playground',
+                'dither_playground_th.png',
+                'Exploring the application of different dither patterns.',
+                'gever + gemini'
+            );
+            addRow(
+                'projects-table',
+                'applesofty.html',
+                'bwxBASIC',
+                'applesofty_th.png',
+                'A sketch of an Applesoft-like BASIC experience.',
+                'gever + gemini'
+            );
+            addRow(
+                'projects-table',
+                'circle_packing.html',
+                'Circle Packing',
+                'circle_packing_th.png',
+                'Play with how circles relate to polygonal borders.',
+                'gever + gemini'
+            );
+            addRow(
+                'projects-table',
+                'particle_cloud.html',
+                'Particle Cloud',
+                'particle_cloud_th.png',
+                'Watch a cloud of particles spontaneously aggregate into planetoids.',
+                'gever + gemini'
+            );
+            addRow(
+                'projects-table',
+                'tiling.html',
+                'Square Tiling Playground',
+                'tiling_th.png',
+                'Drop an image in and play with rotations and symmetry.',
+                'gever + gemini'
+            );
+            addRow(
+                'projects-table',
+                'gstd/index.html',
+                'Galactic Space Tortoise Doctor',
+                'gstd/splash.png',
+                'Deliver life-saving vaccine to infected planets!',
+                'gever + gemini'
+            );
+            addRow(
+                'projects-table',
+                'https://g.co/gemini/share/1e11bb3ffe9b',
+                'Binary Star Stability',
+                'binary_star_stability_th.png',
+                'knowledge summary, basic concepts, types, and some of the physics (errors in the formulae rendering)',
+                'gemini + gever'
+            );
+            addRow(
+                'projects-table',
+                'https://gemini.google.com/share/73e1efc4a821',
+                'Dry Ice',
+                'dryice_simulation_th.png',
+                'a simulation of dry ice chips floating on water in a circular dish.',
+                'aidan krempetz'
+            );
+            addRow(
+                'projects-table',
+                'binary_playground.html',
+                'Binary Playground',
+                'binary_playground_th.png',
+                'particles, set in circular motion, collide and agglomerate, often producing binary pairs of super-massive "stars".',
+                'gever + gemini'
+            );
+
             const textBlockElement = document.getElementById('text-block');
-            
+
             // EDIT THIS TEXT to change the content that gets typed out.
             // Use `\n` for new lines.
             const textToType = `These are some artifacts that emerged from conversations with myself and friends.`;
-            
+
             let i = 0;
-            
+
             function typeWriter() {
                 if (i < textToType.length) {
                     textBlockElement.innerHTML += textToType.charAt(i);
@@ -263,11 +271,12 @@ document.addEventListener('DOMContentLoaded', function() {
                     // textBlockElement.classList.add('blinking-cursor');
                 }
             }
-            
+
             // Start the effect
             typeWriter();
         });
     </script>
 
 </body>
+
 </html>

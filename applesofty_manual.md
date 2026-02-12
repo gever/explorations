@@ -1,10 +1,10 @@
-# Applesofty BASIC Reference Manual
+# bwxBASIC Reference Manual
 
-Applesofty BASIC is a modern web-based implementation of BASIC, inspired by Applesoft BASIC but enhanced with structured graphics commands, modern editing features, and a 64-color palette.
+bwxBASIC is a modern web-based implementation of BASIC, inspired by Applesoft BASIC but enhanced with structured graphics commands, modern editing features, and a 64-color palette.
 
 ## 1. Color Palette
 
-Applesofty uses a 64-color palette organized by hue and brightness. Colors are accessed via index `0` through `63`.
+bwxBASIC uses a 64-color palette organized by hue and brightness. Colors are accessed via index `0` through `63`.
 
 *   **Rows (0-7)**: Brightness gradient (Top=Light, Bottom=Dark).
 *   **Cols (0-6)**: Rainbow hues (Right=Red, Left=Violet).
@@ -29,7 +29,7 @@ Applesofty uses a 64-color palette organized by hue and brightness. Colors are a
     *   `A = 3.14`
     *   `C = -50`
 *   **Strings**: Text enclosed in double quotes. Variable names must end with `$`.
-    *   `N$ = "APPLESOFT"`
+    *   `N$ = "bwxBASIC"`
 *   **Arrays**: Defined with `DIM`. Zero-indexed.
     *   `DIM A(10)` (Create array with 11 slots, 0-10)
     *   `A(0) = 99`
@@ -73,7 +73,7 @@ Reads a single character from the keyboard.
 
 ## 4. Graphics Commands
 
-Applesofty features a vector-like graphics API with a stateful "turtle" cursor.
+bwxBASIC features a vector-like graphics API with a stateful "turtle" cursor.
 
 *   `GR_CLEAR`: Clears screen to current color.
 *   `GR_COLOR = C`: Sets current drawing color (0-63).

@@ -4,7 +4,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Applesofty BASIC Transpiler</title>
+    <title>bwxBASIC Transpiler</title>
     <style>
         @import url('https://fonts.googleapis.com/css2?family=VT323&display=swap');
 
@@ -248,7 +248,7 @@
 
         <div id="help-overlay">
             <div class="help-header">
-                <span>APPLESOFT REFERENCE MANUAL</span>
+                <span>bwxBASIC REFERENCE MANUAL</span>
                 <input type="text" id="help-search" placeholder="FILTER COMMANDS..." autocomplete="off">
                 <button class="help-close"
                     onclick="document.getElementById('help-overlay').style.display='none'">CLOSE</button>
@@ -1729,7 +1729,7 @@
         document.fonts.load(CONFIG.font).then(() => {
             GRAPHICS.init();
             SCREEN.init();
-            IO.print("APPLESOFTY BASIC TRANSPILER v0.5");
+            IO.print("bwxBASIC v0.5");
             IO.print("");
             IO.print("TYPE 'HELP' FOR MANUAL");
             IO.prompt();

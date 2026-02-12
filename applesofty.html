@@ -1034,7 +1034,7 @@
                             if (peek() === ')') next();
                             chunk = `SYS.setSeed(${val});`;
                         } else {
-                            chunk = `IO.print("?SYNTAX ERROR");`;
+                            chunk = `IO.print("?SYNTAX ERROR"); SYS.running=false;`;
                         }
                     }
 
@@ -1063,7 +1063,7 @@
                     else if (cmd === 'DOWNLOAD') chunk = `FS.download(${Compiler.genExpression(tokens, ctx)});`;
                     else if (cmd === 'JSECHO') chunk = `IO.jsEcho = !IO.jsEcho; IO.print("JSECHO " + (IO.jsEcho ? "ON" : "OFF"));`;
                     else if (cmd === 'HELP') chunk = `IO.help();`;
-                    else chunk = `IO.print("?SYNTAX ERROR");`;
+                    else chunk = `IO.print("?SYNTAX ERROR"); SYS.running=false;`;
 
                     body += chunk + "\n";
                 }
@@ -1074,7 +1074,7 @@
                     f.generatedBody = body;
                     return f;
                 } catch (e) {
-                    return () => IO.print(`?COMPILE ERROR ${lineObj.line}`);
+                    return () => { IO.print(`?COMPILE ERROR ${lineObj.line}`); SYS.running = false; };
                 }
             }
         };

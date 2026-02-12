@@ -616,7 +616,8 @@
                 { c: "WHERE", d: "Shows the line number where the last program stopped.", e: "WHERE" },
                 { c: "JSECHO", d: "Toggles echoing of output to the browser console for debugging.", e: "JSECHO" },
                 { c: "HELP", d: "Opens this reference manual.", e: "HELP" },
-                { c: "REM", d: "Remark/Comment. Line is ignored by interpreter.", e: "10 REM SETUP VARIABLES" }
+                { c: "REM", d: "Remark/Comment. Line is ignored by interpreter.", e: "10 REM SETUP VARIABLES" },
+                { c: "VARS", d: "Lists all currently defined variables.", e: "VARS" }
             ],
             "SCREEN & GRAPHICS": [
                 { c: "HOME", d: "Clears the text screen and moves cursor to top-left.", e: "10 HOME" },
@@ -681,7 +682,7 @@
 
         // --- FILE SYSTEM ---
         const FS = {
-            PREFIX: 'APPLESOFT_PROG_',
+            PREFIX: 'bwxBASIC_PROG_',
             currentFilename: "bwxBASIC_program.bas", // Default filename
 
             save: (fn) => {
@@ -689,7 +690,7 @@
                     localStorage.setItem(FS.PREFIX + fn.toUpperCase(), JSON.stringify(SYS.program));
                     FS.currentFilename = fn; // Update current filename
                     IO.print("SAVED " + fn);
-                } catch (e) { IO.print("?DISK FULL"); }
+                } catch (e) { IO.print("?ERROR SAVING"); }
             },
 
             load: async (fn) => {
@@ -746,8 +747,8 @@
 
             dir: () => {
                 IO.print("CATALOG");
-                IO.print(" [DEMOS]"); for (let k in DEMOS) IO.print("  " + k);
-                IO.print(" [USER]"); for (let i = 0; i < localStorage.length; i++) { const k = localStorage.key(i); if (k.startsWith(FS.PREFIX)) IO.print("  " + k.replace(FS.PREFIX, '')); }
+                IO.print(" DEMO/"); for (let k in DEMOS) IO.print("  " + k);
+                IO.print(" -----"); for (let i = 0; i < localStorage.length; i++) { const k = localStorage.key(i); if (k.startsWith(FS.PREFIX)) IO.print("  " + k.replace(FS.PREFIX, '')); }
             },
 
             download: (fn) => {
@@ -827,7 +828,7 @@
                 if (tu === 'REM' || token === "'") return SYNTAX.colors.COMMENT;
 
                 // Commands
-                if (['PRINT', 'INPUT', 'RUN', 'LIST', 'NEW', 'GR_CLEAR', 'GR_COLOR', 'GR_MOVETO', 'GR_LINETO', 'GR_RECT', 'GR_FRECT', 'GR_ELLIPSE', 'GR_FELLIPSE', 'GR_TRI', 'GR_FTRI', 'GR_PRINT', 'HGR', 'HGR2', 'TEXT', 'HCOLOR', 'HPLOT', 'HTAB', 'VTAB', 'SETPOS', 'HOME', 'DIM', 'LET', 'GOTO', 'GOSUB', 'RETURN', 'IF', 'THEN', 'ELSE', 'FOR', 'NEXT', 'STEP', 'TO', 'END', 'STOP', 'DELAY', 'SAVE', 'LOAD', 'DIR', 'CATALOG', 'DOWNLOAD', 'JSECHO', 'HELP', 'JSPEEK', 'Where'].includes(tu)) return SYNTAX.colors.COMMAND;
+                if (['PRINT', 'INPUT', 'RUN', 'LIST', 'NEW', 'GR_CLEAR', 'GR_COLOR', 'GR_MOVETO', 'GR_LINETO', 'GR_RECT', 'GR_FRECT', 'GR_ELLIPSE', 'GR_FELLIPSE', 'GR_TRI', 'GR_FTRI', 'GR_PRINT', 'HGR', 'HGR2', 'TEXT', 'HCOLOR', 'HPLOT', 'HTAB', 'VTAB', 'SETPOS', 'HOME', 'DIM', 'LET', 'GOTO', 'GOSUB', 'RETURN', 'IF', 'THEN', 'ELSE', 'FOR', 'NEXT', 'STEP', 'TO', 'END', 'STOP', 'DELAY', 'SAVE', 'LOAD', 'DIR', 'CATALOG', 'DOWNLOAD', 'JSECHO', 'HELP', 'JSPEEK', 'Where', 'VARS'].includes(tu)) return SYNTAX.colors.COMMAND;
 
                 // Keywords (mix of command and structural) - usually same color, but let's separate if desired.
                 // Actually, FOR/NEXT/IF/THEN are flow control. Let's make them KeyWords (Gold)
@@ -1401,6 +1402,22 @@
                                 IO.prompt();
                             });
                         return; // Return early so we don't double-prompt
+                    }
+                    else if (c === 'VARS') {
+                        const keys = Object.keys(SYS.vars).sort();
+                        if (keys.length === 0) {
+                            // Optional: IO.print("NO VARIABLES DEFINED");
+                        } else {
+                            for (const k of keys) {
+                                let val = SYS.vars[k];
+                                if (typeof val === 'string') {
+                                    IO.print(`${k} = "${val}"`);
+                                } else {
+                                    IO.print(`${k} = ${val}`);
+                                }
+                            }
+                        }
+                        IO.prompt();
                     }
                     else if (c === 'WHERE') {
                         if (SYS.lastExecLine) {

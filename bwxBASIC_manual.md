@@ -164,6 +164,7 @@ bwxBASIC uses a 64-color palette organized by hue and brightness. Colors are acc
 *   `DIR`: List files.
 *   `DOWNLOAD "NAME"`: Download .BAS file to computer.
 *   `WHERE`: Show line number of last stop.
+*   `VARS`: Lists all currently defined variables.
 *   `HELP`: Show internal help.
 *   `JSECHO`: Toggle console logging (for debugging).
 *   `JSPEEK`: See what your BASIC code looks like in JavaScript.

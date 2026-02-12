@@ -1205,9 +1205,25 @@
                             }
                         }
 
+                        let indent = 0;
                         SYS.program.forEach(l => {
+                            // Calculate indentation
+                            const tokens = Tokenizer.tokenize(l.src);
+                            let tempIndent = indent;
+
+                            for (let t of tokens) {
+                                const tu = t.toUpperCase();
+                                if (tu === 'FOR') indent++;
+                                else if (tu === 'NEXT') {
+                                    indent = Math.max(0, indent - 1);
+                                    tempIndent = indent;
+                                }
+                                else if (tu === 'REM' || t === "'") break;
+                            }
+
                             if (l.line >= min && l.line <= max) {
-                                IO.print(`${l.line} ${l.src}`);
+                                const spaces = "  ".repeat(tempIndent);
+                                IO.print(`${l.line} ${spaces}${l.src}`);
                             }
                         });
                         IO.prompt();

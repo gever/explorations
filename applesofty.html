@@ -715,7 +715,7 @@
             'LEN': '(s)=>(s+"").length', 'LEFT$': '(s,n)=>(s+"").substr(0,n)', 'RIGHT$': '(s,n)=>(s+"").substr((s+"").length-n)', 'MID$': '(s,st,ln)=>(s+"").substr(st-1,ln)',
             'STR$': '(n)=>n.toString()', 'VAL': '(s)=>parseFloat(s)'
         };
-        const Tokenizer = { regex: /([0-9]*\.?[0-9]+)|(".*?")|([a-zA-Z][a-zA-Z0-9_]*\$?)|(<=|>=|<>|<|>|=)|([\+\-\*\/])|(\()|(\))|(:)|(,)|(;)/g, tokenize: (str) => { const t = []; let m; while ((m = Tokenizer.regex.exec(str)) !== null) t.push(m[0]); return t; } };
+        const Tokenizer = { regex: /([0-9]*\.?[0-9]+)|(".*?")|([a-zA-Z][a-zA-Z0-9_]*\$?)|(<=|>=|<>|<|>|=)|([\+\-\*\/])|(\()|(\))|(:)|(,)|(;)|(')/g, tokenize: (str) => { const t = []; let m; while ((m = Tokenizer.regex.exec(str)) !== null) t.push(m[0]); return t; } };
         const Compiler = {
             genExpression: (tokens, ctx) => {
                 const peek = () => tokens[ctx.idx], next = () => tokens[ctx.idx++];
@@ -776,7 +776,7 @@
 
                 while (ctx.idx < tokens.length) {
                     const cmdRaw = next();
-                    if (cmdRaw === ':') continue; if (cmdRaw.toUpperCase() === 'REM') break;
+                    if (cmdRaw === ':') continue; if (cmdRaw.toUpperCase() === 'REM' || cmdRaw === "'") break;
 
                     // Normalize command to uppercase for switching
                     const cmd = cmdRaw.toUpperCase();
@@ -789,7 +789,7 @@
                         // PRINT statements are complicated by ';' and ',' separators...
                         while (ctx.idx < tokens.length) {
                             // Stop if we hit a command separator
-                            if ([':', 'THEN', 'ELSE'].includes(peekUpper())) break;
+                            if ([':', "'", 'THEN', 'ELSE'].includes(peekUpper())) break;
 
                             // 1. Handle leading or consecutive separators
                             //    (e.g., PRINT ,, X  or  PRINT X,,)
@@ -946,7 +946,7 @@
                         const p = [];
                         // Support standard print arguments (expressions, semicolons, commas)
                         while (ctx.idx < tokens.length) {
-                            if ([':', 'THEN', 'ELSE'].includes(peekUpper())) break;
+                            if ([':', "'", 'THEN', 'ELSE'].includes(peekUpper())) break;
 
                             if (peek() === ';' || peek() === ',') {
                                 // Treat comma as space for GR_PRINT for simplicity, or just ignore logic for tabs

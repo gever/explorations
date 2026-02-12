@@ -414,14 +414,44 @@
             palette: [], // Populated on init
 
             init: () => {
-                // Generate 64-color palette (2 bits per channel: R, G, B)
-                // 0, 85, 170, 255
-                for (let r = 0; r < 4; r++) {
-                    for (let g = 0; g < 4; g++) {
-                        for (let b = 0; b < 4; b++) {
-                            const hex = (v) => { const h = (v * 85).toString(16); return h.length === 1 ? '0' + h : h; };
-                            GRAPHICS.palette.push('#' + hex(r) + hex(g) + hex(b));
+                const hslToHex = (h, s, l) => {
+                    l /= 100;
+                    const a = s * Math.min(l, 1 - l) / 100;
+                    const f = n => {
+                        const k = (n + h / 30) % 12;
+                        const color = l - a * Math.max(Math.min(k - 3, 9 - k, 1), -1);
+                        return Math.round(255 * color).toString(16).padStart(2, '0');
+                    };
+                    return `#${f(0)}${f(8)}${f(4)}`;
+                };
+
+                // Generate 64-color palette
+                // Rows (y): 0 (Light) -> 7 (Dark)
+                // Cols (x): 0 (Left) -> 7 (Right)
+                // New Requirement:
+                // Col 7: Grayscale (White -> Black)
+                // Col 6 -> 0: Rainbow (Red -> Violet)
+
+                for (let y = 0; y < 8; y++) {
+                    for (let x = 0; x < 8; x++) {
+                        let color;
+
+                        if (x === 7) {
+                            // Column 7: Grayscale (White -> Black)
+                            // Saturation 0, Lit goes 100 -> 0
+                            const grayLit = 100 - (y * (100 / 7));
+                            color = hslToHex(0, 0, grayLit);
+                        } else {
+                            // Columns 6..0: Rainbow
+                            // Lightness gradient: Top (0) is bright, Bottom (7) is dark
+                            // Range: ~90% down to ~20%
+                            const lit = 90 - (y * 10);
+
+                            // 6 = Red (0 deg), 0 = Violet (~270 deg)
+                            const hue = (6 - x) * 45;
+                            color = hslToHex(hue, 100, lit);
                         }
+                        GRAPHICS.palette.push(color);
                     }
                 }
             },

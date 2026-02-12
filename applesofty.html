@@ -1120,6 +1120,7 @@
             historyIdx: -1,
             lineBuffer: "",     // Current command string being typed
             lineCursor: 0,      // Cursor position within lineBuffer
+            viewScroll: 0,      // NEW: Horizontal scroll offset
             promptStartX: 0,    // Where the prompt ] started
             promptStartY: 0,
 
@@ -1355,33 +1356,51 @@
                 IO.promptStartY = SCREEN.cy;
                 IO.lineBuffer = "";
                 IO.lineCursor = 0;
+                IO.viewScroll = 0; // Reset scroll
                 IO.historyIdx = IO.history.length;
                 SCREEN.drawCursor();
             },
 
             refreshLine: () => {
-                // 1. Move cursor back to start of prompt
+                // 1. Calculate available width on the current line
+                //    (from prompt start to end of screen width)
+                const availableWidth = CONFIG.cols - IO.promptStartX;
+
+                // 2. Adjust View Scroll based on Cursor
+                //    Ensure cursor is visible within [viewScroll, viewScroll + availableWidth)
+                //    Leave 1 char padding at right if possible, or just exact fit
+                if (IO.lineCursor < IO.viewScroll) {
+                    IO.viewScroll = IO.lineCursor;
+                } else if (IO.lineCursor >= IO.viewScroll + availableWidth) {
+                    IO.viewScroll = IO.lineCursor - availableWidth + 1;
+                }
+
+                // 3. Determine visible text
+                const visibleText = IO.lineBuffer.substring(IO.viewScroll, IO.viewScroll + availableWidth);
+
+                // 4. Move to prompt start
                 SCREEN.removeCursor();
                 SCREEN.cx = IO.promptStartX;
                 SCREEN.cy = IO.promptStartY;
 
-                // 2. Draw the text buffer
-                SCREEN.put(IO.lineBuffer);
+                // 5. Draw visible text
+                SCREEN.put(visibleText);
 
-                // 3. Clear any leftover characters from previous longer lines
-                const currentEnd = SCREEN.cx + (SCREEN.cy * CONFIG.cols);
-                SCREEN.put("   "); // Erase a few chars ahead just in case
+                // 6. Clear remaining space on the line if text is shorter than width
+                const usedWidth = visibleText.length;
+                if (usedWidth < availableWidth) {
+                    const clearLen = availableWidth - usedWidth;
+                    // Don't use put() for clearing if it wraps, manually clear or use put with spaces
+                    // put() wraps if it hits edge.
+                    // If we are at edge, put() might wrap.
+                    // Better: Fill with spaces up to availableWidth
+                    SCREEN.put(" ".repeat(clearLen));
+                }
 
-                // 4. Calculate visual cursor position based on logic cursor
-                // Total cells from (0,0) to prompt start
-                const startCells = (IO.promptStartY * CONFIG.cols) + IO.promptStartX;
-                // Target cells from (0,0)
-                const targetCells = startCells + IO.lineCursor;
-
-                const targetY = Math.floor(targetCells / CONFIG.cols);
-                const targetX = targetCells % CONFIG.cols;
-
-                SCREEN.moveTo(targetX, targetY);
+                // 7. Position Cursor visually
+                //    Visual X = promptStartX + (logicalCursor - viewScroll)
+                const visualCursorX = IO.promptStartX + (IO.lineCursor - IO.viewScroll);
+                SCREEN.moveTo(visualCursorX, IO.promptStartY);
             }
         };
 

@@ -682,7 +682,16 @@
         // --- FILE SYSTEM ---
         const FS = {
             PREFIX: 'APPLESOFT_PROG_',
-            save: (fn) => { try { localStorage.setItem(FS.PREFIX + fn.toUpperCase(), JSON.stringify(SYS.program)); IO.print("SAVED " + fn); } catch (e) { IO.print("?DISK FULL"); } },
+            currentFilename: "bwxBASIC_program.bas", // Default filename
+
+            save: (fn) => {
+                try {
+                    localStorage.setItem(FS.PREFIX + fn.toUpperCase(), JSON.stringify(SYS.program));
+                    FS.currentFilename = fn; // Update current filename
+                    IO.print("SAVED " + fn);
+                } catch (e) { IO.print("?DISK FULL"); }
+            },
+
             load: async (fn) => {
                 const f = fn.toUpperCase();
                 // Check if it's a known demo
@@ -713,6 +722,7 @@
 
                         SYS.program = prog;
                         SYS.vars = {}; SYS.arrays = {};
+                        FS.currentFilename = fn; // Update current filename
                         SCREEN.clear();
                         IO.print("LOADED");
                         return;
@@ -723,20 +733,47 @@
 
                 // Fallback to Local Storage
                 const d = localStorage.getItem(FS.PREFIX + f);
-                if (d) { SYS.program = JSON.parse(d); SYS.vars = {}; SYS.arrays = {}; SCREEN.clear(); IO.print("LOADED"); }
+                if (d) {
+                    SYS.program = JSON.parse(d);
+                    SYS.vars = {};
+                    SYS.arrays = {};
+                    FS.currentFilename = fn; // Update current filename
+                    SCREEN.clear();
+                    IO.print("LOADED");
+                }
                 else IO.print("?FILE NOT FOUND");
             },
+
             dir: () => {
                 IO.print("CATALOG");
                 IO.print(" [DEMOS]"); for (let k in DEMOS) IO.print("  " + k);
                 IO.print(" [USER]"); for (let i = 0; i < localStorage.length; i++) { const k = localStorage.key(i); if (k.startsWith(FS.PREFIX)) IO.print("  " + k.replace(FS.PREFIX, '')); }
             },
+
             download: (fn) => {
                 SYS.program.sort((a, b) => a.line - b.line);
                 const t = SYS.program.map(l => `${l.line} ${l.src}`).join("\n");
-                const b = new Blob([t], { type: 'text/plain' }); const u = URL.createObjectURL(b);
-                const a = document.createElement('a'); a.href = u; a.download = (fn || "PROG") + ".BAS";
-                document.body.appendChild(a); a.click(); document.body.removeChild(a);
+                const b = new Blob([t], { type: 'text/plain' });
+                const u = URL.createObjectURL(b);
+                const a = document.createElement('a');
+                a.href = u;
+
+                // Use provided filename OR current filename
+                let name = fn || FS.currentFilename;
+
+                // Strip paths if present (e.g. demo/anim.bas -> anim.bas)
+                const parts = name.split(/[/\\]/);
+                name = parts[parts.length - 1];
+
+                // Ensure .BAS extension
+                if (!name.toUpperCase().endsWith(".BAS")) {
+                    name += ".BAS";
+                }
+
+                a.download = name;
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
             }
         };
 

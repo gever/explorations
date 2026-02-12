@@ -352,7 +352,7 @@
                 SCREEN.drawCursor();
             },
 
-            put: (str) => {
+            put: (str, color) => {
                 SCREEN.removeCursor();
                 ctx.font = CONFIG.font;
 
@@ -360,14 +360,7 @@
                     if (char === '\n') {
                         SCREEN.newline();
                     } else {
-                        // Clear cell background
-                        ctx.fillStyle = CONFIG.bgColor;
-                        ctx.fillRect(SCREEN.cx * CONFIG.charW, SCREEN.cy * CONFIG.charH, CONFIG.charW, CONFIG.charH);
-                        // Draw char
-                        ctx.fillStyle = CONFIG.color;
-                        ctx.fillText(char, (SCREEN.cx * CONFIG.charW) + CONFIG.fontOffsetX, (SCREEN.cy * CONFIG.charH) + CONFIG.fontOffsetY);
-
-                        SCREEN.cx++;
+                        // Check for wrap *before* drawing if we are overflowed
                         if (SCREEN.cx >= CONFIG.cols) {
                             SCREEN.cx = 0; SCREEN.cy++;
                             if (SCREEN.cy >= CONFIG.rows) {
@@ -375,6 +368,15 @@
                                 SCREEN.scroll();
                             }
                         }
+
+                        // Clear cell background
+                        ctx.fillStyle = CONFIG.bgColor;
+                        ctx.fillRect(SCREEN.cx * CONFIG.charW, SCREEN.cy * CONFIG.charH, CONFIG.charW, CONFIG.charH);
+                        // Draw char
+                        ctx.fillStyle = color || CONFIG.color;
+                        ctx.fillText(char, (SCREEN.cx * CONFIG.charW) + CONFIG.fontOffsetX, (SCREEN.cy * CONFIG.charH) + CONFIG.fontOffsetY);
+
+                        SCREEN.cx++;
                     }
                 }
                 SCREEN.drawCursor();
@@ -745,7 +747,61 @@
             'LEN': '(s)=>(s+"").length', 'LEFT$': '(s,n)=>(s+"").substr(0,n)', 'RIGHT$': '(s,n)=>(s+"").substr((s+"").length-n)', 'MID$': '(s,st,ln)=>(s+"").substr(st-1,ln)',
             'STR$': '(n)=>n.toString()', 'VAL': '(s)=>parseFloat(s)'
         };
-        const Tokenizer = { regex: /([0-9]*\.?[0-9]+)|(".*?")|([a-zA-Z][a-zA-Z0-9_]*\$?)|(<=|>=|<>|<|>|=)|([\+\-\*\/])|(\()|(\))|(:)|(,)|(;)|(')/g, tokenize: (str) => { const t = []; let m; while ((m = Tokenizer.regex.exec(str)) !== null) t.push(m[0]); return t; } };
+        const Tokenizer = {
+            regex: /([0-9]*\.?[0-9]+)|(".*?")|([a-zA-Z][a-zA-Z0-9_]*\$?)|(<=|>=|<>|<|>|=)|([\+\-\*\/])|(\()|(\))|(:)|(,)|(;)|(')/g,
+            tokenize: (str) => { const t = []; let m; while ((m = Tokenizer.regex.exec(str)) !== null) t.push(m[0]); return t; },
+            // NEW: scan returns tokens AND whitespace for reconstruction
+            scan: (str) => {
+                const results = [];
+                let lastIndex = 0;
+                let m;
+                // create new regex with global flag to reset state
+                const r = new RegExp(Tokenizer.regex);
+                while ((m = r.exec(str)) !== null) {
+                    if (m.index > lastIndex) {
+                        results.push({ type: 'SPACE', val: str.substring(lastIndex, m.index) });
+                    }
+                    results.push({ type: 'TOKEN', val: m[0] });
+                    lastIndex = r.lastIndex;
+                }
+                if (lastIndex < str.length) {
+                    results.push({ type: 'SPACE', val: str.substring(lastIndex) });
+                }
+                return results;
+            }
+        };
+
+        const SYNTAX = {
+            colors: {
+                KEYWORD: '#FFD700', // Gold
+                FUNCTION: '#87CEEB', // SkyBlue
+                COMMAND: '#FF6347', // Tomato
+                STRING: '#98FB98', // PaleGreen
+                NUMBER: '#DA70D6', // Orchid
+                COMMENT: '#808080', // Gray
+                DEFAULT: '#33FF33'  // Base Green
+            },
+            classify: (token) => {
+                if (!token) return SYNTAX.colors.DEFAULT;
+                if (token.startsWith('"')) return SYNTAX.colors.STRING;
+                if (!isNaN(token)) return SYNTAX.colors.NUMBER;
+
+                const tu = token.toUpperCase();
+                if (tu === 'REM' || token === "'") return SYNTAX.colors.COMMENT;
+
+                // Commands
+                if (['PRINT', 'INPUT', 'RUN', 'LIST', 'NEW', 'GR_CLEAR', 'GR_COLOR', 'GR_MOVETO', 'GR_LINETO', 'GR_RECT', 'GR_FRECT', 'GR_ELLIPSE', 'GR_FELLIPSE', 'GR_TRI', 'GR_FTRI', 'GR_PRINT', 'HGR', 'HGR2', 'TEXT', 'HCOLOR', 'HPLOT', 'HTAB', 'VTAB', 'SETPOS', 'HOME', 'DIM', 'LET', 'GOTO', 'GOSUB', 'RETURN', 'IF', 'THEN', 'ELSE', 'FOR', 'NEXT', 'STEP', 'TO', 'END', 'STOP', 'DELAY', 'SAVE', 'LOAD', 'DIR', 'CATALOG', 'DOWNLOAD', 'JSECHO', 'HELP', 'JSPEEK', 'Where'].includes(tu)) return SYNTAX.colors.COMMAND;
+
+                // Keywords (mix of command and structural) - usually same color, but let's separate if desired.
+                // Actually, FOR/NEXT/IF/THEN are flow control. Let's make them KeyWords (Gold)
+                if (['FOR', 'NEXT', 'IF', 'THEN', 'ELSE', 'GOTO', 'GOSUB', 'RETURN', 'STEP', 'TO', 'END', 'STOP'].includes(tu)) return SYNTAX.colors.KEYWORD;
+
+                // Functions
+                if (['SIN', 'COS', 'TAN', 'ATN', 'EXP', 'LOG', 'SQR', 'ABS', 'INT', 'RND', 'RAND', 'LEN', 'LEFT$', 'RIGHT$', 'MID$', 'STR$', 'VAL', 'INKEY', 'INKEY$', 'TIME'].includes(tu)) return SYNTAX.colors.FUNCTION;
+
+                return SYNTAX.colors.DEFAULT;
+            }
+        };
         const Compiler = {
             genExpression: (tokens, ctx) => {
                 const peek = () => tokens[ctx.idx], next = () => tokens[ctx.idx++];
@@ -1173,7 +1229,7 @@
             jsEcho: false,
             jsBuffer: "",
 
-            print: (txt, newline = true) => {
+            print: (txt, newline = true, color = null) => {
                 const s = txt.toString();
                 if (IO.jsEcho) {
                     IO.jsBuffer += s;
@@ -1182,7 +1238,7 @@
                         IO.jsBuffer = "";
                     }
                 }
-                SCREEN.put(s);
+                SCREEN.put(s, color);
                 if (newline) SCREEN.newline();
             },
 
@@ -1253,8 +1309,36 @@
                             }
 
                             if (l.line >= min && l.line <= max) {
+                                // Draw Line Number (Standard Color)
+                                IO.print(`${l.line} `, false);
+
+                                // Draw Indentation
                                 const spaces = "  ".repeat(tempIndent);
-                                IO.print(`${l.line} ${spaces}${l.src}`);
+                                IO.print(spaces, false);
+
+                                // Draw Scanned Tokens with Color
+                                const scanned = Tokenizer.scan(l.src);
+                                let isComment = false;
+
+                                for (let item of scanned) {
+                                    if (item.type === 'SPACE') {
+                                        IO.print(item.val, false);
+                                    } else {
+                                        let color = isComment ? SYNTAX.colors.COMMENT : SYNTAX.classify(item.val);
+
+                                        // Check if this token starts a comment
+                                        if (!isComment) {
+                                            const tu = item.val.toUpperCase();
+                                            if (tu === 'REM' || item.val === "'") {
+                                                isComment = true;
+                                                color = SYNTAX.colors.COMMENT;
+                                            }
+                                        }
+
+                                        IO.print(item.val, false, color);
+                                    }
+                                }
+                                IO.print(""); // Newline
                             }
                         });
                         IO.prompt();

@@ -619,7 +619,7 @@
                 { c: "VARS", d: "Lists all currently defined variables.", e: "VARS" }
             ],
             "SCREEN & GRAPHICS": [
-                { c: "HOME", d: "Clears the text screen and moves cursor to top-left.", e: "10 HOME" },
+                { c: "HOME or CLS", d: "Clears the text screen and moves cursor to top-left.", e: "10 HOME" },
                 { c: "GR_CLEAR", d: "Clears screen to current GR_COLOR.", e: "10 GR_CLEAR" },
                 { c: "GR_COLOR", d: "Sets color (0-63).", e: "20 GR_COLOR=3" },
                 { c: "GR_MOVETO", d: "Moves graphics cursor to X,Y.", e: "30 GR_MOVETO 100,100" },
@@ -1169,7 +1169,7 @@
                     else if (cmd === 'HTAB') chunk = `IO.htab(${Compiler.genExpression(tokens, ctx)});`;
                     else if (cmd === 'VTAB') chunk = `IO.vtab(${Compiler.genExpression(tokens, ctx)});`;
                     else if (cmd === 'SETPOS') { const x = Compiler.genExpression(tokens, ctx); next(); const y = Compiler.genExpression(tokens, ctx); chunk = `IO.setPos(${x},${y});`; }
-                    else if (cmd === 'HOME') chunk = "IO.home();";
+                    else if (cmd === 'HOME' || cmd === 'CLS') chunk = "IO.home();";
 
                     else if (cmd === 'END') chunk = "SYS.running=false;";
                     else if (cmd === 'DELAY') { async = true; chunk = `await new Promise(r=>setTimeout(r,${Compiler.genExpression(tokens, ctx)}));`; }

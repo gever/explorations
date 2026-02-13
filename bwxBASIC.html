@@ -1408,17 +1408,40 @@
                         // 2. Convert program objects back to text format
                         const text = SYS.program.map(l => `${l.line} ${l.src}`).join("\n");
 
-                        // 3. Write to system clipboard
-                        navigator.clipboard.writeText(text)
-                            .then(() => {
-                                IO.print("COPIED TO CLIPBOARD");
-                                IO.prompt();
-                            })
-                            .catch(err => {
+                        // 3. Write to system clipboard with fallback
+                        const doLegacyCopy = (txt) => {
+                            try {
+                                const textArea = document.createElement("textarea");
+                                textArea.value = txt;
+                                textArea.style.top = "0";
+                                textArea.style.left = "0";
+                                textArea.style.position = "fixed";
+                                document.body.appendChild(textArea);
+                                textArea.focus();
+                                textArea.select();
+                                const successful = document.execCommand('copy');
+                                document.body.removeChild(textArea);
+                                if (successful) IO.print("COPIED TO CLIPBOARD");
+                                else IO.print("?CLIPBOARD FAILED");
+                            } catch (err) {
                                 IO.print("?CLIPBOARD ERROR: " + err);
-                                IO.prompt();
-                            });
-                        return; // Return early so we don't double-prompt
+                            }
+                            IO.prompt();
+                        };
+
+                        if (navigator.clipboard && navigator.clipboard.writeText) {
+                            navigator.clipboard.writeText(text)
+                                .then(() => {
+                                    IO.print("COPIED TO CLIPBOARD");
+                                    IO.prompt();
+                                })
+                                .catch(err => {
+                                    doLegacyCopy(text);
+                                });
+                        } else {
+                            doLegacyCopy(text);
+                        }
+                        return;
                     }
                     else if (c === 'VARS') {
                         const keys = Object.keys(SYS.vars).sort();

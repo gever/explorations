@@ -119,6 +119,7 @@ bwxBASIC features a vector-like graphics API with a stateful "turtle" cursor.
 *   `GR_TRI X2,Y2,X3,Y3`: Draws triangle from current pos to (X2,Y2) and (X3,Y3).
 *   `GR_FTRI X2,Y2,X3,Y3`: Draws filled triangle.
 *   `GR_PRINT Expr`: Prints text at the graphical cursor position.
+*   `GR_FONT Size`: Sets the font size for `GR_PRINT` (default 26).
 
 **Example:**
 ```basic

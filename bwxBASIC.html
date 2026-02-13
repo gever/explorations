@@ -412,6 +412,7 @@
             color: '#FFFFFF', // Current RGB color
             legacyColors: ['#000000', '#14F53C', '#A040A0', '#FFFFFF', '#000000', '#FF6000', '#3040FF', '#FFFFFF'],
             palette: [], // Populated on init
+            fontSize: 26, // Default font size for GR_PRINT
 
             init: () => {
                 const hslToHex = (h, s, l) => {
@@ -425,30 +426,31 @@
                     return `#${f(0)}${f(8)}${f(4)}`;
                 };
 
-                // Generate 64-color palette
+                // Generate 256-color palette
                 // Rows (y): 0 (Light) -> 7 (Dark)
-                // Cols (x): 0 (Left) -> 7 (Right)
+                // Cols (x): 0 (Left) -> 31 (Right)
                 // New Requirement:
-                // Col 7: Grayscale (White -> Black)
-                // Col 6 -> 0: Rainbow (Red -> Violet)
+                // Col 31: Grayscale (White -> Black)
+                // Col 30 -> 0: Rainbow (Red -> Violet)
 
                 for (let y = 0; y < 8; y++) {
-                    for (let x = 0; x < 8; x++) {
+                    for (let x = 0; x < 32; x++) {
                         let color;
 
-                        if (x === 7) {
-                            // Column 7: Grayscale (White -> Black)
+                        if (x === 31) {
+                            // Column 31: Grayscale (White -> Black)
                             // Saturation 0, Lit goes 100 -> 0
                             const grayLit = 100 - (y * (100 / 7));
                             color = hslToHex(0, 0, grayLit);
                         } else {
-                            // Columns 6..0: Rainbow
+                            // Columns 30..0: Rainbow
                             // Lightness gradient: Top (0) is bright, Bottom (7) is dark
                             // Range: ~90% down to ~20%
                             const lit = 90 - (y * 10);
 
-                            // 6 = Red (0 deg), 0 = Violet (~270 deg)
-                            const hue = (6 - x) * 45;
+                            // 30 = Red, 0 = Violet
+                            // 360 degrees / 31 steps ~= 11.6 degrees per step
+                            const hue = (30 - x) * (300 / 30);
                             color = hslToHex(hue, 100, lit);
                         }
                         GRAPHICS.palette.push(color);
@@ -466,9 +468,9 @@
                 GRAPHICS.color = GRAPHICS.legacyColors[Math.floor(Math.abs(c)) % 8];
             },
 
-            // Sets color from new 64-color palette (0-63)
+            // Sets color from new 256-color palette (0-255)
             setPaletteColor: (c) => {
-                GRAPHICS.color = GRAPHICS.palette[Math.floor(Math.abs(c)) % 64];
+                GRAPHICS.color = GRAPHICS.palette[Math.floor(Math.abs(c)) % 256];
             },
 
             clearToColor: () => {
@@ -562,7 +564,8 @@
                 SCREEN.removeCursor();
                 ctx.globalCompositeOperation = 'source-over';
                 ctx.fillStyle = GRAPHICS.color;
-                ctx.font = CONFIG.font;
+                // Use current graphics font size
+                ctx.font = `${GRAPHICS.fontSize}px VT323`;
                 ctx.textBaseline = 'top';
                 ctx.fillText(str, GRAPHICS.lastX, GRAPHICS.lastY);
                 GRAPHICS.lastX += ctx.measureText(str).width;
@@ -631,6 +634,7 @@
                 { c: "GR_TRI", d: "Draws triangle (x2,y2,x3,y3) from cursor.", e: "90 GR_TRI 200,200,100,200" },
                 { c: "GR_FTRI", d: "Draws filled triangle.", e: "95 GR_FTRI 200,200,100,200" },
                 { c: "GR_PRINT", d: "Prints text at graphics cursor.", e: "10 GR_PRINT \"SCORE: \"; S" },
+                { c: "GR_FONT", d: "Sets font size for GR_PRINT.", e: "20 GR_FONT 10" },
                 { c: "TEXT", d: "Legacy command (Clears screen in Mixed Mode).", e: "100 TEXT" },
                 { c: "HGR", d: "Legacy command (Clears screen in Mixed Mode).", e: "10 HGR" },
                 { c: "HGR2", d: "Legacy command (Clears screen in Mixed Mode).", e: "10 HGR2" },
@@ -827,7 +831,7 @@
                 if (tu === 'REM' || token === "'") return SYNTAX.colors.COMMENT;
 
                 // Commands
-                if (['PRINT', 'INPUT', 'RUN', 'LIST', 'NEW', 'GR_CLEAR', 'GR_COLOR', 'GR_MOVETO', 'GR_LINETO', 'GR_RECT', 'GR_FRECT', 'GR_ELLIPSE', 'GR_FELLIPSE', 'GR_TRI', 'GR_FTRI', 'GR_PRINT', 'HGR', 'HGR2', 'TEXT', 'HCOLOR', 'HPLOT', 'HTAB', 'VTAB', 'SETPOS', 'HOME', 'DIM', 'LET', 'GOTO', 'GOSUB', 'RETURN', 'IF', 'THEN', 'ELSE', 'FOR', 'NEXT', 'STEP', 'TO', 'END', 'STOP', 'DELAY', 'SAVE', 'LOAD', 'DIR', 'CATALOG', 'DOWNLOAD', 'JSECHO', 'HELP', 'JSPEEK', 'Where', 'VARS'].includes(tu)) return SYNTAX.colors.COMMAND;
+                if (['PRINT', 'INPUT', 'RUN', 'LIST', 'NEW', 'GR_CLEAR', 'GR_COLOR', 'GR_MOVETO', 'GR_LINETO', 'GR_RECT', 'GR_FRECT', 'GR_ELLIPSE', 'GR_FELLIPSE', 'GR_TRI', 'GR_FTRI', 'GR_PRINT', 'GR_FONT', 'HGR', 'HGR2', 'TEXT', 'HCOLOR', 'HPLOT', 'HTAB', 'VTAB', 'SETPOS', 'HOME', 'DIM', 'LET', 'GOTO', 'GOSUB', 'RETURN', 'IF', 'THEN', 'ELSE', 'FOR', 'NEXT', 'STEP', 'TO', 'END', 'STOP', 'DELAY', 'SAVE', 'LOAD', 'DIR', 'CATALOG', 'DOWNLOAD', 'JSECHO', 'HELP', 'JSPEEK', 'Where', 'VARS'].includes(tu)) return SYNTAX.colors.COMMAND;
 
                 // Keywords (mix of command and structural) - usually same color, but let's separate if desired.
                 // Actually, FOR/NEXT/IF/THEN are flow control. Let's make them KeyWords (Gold)
@@ -1140,6 +1144,9 @@
                         const x3 = Compiler.genExpression(tokens, ctx);
                         if (peek() === ',') next();
                         chunk = `GRAPHICS.triangle(${x2},${y2},${x3},${Compiler.genExpression(tokens, ctx)},${filled});`;
+                    }
+                    else if (cmd === 'GR_FONT') {
+                        chunk = `GRAPHICS.fontSize = ${Compiler.genExpression(tokens, ctx)};`;
                     }
 
 

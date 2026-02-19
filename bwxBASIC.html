@@ -679,7 +679,8 @@
                 { c: "RIGHT$(S$,N)", d: "Last N chars.", e: "A$ = RIGHT$(\"WORLD\", 3)" },
                 { c: "MID$(S$,I,N)", d: "N chars starting at I.", e: "A$ = MID$(\"ABC\", 2, 1)" },
                 { c: "STR$(N)", d: "Convert number to string.", e: "A$ = STR$(123)" },
-                { c: "VAL(S$)", d: "Convert string to number.", e: "N = VAL(\"12.5\")" }
+                { c: "VAL(S$)", d: "Convert string to number.", e: "N = VAL(\"12.5\")" },
+                { c: "INSTR(N,S$,Sub$)", d: "Search for string.", e: "P = INSTR(\"ABC\",\"B\")" }
             ]
         };
 
@@ -786,7 +787,8 @@
             'SIN': 'Math.sin', 'COS': 'Math.cos', 'TAN': 'Math.tan', 'ATN': 'Math.atan', 'EXP': 'Math.exp', 'LOG': 'Math.log', 'SQR': 'Math.sqrt', 'ABS': 'Math.abs',
             'INT': 'Math.floor', 'RND': 'SYS.rnd', 'RAND': 'SYS.rnd',
             'LEN': '(s)=>(s+"").length', 'LEFT$': '(s,n)=>(s+"").substr(0,n)', 'RIGHT$': '(s,n)=>(s+"").substr((s+"").length-n)', 'MID$': '(s,st,ln)=>(s+"").substr(st-1,ln)',
-            'STR$': '(n)=>n.toString()', 'VAL': '(s)=>parseFloat(s)'
+            'STR$': '(n)=>n.toString()', 'VAL': '(s)=>parseFloat(s)',
+            'INSTR': '(...a)=>{let i=1,s,sub;if(a.length===3){i=a[0];s=a[1];sub=a[2]}else{s=a[0];sub=a[1]} if(s===undefined||sub===undefined)return 0; return (s+"").indexOf(sub,i-1)+1;}'
         };
         const Tokenizer = {
             regex: /([0-9]*\.?[0-9]+)|(".*?")|([a-zA-Z][a-zA-Z0-9_]*\$?)|(<=|>=|<>|<|>|=)|([\+\-\*\/\^])|(\()|(\))|(:)|(,)|(;)|(')/g,
@@ -838,7 +840,7 @@
                 if (['FOR', 'NEXT', 'IF', 'THEN', 'ELSE', 'GOTO', 'GOSUB', 'RETURN', 'STEP', 'TO', 'END', 'STOP'].includes(tu)) return SYNTAX.colors.KEYWORD;
 
                 // Functions
-                if (['SIN', 'COS', 'TAN', 'ATN', 'EXP', 'LOG', 'SQR', 'ABS', 'INT', 'RND', 'RAND', 'LEN', 'LEFT$', 'RIGHT$', 'MID$', 'STR$', 'VAL', 'INKEY', 'INKEY$', 'TIME'].includes(tu)) return SYNTAX.colors.FUNCTION;
+                if (['SIN', 'COS', 'TAN', 'ATN', 'EXP', 'LOG', 'SQR', 'ABS', 'INT', 'RND', 'RAND', 'LEN', 'LEFT$', 'RIGHT$', 'MID$', 'STR$', 'VAL', 'INKEY', 'INKEY$', 'TIME', 'INSTR'].includes(tu)) return SYNTAX.colors.FUNCTION;
 
                 return SYNTAX.colors.DEFAULT;
             }

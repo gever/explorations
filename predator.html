@@ -1,0 +1,430 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Predator-Prey Simulator</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: #1e1e24;
+            color: #fff;
+            margin: 0;
+            padding: 20px;
+            display: flex;
+            gap: 20px;
+        }
+        .main-content {
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+        }
+        canvas {
+            background-color: #2b2b36;
+            border-radius: 8px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.3);
+        }
+        .controls {
+            background-color: #2b2b36;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.3);
+            min-width: 320px;
+            max-height: 85vh;
+            overflow-y: auto;
+        }
+        .control-group {
+            margin-bottom: 12px;
+        }
+        label {
+            display: flex;
+            justify-content: space-between;
+            font-size: 13px;
+            margin-bottom: 4px;
+            color: #aaa;
+        }
+        input[type="range"] {
+            width: 100%;
+            cursor: pointer;
+        }
+        .legend {
+            margin-top: 15px;
+            padding-top: 15px;
+            border-top: 1px solid #444;
+        }
+        .legend-item {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin-bottom: 8px;
+            font-size: 14px;
+        }
+        .dot {
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+        }
+        button {
+            width: 100%;
+            padding: 10px;
+            background-color: #4CAF50;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 16px;
+            margin-top: 10px;
+        }
+        button:hover {
+            background-color: #45a049;
+        }
+        h2, h3 {
+            margin-top: 0;
+            color: #ddd;
+            font-size: 1.2em;
+        }
+        /* Custom Scrollbar for controls */
+        ::-webkit-scrollbar { width: 8px; }
+        ::-webkit-scrollbar-track { background: #1e1e24; }
+        ::-webkit-scrollbar-thumb { background: #555; border-radius: 4px; }
+        ::-webkit-scrollbar-thumb:hover { background: #777; }
+    </style>
+</head>
+<body>
+
+    <div class="main-content">
+        <canvas id="simCanvas" width="600" height="400"></canvas>
+        <canvas id="graphCanvas" width="600" height="150"></canvas>
+    </div>
+
+    <div class="controls">
+        <h2>Ecosystem Controls</h2>
+        
+        <div class="control-group">
+            <label><span>Rabbit Eat Radius</span> <span id="val-r-rad">20</span></label>
+            <input type="range" id="rabbitRadius" min="5" max="100" value="20">
+        </div>
+
+        <div class="control-group">
+            <label><span>Fox Eat Radius</span> <span id="val-f-rad">30</span></label>
+            <input type="range" id="foxRadius" min="5" max="100" value="30">
+        </div>
+
+        <div class="control-group">
+            <label><span>Rabbit Starvation Time</span> <span id="val-r-life">600</span></label>
+            <input type="range" id="rabbitLife" min="100" max="1500" value="600" step="50">
+        </div>
+
+        <div class="control-group">
+            <label><span>Fox Starvation Time</span> <span id="val-f-life">800</span></label>
+            <input type="range" id="foxLife" min="100" max="1500" value="800" step="50">
+        </div>
+
+        <div class="control-group">
+            <label><span>Berries to Reproduce (N)</span> <span id="val-r-rep">3</span></label>
+            <input type="range" id="rabbitRepro" min="1" max="10" value="3">
+        </div>
+
+        <div class="control-group">
+            <label><span>Rabbits to Reproduce (M)</span> <span id="val-f-rep">2</span></label>
+            <input type="range" id="foxRepro" min="1" max="10" value="2">
+        </div>
+        
+        <div class="control-group">
+            <label><span>Berry Spawn Rate</span> <span id="val-b-spawn">Medium</span></label>
+            <input type="range" id="berrySpawn" min="1" max="10" value="5">
+        </div>
+
+        <button onclick="resetSimulation()">Reset Ecosystem</button>
+
+        <div class="legend">
+            <h3>Legend</h3>
+            <div class="legend-item"><div class="dot" style="background-color: #ff6b6b;"></div> Foxes (Predator)</div>
+            <div class="legend-item"><div class="dot" style="background-color: #feca57;"></div> Rabbits (Prey)</div>
+            <div class="legend-item"><div class="dot" style="background-color: #1dd1a1;"></div> Berries (Resource)</div>
+        </div>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('simCanvas');
+        const ctx = canvas.getContext('2d');
+        const graphCanvas = document.getElementById('graphCanvas');
+        const gCtx = graphCanvas.getContext('2d');
+
+        // State variables
+        let berries = [];
+        let rabbits = [];
+        let foxes = [];
+        let particles = [];
+        let history = []; // For population graph
+
+        // Constants
+        const RABBIT_SPEED = 1.5;
+        const FOX_SPEED = 2.0;
+
+        // DOM Elements for live values
+        const inputs = {
+            rabbitRadius: document.getElementById('rabbitRadius'),
+            foxRadius: document.getElementById('foxRadius'),
+            rabbitLife: document.getElementById('rabbitLife'),
+            foxLife: document.getElementById('foxLife'),
+            rabbitRepro: document.getElementById('rabbitRepro'),
+            foxRepro: document.getElementById('foxRepro'),
+            berrySpawn: document.getElementById('berrySpawn')
+        };
+        const displays = {
+            rabbitRadius: document.getElementById('val-r-rad'),
+            foxRadius: document.getElementById('val-f-rad'),
+            rabbitLife: document.getElementById('val-r-life'),
+            foxLife: document.getElementById('val-f-life'),
+            rabbitRepro: document.getElementById('val-r-rep'),
+            foxRepro: document.getElementById('val-f-rep'),
+            berrySpawn: document.getElementById('val-b-spawn')
+        };
+
+        // Update UI displays
+        Object.keys(inputs).forEach(key => {
+            inputs[key].addEventListener('input', (e) => {
+                let val = e.target.value;
+                if(key === 'berrySpawn') {
+                    val = val < 4 ? 'Slow' : (val > 7 ? 'Fast' : 'Medium');
+                }
+                displays[key].innerText = val;
+            });
+        });
+
+        class Entity {
+            constructor(x, y) {
+                this.x = x || Math.random() * canvas.width;
+                this.y = y || Math.random() * canvas.height;
+            }
+        }
+
+        class Animal extends Entity {
+            constructor(x, y, speed) {
+                super(x, y);
+                this.speed = speed;
+                this.angle = Math.random() * Math.PI * 2;
+                this.hunger = 0;
+                this.foodEaten = 0;
+            }
+
+            move() {
+                // Random wander
+                this.angle += (Math.random() - 0.5) * 0.5;
+                this.x += Math.cos(this.angle) * this.speed;
+                this.y += Math.sin(this.angle) * this.speed;
+
+                // Bounce off walls
+                if (this.x < 0 || this.x > canvas.width) {
+                    this.angle = Math.PI - this.angle;
+                    this.x = Math.max(0, Math.min(this.x, canvas.width));
+                }
+                if (this.y < 0 || this.y > canvas.height) {
+                    this.angle = -this.angle;
+                    this.y = Math.max(0, Math.min(this.y, canvas.height));
+                }
+                this.hunger++;
+            }
+        }
+
+        class Particle {
+            constructor(x, y, color) {
+                this.x = x;
+                this.y = y;
+                this.color = color;
+                // Random velocity
+                this.vx = (Math.random() - 0.5) * 5;
+                this.vy = (Math.random() - 0.5) * 5;
+                this.life = 1.0;
+                this.decay = Math.random() * 0.05 + 0.02;
+            }
+
+            updateAndDraw(ctx) {
+                this.x += this.vx;
+                this.y += this.vy;
+                this.life -= this.decay;
+                
+                if (this.life > 0) {
+                    ctx.globalAlpha = this.life;
+                    ctx.fillStyle = this.color;
+                    ctx.beginPath();
+                    ctx.arc(this.x, this.y, 2, 0, Math.PI * 2);
+                    ctx.fill();
+                    ctx.globalAlpha = 1.0; // Reset alpha
+                }
+            }
+        }
+
+        function spawnBerry() {
+            const spawnRate = 11 - parseInt(inputs.berrySpawn.value);
+            if (Math.random() < (1 / spawnRate) && berries.length < 300) {
+                berries.push(new Entity());
+            }
+        }
+
+        function createSparks(x, y, color) {
+            for (let i = 0; i < 8; i++) {
+                particles.push(new Particle(x, y, color));
+            }
+        }
+
+        function resetSimulation() {
+            berries = [];
+            particles = [];
+            rabbits = Array.from({length: 40}, () => new Animal(null, null, RABBIT_SPEED));
+            foxes = Array.from({length: 5}, () => new Animal(null, null, FOX_SPEED));
+            history = [];
+        }
+
+        function calculateDistance(e1, e2) {
+            return Math.hypot(e1.x - e2.x, e1.y - e2.y);
+        }
+
+        function drawGraph() {
+            gCtx.clearRect(0, 0, graphCanvas.width, graphCanvas.height);
+            if (history.length === 0) return;
+
+            if (history.length > graphCanvas.width) {
+                history.shift();
+            }
+
+            const maxPop = Math.max(10, ...history.map(h => Math.max(h.rabbits, h.foxes)));
+            
+            // Draw Foxes (Red)
+            gCtx.beginPath();
+            gCtx.strokeStyle = '#ff6b6b';
+            gCtx.lineWidth = 2;
+            history.forEach((h, i) => {
+                const y = graphCanvas.height - (h.foxes / maxPop) * graphCanvas.height;
+                if (i === 0) gCtx.moveTo(i, y);
+                else gCtx.lineTo(i, y);
+            });
+            gCtx.stroke();
+
+            // Draw Rabbits (Yellow)
+            gCtx.beginPath();
+            gCtx.strokeStyle = '#feca57';
+            history.forEach((h, i) => {
+                const y = graphCanvas.height - (h.rabbits / maxPop) * graphCanvas.height;
+                if (i === 0) gCtx.moveTo(i, y);
+                else gCtx.lineTo(i, y);
+            });
+            gCtx.stroke();
+        }
+
+        function update() {
+            // Clear Background
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            spawnBerry();
+
+            // Fetch current slider values
+            const rabbitEatRad = parseInt(inputs.rabbitRadius.value);
+            const foxEatRad = parseInt(inputs.foxRadius.value);
+            const rabbitReproReq = parseInt(inputs.rabbitRepro.value);
+            const foxReproReq = parseInt(inputs.foxRepro.value);
+            const rabbitMaxHunger = parseInt(inputs.rabbitLife.value);
+            const foxMaxHunger = parseInt(inputs.foxLife.value);
+
+            // Update & Draw Berries
+            ctx.fillStyle = '#1dd1a1';
+            berries.forEach(b => {
+                ctx.beginPath();
+                ctx.arc(b.x, b.y, 3, 0, Math.PI * 2);
+                ctx.fill();
+            });
+
+            // Update Rabbits
+            ctx.fillStyle = '#feca57';
+            for (let i = rabbits.length - 1; i >= 0; i--) {
+                let r = rabbits[i];
+                r.move();
+
+                // Starvation check using slider value
+                if (r.hunger > rabbitMaxHunger) {
+                    rabbits.splice(i, 1);
+                    continue;
+                }
+
+                // Eat Berries
+                for (let j = berries.length - 1; j >= 0; j--) {
+                    if (calculateDistance(r, berries[j]) < rabbitEatRad) {
+                        createSparks(berries[j].x, berries[j].y, '#1dd1a1'); // Green sparks
+                        berries.splice(j, 1);
+                        r.hunger = 0;
+                        r.foodEaten++;
+                        
+                        // Reproduce
+                        if (r.foodEaten >= rabbitReproReq) {
+                            r.foodEaten = 0;
+                            rabbits.push(new Animal(r.x, r.y, RABBIT_SPEED));
+                        }
+                        break;
+                    }
+                }
+
+                ctx.beginPath();
+                ctx.arc(r.x, r.y, 4, 0, Math.PI * 2);
+                ctx.fill();
+            }
+
+            // Update Foxes
+            ctx.fillStyle = '#ff6b6b';
+            for (let i = foxes.length - 1; i >= 0; i--) {
+                let f = foxes[i];
+                f.move();
+
+                // Starvation check using slider value
+                if (f.hunger > foxMaxHunger) {
+                    foxes.splice(i, 1);
+                    continue;
+                }
+
+                // Eat Rabbits
+                for (let j = rabbits.length - 1; j >= 0; j--) {
+                    if (calculateDistance(f, rabbits[j]) < foxEatRad) {
+                        createSparks(rabbits[j].x, rabbits[j].y, '#ffa502'); // Orange sparks
+                        rabbits.splice(j, 1);
+                        f.hunger = 0;
+                        f.foodEaten++;
+
+                        // Reproduce
+                        if (f.foodEaten >= foxReproReq) {
+                            f.foodEaten = 0;
+                            foxes.push(new Animal(f.x, f.y, FOX_SPEED));
+                        }
+                        break;
+                    }
+                }
+
+                ctx.beginPath();
+                ctx.arc(f.x, f.y, 6, 0, Math.PI * 2);
+                ctx.fill();
+            }
+
+            // Update & Draw Particles (Sparks)
+            for (let i = particles.length - 1; i >= 0; i--) {
+                particles[i].updateAndDraw(ctx);
+                if (particles[i].life <= 0) {
+                    particles.splice(i, 1);
+                }
+            }
+
+            // Record population history
+            if (performance.now() % 100 < 20) {
+                history.push({rabbits: rabbits.length, foxes: foxes.length});
+            }
+            
+            drawGraph();
+
+            requestAnimationFrame(update);
+        }
+
+        // Initialize and run
+        resetSimulation();
+        update();
+
+    </script>
+</body>
+</html>

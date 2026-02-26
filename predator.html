@@ -83,7 +83,6 @@
             color: #ddd;
             font-size: 1.2em;
         }
-        /* Custom Scrollbar for controls */
         ::-webkit-scrollbar { width: 8px; }
         ::-webkit-scrollbar-track { background: #1e1e24; }
         ::-webkit-scrollbar-thumb { background: #555; border-radius: 4px; }
@@ -156,13 +155,14 @@
         let rabbits = [];
         let foxes = [];
         let particles = [];
-        let history = []; // For population graph
+        let history = []; 
+        let isRunning = false; // Tracks if the animation loop is active
 
         // Constants
         const RABBIT_SPEED = 1.5;
         const FOX_SPEED = 2.0;
 
-        // DOM Elements for live values
+        // DOM Elements
         const inputs = {
             rabbitRadius: document.getElementById('rabbitRadius'),
             foxRadius: document.getElementById('foxRadius'),
@@ -193,6 +193,23 @@
             });
         });
 
+        // Randomize sliders on initial load
+        function randomizeSliders() {
+            Object.keys(inputs).forEach(key => {
+                const input = inputs[key];
+                const min = parseFloat(input.min);
+                const max = parseFloat(input.max);
+                const step = parseFloat(input.step) || 1;
+                
+                const steps = Math.floor((max - min) / step);
+                const randomStep = Math.floor(Math.random() * (steps + 1));
+                input.value = min + (randomStep * step);
+                
+                // Trigger the input event to update text displays
+                input.dispatchEvent(new Event('input'));
+            });
+        }
+
         class Entity {
             constructor(x, y) {
                 this.x = x || Math.random() * canvas.width;
@@ -210,12 +227,10 @@
             }
 
             move() {
-                // Random wander
                 this.angle += (Math.random() - 0.5) * 0.5;
                 this.x += Math.cos(this.angle) * this.speed;
                 this.y += Math.sin(this.angle) * this.speed;
 
-                // Bounce off walls
                 if (this.x < 0 || this.x > canvas.width) {
                     this.angle = Math.PI - this.angle;
                     this.x = Math.max(0, Math.min(this.x, canvas.width));
@@ -233,7 +248,6 @@
                 this.x = x;
                 this.y = y;
                 this.color = color;
-                // Random velocity
                 this.vx = (Math.random() - 0.5) * 5;
                 this.vy = (Math.random() - 0.5) * 5;
                 this.life = 1.0;
@@ -251,7 +265,7 @@
                     ctx.beginPath();
                     ctx.arc(this.x, this.y, 2, 0, Math.PI * 2);
                     ctx.fill();
-                    ctx.globalAlpha = 1.0; // Reset alpha
+                    ctx.globalAlpha = 1.0;
                 }
             }
         }
@@ -275,6 +289,12 @@
             rabbits = Array.from({length: 40}, () => new Animal(null, null, RABBIT_SPEED));
             foxes = Array.from({length: 5}, () => new Animal(null, null, FOX_SPEED));
             history = [];
+            
+            // Restart the animation loop if it was stopped
+            if (!isRunning) {
+                isRunning = true;
+                update();
+            }
         }
 
         function calculateDistance(e1, e2) {
@@ -314,12 +334,12 @@
         }
 
         function update() {
-            // Clear Background
+            if (!isRunning) return;
+
             ctx.clearRect(0, 0, canvas.width, canvas.height);
 
             spawnBerry();
 
-            // Fetch current slider values
             const rabbitEatRad = parseInt(inputs.rabbitRadius.value);
             const foxEatRad = parseInt(inputs.foxRadius.value);
             const rabbitReproReq = parseInt(inputs.rabbitRepro.value);
@@ -327,7 +347,6 @@
             const rabbitMaxHunger = parseInt(inputs.rabbitLife.value);
             const foxMaxHunger = parseInt(inputs.foxLife.value);
 
-            // Update & Draw Berries
             ctx.fillStyle = '#1dd1a1';
             berries.forEach(b => {
                 ctx.beginPath();
@@ -335,27 +354,23 @@
                 ctx.fill();
             });
 
-            // Update Rabbits
             ctx.fillStyle = '#feca57';
             for (let i = rabbits.length - 1; i >= 0; i--) {
                 let r = rabbits[i];
                 r.move();
 
-                // Starvation check using slider value
                 if (r.hunger > rabbitMaxHunger) {
                     rabbits.splice(i, 1);
                     continue;
                 }
 
-                // Eat Berries
                 for (let j = berries.length - 1; j >= 0; j--) {
                     if (calculateDistance(r, berries[j]) < rabbitEatRad) {
-                        createSparks(berries[j].x, berries[j].y, '#1dd1a1'); // Green sparks
+                        createSparks(berries[j].x, berries[j].y, '#1dd1a1');
                         berries.splice(j, 1);
                         r.hunger = 0;
                         r.foodEaten++;
                         
-                        // Reproduce
                         if (r.foodEaten >= rabbitReproReq) {
                             r.foodEaten = 0;
                             rabbits.push(new Animal(r.x, r.y, RABBIT_SPEED));
@@ -369,27 +384,23 @@
                 ctx.fill();
             }
 
-            // Update Foxes
             ctx.fillStyle = '#ff6b6b';
             for (let i = foxes.length - 1; i >= 0; i--) {
                 let f = foxes[i];
                 f.move();
 
-                // Starvation check using slider value
                 if (f.hunger > foxMaxHunger) {
                     foxes.splice(i, 1);
                     continue;
                 }
 
-                // Eat Rabbits
                 for (let j = rabbits.length - 1; j >= 0; j--) {
                     if (calculateDistance(f, rabbits[j]) < foxEatRad) {
-                        createSparks(rabbits[j].x, rabbits[j].y, '#ffa502'); // Orange sparks
+                        createSparks(rabbits[j].x, rabbits[j].y, '#ffa502');
                         rabbits.splice(j, 1);
                         f.hunger = 0;
                         f.foodEaten++;
 
-                        // Reproduce
                         if (f.foodEaten >= foxReproReq) {
                             f.foodEaten = 0;
                             foxes.push(new Animal(f.x, f.y, FOX_SPEED));
@@ -403,7 +414,6 @@
                 ctx.fill();
             }
 
-            // Update & Draw Particles (Sparks)
             for (let i = particles.length - 1; i >= 0; i--) {
                 particles[i].updateAndDraw(ctx);
                 if (particles[i].life <= 0) {
@@ -411,19 +421,33 @@
                 }
             }
 
-            // Record population history
             if (performance.now() % 100 < 20) {
                 history.push({rabbits: rabbits.length, foxes: foxes.length});
             }
             
             drawGraph();
 
+            // Extinction Check
+            if (rabbits.length === 0 || foxes.length === 0) {
+                isRunning = false;
+                ctx.fillStyle = 'rgba(0, 0, 0, 0.6)';
+                ctx.fillRect(0, 0, canvas.width, canvas.height);
+                
+                ctx.fillStyle = '#fff';
+                ctx.font = 'bold 24px "Segoe UI", sans-serif';
+                ctx.textAlign = 'center';
+                
+                let reason = rabbits.length === 0 ? "Rabbits went extinct!" : "Foxes went extinct!";
+                ctx.fillText("Ecosystem Collapsed: " + reason, canvas.width / 2, canvas.height / 2);
+                return; // End the animation loop
+            }
+
             requestAnimationFrame(update);
         }
 
-        // Initialize and run
+        // Initialize
+        randomizeSliders();
         resetSimulation();
-        update();
 
     </script>
 </body>

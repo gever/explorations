@@ -5,37 +5,78 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Predator-Prey Simulator</title>
     <style>
+        /* Responsive Full-Screen Layout */
         body {
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
             background-color: #1e1e24;
             color: #fff;
             margin: 0;
-            padding: 20px;
+            padding: 0;
             display: flex;
-            gap: 20px;
+            height: 100vh; /* Fill vertical height */
+            overflow: hidden; /* Prevent page scrolling */
         }
+        
+        /* Main area takes up all remaining space */
         .main-content {
+            flex-grow: 1;
             display: flex;
             flex-direction: column;
-            gap: 15px;
-        }
-        canvas {
-            background-color: #2b2b36;
-            border-radius: 8px;
-            box-shadow: 0 4px 6px rgba(0,0,0,0.3);
-        }
-        .controls {
-            background-color: #2b2b36;
             padding: 20px;
+            gap: 20px;
+        }
+
+        .canvas-container {
+            background-color: #2b2b36;
             border-radius: 8px;
-            box-shadow: 0 4px 6px rgba(0,0,0,0.3);
-            min-width: 320px;
-            max-height: 85vh;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.4);
+            position: relative;
+            overflow: hidden;
+        }
+
+        /* Simulation gets max space, graph gets fixed height */
+        #simContainer {
+            flex-grow: 1; 
+        }
+        
+        #graphContainer {
+            flex: 0 0 180px; 
+        }
+
+        canvas {
+            display: block;
+            width: 100%;
+            height: 100%;
+        }
+
+        /* Fixed side panel on the right */
+        .side-panel {
+            width: 340px;
+            min-width: 340px;
+            background-color: #25252d;
+            border-left: 1px solid #333;
+            box-shadow: -4px 0 15px rgba(0,0,0,0.3);
+            display: flex;
+            flex-direction: column;
+            z-index: 10;
+        }
+
+        .controls, .info-panel {
+            padding: 20px;
+        }
+
+        .controls {
+            flex-grow: 1;
             overflow-y: auto;
         }
-        .control-group {
-            margin-bottom: 12px;
+
+        .info-panel {
+            background-color: #1f1f26;
+            border-top: 1px solid #333;
         }
+
+        .control-group { margin-bottom: 12px; }
+        
         label {
             display: flex;
             justify-content: space-between;
@@ -43,15 +84,12 @@
             margin-bottom: 4px;
             color: #aaa;
         }
+        
         input[type="range"] {
             width: 100%;
             cursor: pointer;
         }
-        .legend {
-            margin-top: 15px;
-            padding-top: 15px;
-            border-top: 1px solid #444;
-        }
+        
         .legend-item {
             display: flex;
             align-items: center;
@@ -59,30 +97,32 @@
             margin-bottom: 8px;
             font-size: 14px;
         }
+        
         .dot {
             width: 12px;
             height: 12px;
             border-radius: 50%;
         }
+        
         button {
             width: 100%;
-            padding: 10px;
+            padding: 12px;
             background-color: #4CAF50;
             color: white;
             border: none;
             border-radius: 4px;
             cursor: pointer;
             font-size: 16px;
+            font-weight: bold;
             margin-top: 10px;
+            transition: background-color 0.2s;
         }
-        button:hover {
-            background-color: #45a049;
-        }
-        h2, h3 {
-            margin-top: 0;
-            color: #ddd;
-            font-size: 1.2em;
-        }
+        
+        button:hover { background-color: #45a049; }
+        h2 { margin-top: 0; color: #fff; font-size: 1.3em; margin-bottom: 20px;}
+        h3 { margin-top: 0; color: #ddd; font-size: 1.1em; }
+        
+        /* Custom Scrollbar for controls */
         ::-webkit-scrollbar { width: 8px; }
         ::-webkit-scrollbar-track { background: #1e1e24; }
         ::-webkit-scrollbar-thumb { background: #555; border-radius: 4px; }
@@ -92,52 +132,58 @@
 <body>
 
     <div class="main-content">
-        <canvas id="simCanvas" width="600" height="400"></canvas>
-        <canvas id="graphCanvas" width="600" height="150"></canvas>
+        <div class="canvas-container" id="simContainer">
+            <canvas id="simCanvas"></canvas>
+        </div>
+        <div class="canvas-container" id="graphContainer">
+            <canvas id="graphCanvas"></canvas>
+        </div>
     </div>
 
-    <div class="controls">
-        <h2>Ecosystem Controls</h2>
-        
-        <div class="control-group">
-            <label><span>Rabbit Eat Radius</span> <span id="val-r-rad">20</span></label>
-            <input type="range" id="rabbitRadius" min="5" max="100" value="20">
+    <div class="side-panel">
+        <div class="controls">
+            <h2>Ecosystem Controls</h2>
+            
+            <div class="control-group">
+                <label><span>Rabbit Eat Radius</span> <span id="val-r-rad">20</span></label>
+                <input type="range" id="rabbitRadius" min="5" max="100" value="20">
+            </div>
+
+            <div class="control-group">
+                <label><span>Fox Eat Radius</span> <span id="val-f-rad">30</span></label>
+                <input type="range" id="foxRadius" min="5" max="100" value="30">
+            </div>
+
+            <div class="control-group">
+                <label><span>Rabbit Starvation Time</span> <span id="val-r-life">600</span></label>
+                <input type="range" id="rabbitLife" min="100" max="1500" value="600" step="50">
+            </div>
+
+            <div class="control-group">
+                <label><span>Fox Starvation Time</span> <span id="val-f-life">800</span></label>
+                <input type="range" id="foxLife" min="100" max="1500" value="800" step="50">
+            </div>
+
+            <div class="control-group">
+                <label><span>Berries to Reproduce (N)</span> <span id="val-r-rep">3</span></label>
+                <input type="range" id="rabbitRepro" min="1" max="10" value="3">
+            </div>
+
+            <div class="control-group">
+                <label><span>Rabbits to Reproduce (M)</span> <span id="val-f-rep">2</span></label>
+                <input type="range" id="foxRepro" min="1" max="10" value="2">
+            </div>
+            
+            <div class="control-group">
+                <label><span>Berry Spawn Rate</span> <span id="val-b-spawn">Medium</span></label>
+                <input type="range" id="berrySpawn" min="1" max="10" value="5">
+            </div>
+
+            <button onclick="resetSimulation()">Reset Ecosystem</button>
         </div>
 
-        <div class="control-group">
-            <label><span>Fox Eat Radius</span> <span id="val-f-rad">30</span></label>
-            <input type="range" id="foxRadius" min="5" max="100" value="30">
-        </div>
-
-        <div class="control-group">
-            <label><span>Rabbit Starvation Time</span> <span id="val-r-life">600</span></label>
-            <input type="range" id="rabbitLife" min="100" max="1500" value="600" step="50">
-        </div>
-
-        <div class="control-group">
-            <label><span>Fox Starvation Time</span> <span id="val-f-life">800</span></label>
-            <input type="range" id="foxLife" min="100" max="1500" value="800" step="50">
-        </div>
-
-        <div class="control-group">
-            <label><span>Berries to Reproduce (N)</span> <span id="val-r-rep">3</span></label>
-            <input type="range" id="rabbitRepro" min="1" max="10" value="3">
-        </div>
-
-        <div class="control-group">
-            <label><span>Rabbits to Reproduce (M)</span> <span id="val-f-rep">2</span></label>
-            <input type="range" id="foxRepro" min="1" max="10" value="2">
-        </div>
-        
-        <div class="control-group">
-            <label><span>Berry Spawn Rate</span> <span id="val-b-spawn">Medium</span></label>
-            <input type="range" id="berrySpawn" min="1" max="10" value="5">
-        </div>
-
-        <button onclick="resetSimulation()">Reset Ecosystem</button>
-
-        <div class="legend">
-            <h3>Legend</h3>
+        <div class="info-panel">
+            <h3>Population Legend</h3>
             <div class="legend-item"><div class="dot" style="background-color: #ff6b6b;"></div> Foxes (Predator)</div>
             <div class="legend-item"><div class="dot" style="background-color: #feca57;"></div> Rabbits (Prey)</div>
             <div class="legend-item"><div class="dot" style="background-color: #1dd1a1;"></div> Berries (Resource)</div>
@@ -156,7 +202,7 @@
         let foxes = [];
         let particles = [];
         let history = []; 
-        let isRunning = false; // Tracks if the animation loop is active
+        let isRunning = false; 
 
         // Constants
         const RABBIT_SPEED = 1.5;
@@ -182,6 +228,24 @@
             berrySpawn: document.getElementById('val-b-spawn')
         };
 
+        // Resize function to map internal canvas pixels to display size
+        function resizeCanvases() {
+            const simContainer = document.getElementById('simContainer');
+            const graphContainer = document.getElementById('graphContainer');
+            
+            canvas.width = simContainer.clientWidth;
+            canvas.height = simContainer.clientHeight;
+            
+            graphCanvas.width = graphContainer.clientWidth;
+            graphCanvas.height = graphContainer.clientHeight;
+            
+            // Redraw static graph immediately to prevent flickering on resize
+            if(!isRunning) drawGraph(); 
+        }
+
+        // Listen for window resizes
+        window.addEventListener('resize', resizeCanvases);
+
         // Update UI displays
         Object.keys(inputs).forEach(key => {
             inputs[key].addEventListener('input', (e) => {
@@ -193,7 +257,6 @@
             });
         });
 
-        // Randomize sliders on initial load
         function randomizeSliders() {
             Object.keys(inputs).forEach(key => {
                 const input = inputs[key];
@@ -205,7 +268,6 @@
                 const randomStep = Math.floor(Math.random() * (steps + 1));
                 input.value = min + (randomStep * step);
                 
-                // Trigger the input event to update text displays
                 input.dispatchEvent(new Event('input'));
             });
         }
@@ -231,6 +293,7 @@
                 this.x += Math.cos(this.angle) * this.speed;
                 this.y += Math.sin(this.angle) * this.speed;
 
+                // Bounds checking (adapts if window is resized)
                 if (this.x < 0 || this.x > canvas.width) {
                     this.angle = Math.PI - this.angle;
                     this.x = Math.max(0, Math.min(this.x, canvas.width));
@@ -272,7 +335,8 @@
 
         function spawnBerry() {
             const spawnRate = 11 - parseInt(inputs.berrySpawn.value);
-            if (Math.random() < (1 / spawnRate) && berries.length < 300) {
+            // Increased max berries due to larger potential screen size
+            if (Math.random() < (1 / spawnRate) && berries.length < 500) {
                 berries.push(new Entity());
             }
         }
@@ -286,11 +350,15 @@
         function resetSimulation() {
             berries = [];
             particles = [];
-            rabbits = Array.from({length: 40}, () => new Animal(null, null, RABBIT_SPEED));
-            foxes = Array.from({length: 5}, () => new Animal(null, null, FOX_SPEED));
+            
+            // Adjust starting numbers slightly for larger screens
+            const startRabbits = Math.floor(canvas.width / 15);
+            const startFoxes = Math.floor(canvas.width / 120) || 1;
+            
+            rabbits = Array.from({length: startRabbits}, () => new Animal(null, null, RABBIT_SPEED));
+            foxes = Array.from({length: startFoxes}, () => new Animal(null, null, FOX_SPEED));
             history = [];
             
-            // Restart the animation loop if it was stopped
             if (!isRunning) {
                 isRunning = true;
                 update();
@@ -305,13 +373,14 @@
             gCtx.clearRect(0, 0, graphCanvas.width, graphCanvas.height);
             if (history.length === 0) return;
 
+            // Keep array size matched to actual canvas pixel width
             if (history.length > graphCanvas.width) {
-                history.shift();
+                history = history.slice(history.length - graphCanvas.width);
             }
 
             const maxPop = Math.max(10, ...history.map(h => Math.max(h.rabbits, h.foxes)));
             
-            // Draw Foxes (Red)
+            // Foxes
             gCtx.beginPath();
             gCtx.strokeStyle = '#ff6b6b';
             gCtx.lineWidth = 2;
@@ -322,7 +391,7 @@
             });
             gCtx.stroke();
 
-            // Draw Rabbits (Yellow)
+            // Rabbits
             gCtx.beginPath();
             gCtx.strokeStyle = '#feca57';
             history.forEach((h, i) => {
@@ -427,25 +496,29 @@
             
             drawGraph();
 
-            // Extinction Check
             if (rabbits.length === 0 || foxes.length === 0) {
                 isRunning = false;
                 ctx.fillStyle = 'rgba(0, 0, 0, 0.6)';
                 ctx.fillRect(0, 0, canvas.width, canvas.height);
                 
                 ctx.fillStyle = '#fff';
-                ctx.font = 'bold 24px "Segoe UI", sans-serif';
+                ctx.font = 'bold 32px "Segoe UI", sans-serif';
                 ctx.textAlign = 'center';
                 
                 let reason = rabbits.length === 0 ? "Rabbits went extinct!" : "Foxes went extinct!";
-                ctx.fillText("Ecosystem Collapsed: " + reason, canvas.width / 2, canvas.height / 2);
-                return; // End the animation loop
+                ctx.fillText("Ecosystem Collapsed", canvas.width / 2, canvas.height / 2 - 20);
+                
+                ctx.font = '20px "Segoe UI", sans-serif';
+                ctx.fillStyle = '#ddd';
+                ctx.fillText(reason, canvas.width / 2, canvas.height / 2 + 20);
+                return; 
             }
 
             requestAnimationFrame(update);
         }
 
-        // Initialize
+        // Initialize display sizes first
+        resizeCanvases();
         randomizeSliders();
         resetSimulation();
 

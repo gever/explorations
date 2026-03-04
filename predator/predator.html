@@ -1,0 +1,944 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Configurable Ecosystem Simulator</title>
+    <style>
+        /* Responsive Full-Screen Layout */
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: #1e1e24;
+            color: #fff;
+            margin: 0;
+            padding: 0;
+            display: flex;
+            height: 100vh;
+            overflow: hidden;
+        }
+
+        .main-content {
+            flex-grow: 1;
+            display: flex;
+            flex-direction: column;
+            padding: 20px;
+            gap: 20px;
+            position: relative;
+            /* For drag overlay */
+        }
+
+        .canvas-container {
+            background-color: #2b2b36;
+            border-radius: 8px;
+            box-shadow: 0 4px 10px rgba(0, 0, 0, 0.4);
+            position: relative;
+            overflow: hidden;
+        }
+
+        #simContainer {
+            flex-grow: 1;
+        }
+
+        #graphContainer {
+            flex: 0 0 180px;
+        }
+
+        canvas {
+            display: block;
+            width: 100%;
+            height: 100%;
+        }
+
+        /* Fixed side panel on the right */
+        .side-panel {
+            width: 360px;
+            min-width: 360px;
+            background-color: #25252d;
+            border-left: 1px solid #333;
+            box-shadow: -4px 0 15px rgba(0, 0, 0, 0.3);
+            display: flex;
+            flex-direction: column;
+            z-index: 10;
+        }
+
+        .controls-header {
+            padding: 15px 20px;
+            background: #1f1f26;
+            border-bottom: 1px solid #333;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .controls-header h2 {
+            margin: 0;
+            font-size: 1.2em;
+        }
+
+        /* Tabs for entity types */
+        .tabs {
+            display: flex;
+            overflow-x: auto;
+            background: #1a1a20;
+            border-bottom: 1px solid #333;
+        }
+
+        .tabs::-webkit-scrollbar {
+            height: 4px;
+        }
+
+        .tab {
+            padding: 10px 15px;
+            cursor: pointer;
+            background: #25252d;
+            border-right: 1px solid #333;
+            border-bottom: 2px solid transparent;
+            font-size: 13px;
+            white-space: nowrap;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .tab.active {
+            background: #2b2b36;
+            border-bottom-color: #4CAF50;
+            color: #fff;
+            font-weight: bold;
+        }
+
+        .tab .dot {
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            display: inline-block;
+        }
+
+        .tab-add {
+            padding: 10px;
+            cursor: pointer;
+            color: #4CAF50;
+            font-weight: bold;
+        }
+
+        .tab-add:hover {
+            background: #333;
+        }
+
+        /* Editor area */
+        .editorArea {
+            flex-grow: 1;
+            padding: 20px;
+            overflow-y: auto;
+        }
+
+        .control-group {
+            margin-bottom: 15px;
+        }
+
+        label {
+            display: flex;
+            justify-content: space-between;
+            font-size: 13px;
+            margin-bottom: 5px;
+            color: #aaa;
+        }
+
+        input[type="text"],
+        input[type="color"] {
+            width: 100%;
+            padding: 8px;
+            background: #1a1a20;
+            border: 1px solid #444;
+            color: white;
+            border-radius: 4px;
+            box-sizing: border-box;
+            font-family: inherit;
+        }
+
+        input[type="color"] {
+            padding: 2px 4px;
+            height: 32px;
+            cursor: pointer;
+        }
+
+        input[type="range"] {
+            width: 100%;
+            cursor: pointer;
+            accent-color: #4CAF50;
+        }
+
+        .diet-list {
+            background: #1a1a20;
+            border: 1px solid #444;
+            border-radius: 4px;
+            padding: 10px;
+            max-height: 120px;
+            overflow-y: auto;
+        }
+
+        .diet-item {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin-bottom: 5px;
+            font-size: 13px;
+        }
+
+        .diet-item input[type="checkbox"] {
+            accent-color: #4CAF50;
+        }
+
+        .button-group {
+            display: flex;
+            gap: 10px;
+            margin-top: 20px;
+        }
+
+        button {
+            flex: 1;
+            padding: 10px;
+            background-color: #4CAF50;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: bold;
+            transition: background-color 0.2s;
+        }
+
+        button:hover {
+            background-color: #45a049;
+        }
+
+        button.danger {
+            background-color: #e74c3c;
+        }
+
+        button.danger:hover {
+            background-color: #c0392b;
+        }
+
+        button.secondary {
+            background-color: #3498db;
+        }
+
+        button.secondary:hover {
+            background-color: #2980b9;
+        }
+
+        .info-panel {
+            background-color: #1f1f26;
+            border-top: 1px solid #333;
+            padding: 15px 20px;
+        }
+
+        .info-panel h3 {
+            margin-top: 0;
+            color: #ddd;
+            font-size: 1.1em;
+            margin-bottom: 10px;
+        }
+
+        .legend-item {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 6px;
+            font-size: 13px;
+        }
+
+        .legend-left {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .dot {
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+        }
+
+        /* Drag and Drop Overlay */
+        #dropOverlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(43, 43, 54, 0.9);
+            border: 4px dashed #4CAF50;
+            z-index: 100;
+            display: none;
+            justify-content: center;
+            align-items: center;
+            border-radius: 8px;
+            pointer-events: none;
+        }
+
+        #dropOverlay.active {
+            display: flex;
+        }
+
+        #dropOverlay h1 {
+            color: #4CAF50;
+            font-size: 2em;
+        }
+
+        /* Custom Scrollbar */
+        ::-webkit-scrollbar {
+            width: 8px;
+        }
+
+        ::-webkit-scrollbar-track {
+            background: #1e1e24;
+        }
+
+        ::-webkit-scrollbar-thumb {
+            background: #555;
+            border-radius: 4px;
+        }
+
+        ::-webkit-scrollbar-thumb:hover {
+            background: #777;
+        }
+    </style>
+</head>
+
+<body>
+
+    <div class="main-content" id="mainDropZone">
+        <div id="dropOverlay">
+            <h1>Drop JSON config to Load Ecosystem</h1>
+        </div>
+        <div class="canvas-container" id="simContainer">
+            <canvas id="simCanvas"></canvas>
+        </div>
+        <div class="canvas-container" id="graphContainer">
+            <canvas id="graphCanvas"></canvas>
+        </div>
+    </div>
+
+    <div class="side-panel">
+        <div class="controls-header">
+            <h2>Ecosystem Config</h2>
+            <button class="secondary" style="width: auto; padding: 6px 12px; margin: 0; font-size: 12px;"
+                onclick="downloadConfig()">Export JSON</button>
+        </div>
+
+        <div class="tabs" id="entityTabs">
+            <!-- Tabs injected dynamically -->
+        </div>
+
+        <div class="editorArea" id="editorArea">
+            <!-- Editor injected dynamically -->
+        </div>
+
+        <div class="info-panel">
+            <h3>Populations</h3>
+            <div id="legendContainer">
+                <!-- Legend injected dynamically -->
+            </div>
+            <button onclick="resetSimulation()" style="margin-top: 15px;">Restart Simulation</button>
+        </div>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('simCanvas');
+        const ctx = canvas.getContext('2d');
+        const graphCanvas = document.getElementById('graphCanvas');
+        const gCtx = graphCanvas.getContext('2d');
+
+        // Core State
+        let entities = []; // All active objects in the simulation
+        let particles = [];
+        let history = [];
+        let isRunning = false;
+        let activeTab = ""; // ID of the currently being-edited entity type
+
+        // Default Configuration
+        let defaultTypes = {
+            "Fox": { id: "Fox", name: "Fox", color: "#ff6b6b", speed: 2.5, eatRadius: 30, maxHunger: 800, reproduceReq: 2, diet: ["Rabbit"], spawnRate: 0, initialCount: 5 },
+            "Rabbit": { id: "Rabbit", name: "Rabbit", color: "#feca57", speed: 1.5, eatRadius: 20, maxHunger: 600, reproduceReq: 3, diet: ["Berry"], spawnRate: 0, initialCount: 40 },
+            "Berry": { id: "Berry", name: "Berry", color: "#1dd1a1", speed: 0, eatRadius: 0, maxHunger: 999999, reproduceReq: 999999, diet: [], spawnRate: 0.1, initialCount: 100 }
+        };
+
+        // Deep copy default types so we don't mutate the fallback
+        let entityTypes = JSON.parse(JSON.stringify(defaultTypes));
+
+        // Generate a random ID for new custom types
+        function generateId() {
+            return 'type_' + Math.random().toString(36).substr(2, 9);
+        }
+
+        // --- Core Simulation Classes ---
+
+        class Entity {
+            constructor(typeId, x, y) {
+                this.typeId = typeId;
+                this.x = x ?? Math.random() * canvas.width;
+                this.y = y ?? Math.random() * canvas.height;
+                this.angle = Math.random() * Math.PI * 2;
+                this.hunger = 0;
+                this.foodEaten = 0;
+            }
+
+            get type() {
+                return entityTypes[this.typeId];
+            }
+
+            move() {
+                if (!this.type || this.type.speed <= 0) return;
+
+                // Wander slightly
+                this.angle += (Math.random() - 0.5) * 0.5;
+                this.x += Math.cos(this.angle) * this.type.speed;
+                this.y += Math.sin(this.angle) * this.type.speed;
+
+                // Bounce off walls
+                if (this.x < 0 || this.x > canvas.width) {
+                    this.angle = Math.PI - this.angle;
+                    this.x = Math.max(0, Math.min(this.x, canvas.width));
+                }
+                if (this.y < 0 || this.y > canvas.height) {
+                    this.angle = -this.angle;
+                    this.y = Math.max(0, Math.min(this.y, canvas.height));
+                }
+
+                // Static entities don't get hungry
+                if (this.type.speed > 0) {
+                    this.hunger++;
+                }
+            }
+
+            draw(ctx) {
+                if (!this.type) return;
+                ctx.fillStyle = this.type.color;
+                ctx.beginPath();
+                // Draw slightly larger if it moves, smaller if static (like berries)
+                const radius = this.type.speed > 0 ? (this.type.speed > 1.6 ? 6 : 4) : 3;
+                ctx.arc(this.x, this.y, radius, 0, Math.PI * 2);
+                ctx.fill();
+            }
+        }
+
+        class Particle {
+            constructor(x, y, color) {
+                this.x = x;
+                this.y = y;
+                this.color = color;
+                this.vx = (Math.random() - 0.5) * 5;
+                this.vy = (Math.random() - 0.5) * 5;
+                this.life = 1.0;
+                this.decay = Math.random() * 0.05 + 0.02;
+            }
+
+            updateAndDraw(ctx) {
+                this.x += this.vx;
+                this.y += this.vy;
+                this.life -= this.decay;
+
+                if (this.life > 0) {
+                    ctx.globalAlpha = this.life;
+                    ctx.fillStyle = this.color;
+                    ctx.beginPath();
+                    ctx.arc(this.x, this.y, 2, 0, Math.PI * 2);
+                    ctx.fill();
+                    ctx.globalAlpha = 1.0;
+                }
+            }
+        }
+
+        // --- Core Simulation Logic ---
+
+        function createSparks(x, y, color) {
+            for (let i = 0; i < 8; i++) {
+                particles.push(new Particle(x, y, color));
+            }
+        }
+
+        function calculateDistance(e1, e2) {
+            return Math.hypot(e1.x - e2.x, e1.y - e2.y);
+        }
+
+        function getCounts() {
+            let counts = {};
+            Object.keys(entityTypes).forEach(id => counts[id] = 0);
+            entities.forEach(e => {
+                if (counts[e.typeId] !== undefined) counts[e.typeId]++;
+            });
+            return counts;
+        }
+
+        function resetSimulation() {
+            entities = [];
+            particles = [];
+            history = [];
+
+            // Generate initial populations based on canvas size multiplier
+            const areaMultiplier = (canvas.width * canvas.height) / (800 * 600) || 1;
+
+            Object.values(entityTypes).forEach(type => {
+                let count = Math.floor(type.initialCount * areaMultiplier);
+                // Ensure at least 1 if initial count > 0
+                if (type.initialCount > 0 && count === 0) count = 1;
+
+                for (let i = 0; i < count; i++) {
+                    entities.push(new Entity(type.id));
+                }
+            });
+
+            if (!isRunning) {
+                isRunning = true;
+                update();
+            }
+            updateLegend(getCounts());
+            if (activeTab === "" || !entityTypes[activeTab]) {
+                const keys = Object.keys(entityTypes);
+                if (keys.length > 0) setTab(keys[0]);
+            }
+        }
+
+        function update() {
+            if (!isRunning) return;
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            // 1. Spawning static/ambient entities
+            Object.values(entityTypes).forEach(type => {
+                if (type.spawnRate > 0) {
+                    // Normalize spawn rate to roughly matches the old logic
+                    const chance = type.spawnRate / 60.0; // Assume ~60fps
+                    // Limit ambient max population based on screen size
+                    const maxAmbient = Math.floor((canvas.width * canvas.height) / 1000);
+
+                    if (Math.random() < chance) {
+                        let currentCount = entities.filter(e => e.typeId === type.id).length;
+                        if (currentCount < maxAmbient) {
+                            entities.push(new Entity(type.id));
+                        }
+                    }
+                }
+            });
+
+            const nextGeneration = [];
+            const aliveFlags = new Array(entities.length).fill(true);
+
+            // 2. Move & Die of Old Age / Starvation
+            for (let i = 0; i < entities.length; i++) {
+                let e = entities[i];
+                if (!e.type) { aliveFlags[i] = false; continue; }
+
+                e.move();
+
+                if (e.hunger > e.type.maxHunger) {
+                    aliveFlags[i] = false;
+                }
+            }
+
+            // 3. Eating and Reproduction
+            for (let i = 0; i < entities.length; i++) {
+                if (!aliveFlags[i]) continue;
+                let predator = entities[i];
+                let pt = predator.type;
+
+                // If it can eat things
+                if (pt.diet && pt.diet.length > 0 && pt.eatRadius > 0) {
+
+                    for (let j = 0; j < entities.length; j++) {
+                        if (i === j || !aliveFlags[j]) continue;
+                        let prey = entities[j];
+
+                        // Is this prey in the predator's diet?
+                        if (pt.diet.includes(prey.typeId)) {
+                            if (calculateDistance(predator, prey) < pt.eatRadius) {
+                                // Ate it!
+                                aliveFlags[j] = false; // Kill prey
+                                predator.hunger = 0;
+                                predator.foodEaten++;
+                                createSparks(prey.x, prey.y, prey.type ? prey.type.color : '#fff');
+
+                                // Reproduction check
+                                if (predator.foodEaten >= pt.reproduceReq) {
+                                    predator.foodEaten = 0;
+                                    nextGeneration.push(new Entity(pt.id, predator.x, predator.y));
+                                }
+                                break; // Only eat one thing per frame
+                            }
+                        }
+                    }
+                }
+            }
+
+            // 4. Rebuild active list
+            const surviving = entities.filter((_, idx) => aliveFlags[idx]);
+            entities = surviving.concat(nextGeneration);
+
+            // 5. Draw entities
+            // Draw static things first so they are underneath
+            entities.sort((a, b) => (a.type ? a.type.speed : 0) - (b.type ? b.type.speed : 0));
+            entities.forEach(e => e.draw(ctx));
+
+            // 6. Draw particles
+            for (let i = particles.length - 1; i >= 0; i--) {
+                particles[i].updateAndDraw(ctx);
+                if (particles[i].life <= 0) {
+                    particles.splice(i, 1);
+                }
+            }
+
+            // 7. Graphing & History
+            const counts = getCounts();
+            if (performance.now() % 100 < 20) {
+                history.push(counts);
+            }
+            drawGraph();
+            updateLegend(counts);
+
+            // Check if ecosystem completely dead (optional, might just leave running)
+            if (entities.length === 0) {
+                isRunning = false;
+                ctx.fillStyle = 'rgba(0, 0, 0, 0.6)';
+                ctx.fillRect(0, 0, canvas.width, canvas.height);
+                ctx.fillStyle = '#fff';
+                ctx.font = 'bold 32px "Segoe UI", sans-serif';
+                ctx.textAlign = 'center';
+                ctx.fillText("Complete Extinction", canvas.width / 2, canvas.height / 2);
+                return;
+            }
+
+            requestAnimationFrame(update);
+        }
+
+        // --- Charting ---
+
+        function drawGraph() {
+            gCtx.clearRect(0, 0, graphCanvas.width, graphCanvas.height);
+            if (history.length === 0) return;
+
+            if (history.length > graphCanvas.width) {
+                history = history.slice(history.length - graphCanvas.width);
+            }
+
+            // Find max across all populations for scaling
+            let maxPop = 10;
+            history.forEach(h => {
+                Object.values(h).forEach(val => {
+                    if (val > maxPop) maxPop = val;
+                });
+            });
+
+            Object.keys(entityTypes).forEach(typeId => {
+                const type = entityTypes[typeId];
+                gCtx.beginPath();
+                gCtx.strokeStyle = type.color;
+                gCtx.lineWidth = 2;
+
+                history.forEach((h, i) => {
+                    const pop = h[typeId] || 0;
+                    const y = graphCanvas.height - (pop / maxPop) * graphCanvas.height;
+                    if (i === 0) gCtx.moveTo(i, y);
+                    else gCtx.lineTo(i, y);
+                });
+                gCtx.stroke();
+            });
+        }
+
+        // --- UI Rendering ---
+
+        function renderTabs() {
+            const tabsDiv = document.getElementById('entityTabs');
+            tabsDiv.innerHTML = '';
+
+            Object.values(entityTypes).forEach(type => {
+                const t = document.createElement('div');
+                t.className = `tab ${activeTab === type.id ? 'active' : ''}`;
+                t.innerHTML = `<span class="dot" style="background-color: ${type.color}"></span> ${type.name}`;
+                t.onclick = () => setTab(type.id);
+                tabsDiv.appendChild(t);
+            });
+
+            const addBtn = document.createElement('div');
+            addBtn.className = 'tab tab-add';
+            addBtn.innerText = '+ Add Type';
+            addBtn.onclick = createNewType;
+            tabsDiv.appendChild(addBtn);
+        }
+
+        function setTab(id) {
+            activeTab = id;
+            renderTabs();
+            renderEditor();
+        }
+
+        function updateLegend(counts) {
+            const container = document.getElementById('legendContainer');
+            if (!container) return;
+            container.innerHTML = '';
+            Object.values(entityTypes).forEach(type => {
+                const count = counts[type.id] !== undefined ? counts[type.id] : 0;
+                container.innerHTML += `
+                    <div class="legend-item">
+                        <div class="legend-left">
+                            <div class="dot" style="background-color: ${type.color};"></div>
+                            ${type.name}
+                        </div>
+                        <span style="color: #aaa;">${count}</span>
+                    </div>
+                `;
+            });
+        }
+
+        function renderEditor() {
+            const editor = document.getElementById('editorArea');
+            if (!activeTab || !entityTypes[activeTab]) {
+                editor.innerHTML = '<p style="color:#aaa; text-align:center;">Select or Create an Entity Type</p>';
+                return;
+            }
+
+            const type = entityTypes[activeTab];
+
+            // Build diet checkboxes
+            let dietHTML = '';
+            Object.values(entityTypes).forEach(other => {
+                if (other.id === type.id) return; // Don't eat self (can be changed if cannibalism desired)
+                const isChecked = type.diet.includes(other.id) ? 'checked' : '';
+                dietHTML += `
+                    <div class="diet-item">
+                        <input type="checkbox" id="diet_${other.id}" value="${other.id}" ${isChecked} onchange="updateDiet('${type.id}')">
+                        <label for="diet_${other.id}" style="margin:0; font-size:13px;">${other.name}</label>
+                    </div>
+                `;
+            });
+
+            if (dietHTML === '') dietHTML = '<span style="color:#777; font-size:12px;">No other entities to eat.</span>';
+
+            editor.innerHTML = `
+                <div class="control-group">
+                    <label>Entity Name</label>
+                    <input type="text" id="edit_name" value="${type.name}" onchange="updateProp('${type.id}', 'name', this.value)">
+                </div>
+
+                <div class="control-group">
+                    <label>Color</label>
+                    <input type="color" id="edit_color" value="${type.color}" onchange="updateProp('${type.id}', 'color', this.value)">
+                </div>
+
+                <div class="control-group">
+                    <label><span>Speed</span> <span id="val_speed">${type.speed.toFixed(1)}</span></label>
+                    <input type="range" id="edit_speed" min="0" max="10" step="0.1" value="${type.speed}" oninput="updateProp('${type.id}', 'speed', parseFloat(this.value), true)">
+                </div>
+                
+                <div class="control-group">
+                    <label><span>Initial Count (Start)</span> <span id="val_initialCount">${type.initialCount}</span></label>
+                    <input type="range" id="edit_initialCount" min="0" max="200" step="1" value="${type.initialCount}" oninput="updateProp('${type.id}', 'initialCount', parseInt(this.value), true)">
+                </div>
+
+                <div class="control-group">
+                    <label><span>Spawn Rate / sec (Ambient)</span> <span id="val_spawnRate">${type.spawnRate.toFixed(1)}</span></label>
+                    <input type="range" id="edit_spawnRate" min="0" max="10" step="0.1" value="${type.spawnRate}" oninput="updateProp('${type.id}', 'spawnRate', parseFloat(this.value), true)">
+                </div>
+
+                <div class="control-group">
+                    <label><span>Lifespan / Hunger</span> <span id="val_maxHunger">${type.maxHunger > 50000 ? 'Immortal' : type.maxHunger}</span></label>
+                    <input type="range" id="edit_maxHunger" min="100" max="2000" step="50" value="${type.maxHunger > 2000 ? 2050 : type.maxHunger}" oninput="updateProp('${type.id}', 'maxHunger', parseInt(this.value) > 2000 ? 999999 : parseInt(this.value), true)">
+                </div>
+
+                <h3 style="font-size:14px; margin-top:20px; border-bottom:1px solid #444; padding-bottom:5px;">Diet & Predation</h3>
+
+                <div class="control-group">
+                    <label>Diet (What it eats)</label>
+                    <div class="diet-list">
+                        ${dietHTML}
+                    </div>
+                </div>
+
+                <div class="control-group">
+                    <label><span>Eat Radius</span> <span id="val_eatRadius">${type.eatRadius}</span></label>
+                    <input type="range" id="edit_eatRadius" min="0" max="100" step="1" value="${type.eatRadius}" oninput="updateProp('${type.id}', 'eatRadius', parseInt(this.value), true)">
+                </div>
+
+                <div class="control-group">
+                    <label><span>Items Eaten to Reproduce</span> <span id="val_reproduceReq">${type.reproduceReq > 50000 ? 'Never' : type.reproduceReq}</span></label>
+                    <input type="range" id="edit_reproduceReq" min="1" max="20" step="1" value="${type.reproduceReq > 20 ? 21 : type.reproduceReq}" oninput="updateProp('${type.id}', 'reproduceReq', parseInt(this.value) > 20 ? 999999 : parseInt(this.value), true)">
+                </div>
+
+                <div class="button-group">
+                    <button class="danger" onclick="deleteType('${type.id}')">Delete Type</button>
+                    <button onclick="applyAndRestart()">Restart Sim</button>
+                </div>
+            `;
+        }
+
+        // --- Data Binding & Manipulation ---
+
+        window.updateProp = function (id, prop, value, isLiveInput = false) {
+            if (entityTypes[id]) {
+                entityTypes[id][prop] = value;
+                if (isLiveInput) {
+                    const disp = document.getElementById('val_' + prop);
+                    if (disp) {
+                        if (prop === 'maxHunger' && value > 50000) disp.innerText = 'Immortal';
+                        else if (prop === 'reproduceReq' && value > 50000) disp.innerText = 'Never';
+                        else if (prop === 'speed' || prop === 'spawnRate') disp.innerText = value.toFixed(1);
+                        else disp.innerText = value;
+                    }
+                } else if (prop === 'name' || prop === 'color') {
+                    renderTabs();
+                }
+            }
+        };
+
+        window.updateDiet = function (id) {
+            const checks = document.querySelectorAll('.diet-list input[type="checkbox"]');
+            const newDiet = [];
+            checks.forEach(cb => {
+                if (cb.checked) newDiet.push(cb.value);
+            });
+            entityTypes[id].diet = newDiet;
+        };
+
+        window.createNewType = function () {
+            const id = generateId();
+            entityTypes[id] = {
+                id: id,
+                name: "New Entity",
+                color: "#ffffff",
+                speed: 1.0,
+                eatRadius: 15,
+                maxHunger: 1000,
+                reproduceReq: 2,
+                diet: [],
+                spawnRate: 0,
+                initialCount: 20
+            };
+            setTab(id);
+            resetSimulation();
+        };
+
+        window.deleteType = function (id) {
+            if (confirm("Are you sure you want to delete this entity type?")) {
+                delete entityTypes[id];
+                // Clean up references in other diets
+                Object.values(entityTypes).forEach(t => {
+                    t.diet = t.diet.filter(d => d !== id);
+                });
+
+                const remaining = Object.keys(entityTypes);
+                if (remaining.length > 0) {
+                    setTab(remaining[0]);
+                } else {
+                    activeTab = "";
+                    renderTabs();
+                    renderEditor();
+                }
+                resetSimulation();
+            }
+        };
+
+        window.applyAndRestart = function () {
+            resetSimulation();
+        };
+
+        // --- Import / Export ---
+
+        window.downloadConfig = function () {
+            const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(entityTypes, null, 2));
+            const downloadAnchorNode = document.createElement('a');
+            downloadAnchorNode.setAttribute("href", dataStr);
+            downloadAnchorNode.setAttribute("download", "ecosystem_config.json");
+            document.body.appendChild(downloadAnchorNode);
+            downloadAnchorNode.click();
+            downloadAnchorNode.remove();
+        };
+
+        // Drag and Drop Logic
+        const dropZone = document.body;
+        const dropOverlay = document.getElementById('dropOverlay');
+
+        dropZone.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            dropOverlay.classList.add('active');
+        });
+
+        dropZone.addEventListener('dragleave', (e) => {
+            // Only hide if we actually leave the window
+            if (e.clientX <= 0 || e.clientY <= 0 || e.clientX >= window.innerWidth || e.clientY >= window.innerHeight) {
+                dropOverlay.classList.remove('active');
+            }
+        });
+
+        dropZone.addEventListener('drop', (e) => {
+            e.preventDefault();
+            dropOverlay.classList.remove('active');
+
+            if (e.dataTransfer.items) {
+                const item = e.dataTransfer.items[0];
+                if (item.kind === 'file') {
+                    const file = item.getAsFile();
+                    loadConfigFile(file);
+                }
+            }
+        });
+
+        function loadConfigFile(file) {
+            const reader = new FileReader();
+            reader.onload = function (event) {
+                try {
+                    const config = JSON.parse(event.target.result);
+                    // Minimal validation
+                    if (typeof config === 'object' && Object.keys(config).length > 0) {
+                        entityTypes = config;
+
+                        // Handle backwards compatibility for older json configs
+                        Object.values(entityTypes).forEach(type => {
+                            if (type.maxEnergy === undefined && type.maxHunger !== undefined) {
+                                type.maxEnergy = type.maxHunger;
+                            }
+                            if (type.digestionRate === undefined) type.digestionRate = type.speed > 0 ? 1.0 : 0;
+                            if (type.hungerThreshold === undefined) type.hungerThreshold = type.speed > 0 ? 80 : 0;
+                        });
+
+                        const keys = Object.keys(entityTypes);
+                        if (keys.length > 0) activeTab = keys[0];
+                        renderTabs();
+                        renderEditor();
+                        resetSimulation();
+                    } else {
+                        alert("Invalid ecosystem config file.");
+                    }
+                } catch (e) {
+                    alert("Error parsing JSON config file.");
+                }
+            };
+            reader.readAsText(file);
+        }
+
+        // Resize function to map internal canvas pixels to display size
+        function resizeCanvases() {
+            const simContainer = document.getElementById('simContainer');
+            const graphContainer = document.getElementById('graphContainer');
+
+            canvas.width = simContainer.clientWidth;
+            canvas.height = simContainer.clientHeight;
+
+            graphCanvas.width = graphContainer.clientWidth;
+            graphCanvas.height = graphContainer.clientHeight;
+
+            if (!isRunning) drawGraph();
+        }
+
+        window.addEventListener('resize', resizeCanvases);
+
+        // Initialization
+        resizeCanvases();
+        renderTabs();
+        renderEditor();
+        resetSimulation();
+
+    </script>
+</body>
+
+</html>

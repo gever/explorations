@@ -5,6 +5,7 @@
 const int VIBRATION_SENSOR_PIN = 2; // Digital input from vibration sensor
 const int MOTOR_PWM_PIN = 3;        // PWM output to motor driver
 volatile bool vibrated = false;
+bool rngSeeded = false;
 
 void detectVibration() { vibrated = true; }
 
@@ -31,11 +32,18 @@ void loop() {
     vibrated = false;
     Serial.println("Vibration detected! Activating motor.");
 
+    if (!rngSeeded) {
+      randomSeed(millis());
+      rngSeeded = true;
+      Serial.println("RNG Seeded.");
+    }
+
     // Turn on the motor at 50% duty cycle (127 out of 255)
     analogWrite(MOTOR_PWM_PIN, 127);
 
-    // Keep motor running for a short duration (e.g., 1 second)
-    delay(1000);
+    // Keep motor running for a random duration between 750 and 1500 ms
+    long runDuration = random(750, 1501);
+    delay(runDuration);
 
     // Turn off the motor
     analogWrite(MOTOR_PWM_PIN, 0);
@@ -43,5 +51,5 @@ void loop() {
   }
 
   // Small delay for stability
-  delay(10);
+  delay(1000);
 }

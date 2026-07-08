@@ -1,0 +1,856 @@
+<!DOCTYPE html>
+
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Blockly Turtle Graphics</title>
+    <script src="https://unpkg.com/blockly/blockly.min.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+    body {
+        font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        height: 100vh;
+        display: flex;
+        flex-direction: column;
+    }
+    
+    header {
+        background: rgba(255, 255, 255, 0.95);
+        padding: 15px 30px;
+        box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+    }
+    
+    h1 {
+        color: #667eea;
+        font-size: 24px;
+        display: flex;
+        align-items: center;
+        gap: 10px;
+    }
+    
+    .turtle-icon {
+        width: 32px;
+        height: 32px;
+    }
+    
+    .controls {
+        display: flex;
+        gap: 10px;
+    }
+    
+    button {
+        padding: 10px 20px;
+        border: none;
+        border-radius: 6px;
+        font-size: 14px;
+        font-weight: 600;
+        cursor: pointer;
+        transition: all 0.3s;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+    }
+    
+    .run-btn {
+        background: #10b981;
+        color: white;
+    }
+    
+    .run-btn:hover {
+        background: #059669;
+        transform: translateY(-2px);
+        box-shadow: 0 4px 12px rgba(16, 185, 129, 0.4);
+    }
+    
+    .clear-btn {
+        background: #ef4444;
+        color: white;
+    }
+    
+    .clear-btn:hover {
+        background: #dc2626;
+        transform: translateY(-2px);
+        box-shadow: 0 4px 12px rgba(239, 68, 68, 0.4);
+    }
+    
+    .reset-btn {
+        background: #f59e0b;
+        color: white;
+    }
+    
+    .reset-btn:hover {
+        background: #d97706;
+        transform: translateY(-2px);
+        box-shadow: 0 4px 12px rgba(245, 158, 11, 0.4);
+    }
+    
+    .main-container {
+        flex: 1;
+        display: flex;
+        gap: 20px;
+        padding: 20px;
+        overflow: hidden;
+    }
+    
+    .blockly-container {
+        flex: 1;
+        background: white;
+        border-radius: 12px;
+        box-shadow: 0 8px 32px rgba(0,0,0,0.1);
+        overflow: hidden;
+    }
+    
+    #blocklyDiv {
+        height: 100%;
+        width: 100%;
+    }
+    
+    .canvas-container {
+        width: 500px;
+        background: white;
+        border-radius: 12px;
+        box-shadow: 0 8px 32px rgba(0,0,0,0.1);
+        padding: 20px;
+        display: flex;
+        flex-direction: column;
+        gap: 15px;
+    }
+    
+    .canvas-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+    }
+    
+    .canvas-header h2 {
+        color: #374151;
+        font-size: 18px;
+    }
+    
+    .turtle-info {
+        background: #f3f4f6;
+        padding: 8px 12px;
+        border-radius: 6px;
+        font-size: 12px;
+        color: #6b7280;
+        font-family: monospace;
+    }
+    
+    #canvas {
+        border: 2px solid #e5e7eb;
+        border-radius: 8px;
+        background: white;
+        cursor: crosshair;
+    }
+    
+    @media (max-width: 1200px) {
+        .main-container {
+            flex-direction: column;
+        }
+        
+        .canvas-container {
+            width: 100%;
+        }
+        
+        #canvas {
+            max-width: 100%;
+        }
+    }
+</style>
+
+</head>
+<body>
+    <header>
+        <h1>
+            <svg class="turtle-icon" viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <ellipse cx="32" cy="38" rx="20" ry="16" fill="#10b981"/>
+                <circle cx="32" cy="38" r="12" fill="#059669"/>
+                <circle cx="18" cy="30" r="4" fill="#10b981"/>
+                <circle cx="46" cy="30" r="4" fill="#10b981"/>
+                <circle cx="18" cy="46" r="4" fill="#10b981"/>
+                <circle cx="46" cy="46" r="4" fill="#10b981"/>
+                <circle cx="32" cy="22" r="6" fill="#10b981"/>
+                <circle cx="28" cy="20" r="2" fill="#fff"/>
+                <circle cx="36" cy="20" r="2" fill="#fff"/>
+            </svg>
+            Blockly Turtle Graphics
+        </h1>
+        <div class="controls">
+            <button class="run-btn" onclick="runCode()">▶ Run Code</button>
+            <button class="clear-btn" onclick="clearCanvas()">Clear Canvas</button>
+            <button class="reset-btn" onclick="resetTurtle()">Reset Turtle</button>
+        </div>
+    </header>
+
+<div class="main-container">
+    <div class="blockly-container">
+        <div id="blocklyDiv"></div>
+    </div>
+    
+    <div class="canvas-container">
+        <div class="canvas-header">
+            <h2>Drawing Canvas</h2>
+            <div class="turtle-info" id="turtleInfo">
+                X: 0, Y: 0, Angle: 0°
+            </div>
+        </div>
+        <canvas id="canvas" width="460" height="460"></canvas>
+    </div>
+</div>
+
+<script>
+    // Turtle Graphics State
+    const turtle = {
+        x: 230,
+        y: 230,
+        angle: 0,
+        penDown: true,
+        color: '#000000',
+        width: 2
+    };
+    
+    const canvas = document.getElementById('canvas');
+    const ctx = canvas.getContext('2d');
+    
+    // Initialize canvas
+    function initCanvas() {
+        ctx.fillStyle = '#ffffff';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        drawTurtle();
+        updateTurtleInfo();
+    }
+    
+    function drawTurtle() {
+        ctx.save();
+        ctx.translate(turtle.x, turtle.y);
+        ctx.rotate((turtle.angle * Math.PI) / 180);
+        
+        // Draw turtle shape
+        ctx.fillStyle = '#10b981';
+        ctx.beginPath();
+        ctx.moveTo(0, -8);
+        ctx.lineTo(-6, 8);
+        ctx.lineTo(6, 8);
+        ctx.closePath();
+        ctx.fill();
+        
+        ctx.strokeStyle = '#059669';
+        ctx.lineWidth = 2;
+        ctx.stroke();
+        
+        ctx.restore();
+    }
+    
+    function updateTurtleInfo() {
+        document.getElementById('turtleInfo').textContent = 
+            `X: ${Math.round(turtle.x - 230)}, Y: ${Math.round(230 - turtle.y)}, Angle: ${Math.round(turtle.angle)}°`;
+    }
+    
+    function clearCanvas() {
+        ctx.fillStyle = '#ffffff';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        drawTurtle();
+    }
+    
+    function resetTurtle() {
+        turtle.x = 230;
+        turtle.y = 230;
+        turtle.angle = 0;
+        turtle.penDown = true;
+        turtle.color = '#000000';
+        turtle.width = 2;
+        clearCanvas();
+        updateTurtleInfo();
+    }
+    
+    // Turtle movement functions
+    function moveForward(distance) {
+        const startX = turtle.x;
+        const startY = turtle.y;
+        
+        turtle.x += distance * Math.cos((turtle.angle * Math.PI) / 180);
+        turtle.y += distance * Math.sin((turtle.angle * Math.PI) / 180);
+        
+        if (turtle.penDown) {
+            ctx.strokeStyle = turtle.color;
+            ctx.lineWidth = turtle.width;
+            ctx.beginPath();
+            ctx.moveTo(startX, startY);
+            ctx.lineTo(turtle.x, turtle.y);
+            ctx.stroke();
+        }
+        
+        drawTurtle();
+        updateTurtleInfo();
+    }
+    
+    function moveBackward(distance) {
+        moveForward(-distance);
+    }
+    
+    function turnRight(angle) {
+        turtle.angle = (turtle.angle + angle) % 360;
+        clearCanvas();
+        drawTurtle();
+        updateTurtleInfo();
+    }
+    
+    function turnLeft(angle) {
+        turtle.angle = (turtle.angle - angle) % 360;
+        if (turtle.angle < 0) turtle.angle += 360;
+        clearCanvas();
+        drawTurtle();
+        updateTurtleInfo();
+    }
+    
+    function penUp() {
+        turtle.penDown = false;
+    }
+    
+    function penDown() {
+        turtle.penDown = true;
+    }
+    
+    function setColor(color) {
+        turtle.color = color;
+    }
+    
+    function setPenWidth(width) {
+        turtle.width = width;
+    }
+    
+    function goToPosition(x, y) {
+        const canvasX = 230 + x;
+        const canvasY = 230 - y;
+        
+        if (turtle.penDown) {
+            ctx.strokeStyle = turtle.color;
+            ctx.lineWidth = turtle.width;
+            ctx.beginPath();
+            ctx.moveTo(turtle.x, turtle.y);
+            ctx.lineTo(canvasX, canvasY);
+            ctx.stroke();
+        }
+        
+        turtle.x = canvasX;
+        turtle.y = canvasY;
+        
+        drawTurtle();
+        updateTurtleInfo();
+    }
+    
+    function setHeading(angle) {
+        turtle.angle = angle % 360;
+        if (turtle.angle < 0) turtle.angle += 360;
+        clearCanvas();
+        drawTurtle();
+        updateTurtleInfo();
+    }
+    
+    // Define custom Blockly blocks
+    Blockly.Blocks['turtle_forward'] = {
+        init: function() {
+            this.appendValueInput("DISTANCE")
+                .setCheck("Number")
+                .appendField("move forward");
+            this.appendDummyInput()
+                .appendField("steps");
+            this.setPreviousStatement(true, null);
+            this.setNextStatement(true, null);
+            this.setColour(120);
+            this.setTooltip("Move the turtle forward");
+        }
+    };
+    
+    Blockly.JavaScript['turtle_forward'] = function(block) {
+        const distance = Blockly.JavaScript.valueToCode(block, 'DISTANCE', Blockly.JavaScript.ORDER_ATOMIC) || '50';
+        return `moveForward(${distance});\n`;
+    };
+    
+    Blockly.Blocks['turtle_backward'] = {
+        init: function() {
+            this.appendValueInput("DISTANCE")
+                .setCheck("Number")
+                .appendField("move backward");
+            this.appendDummyInput()
+                .appendField("steps");
+            this.setPreviousStatement(true, null);
+            this.setNextStatement(true, null);
+            this.setColour(120);
+            this.setTooltip("Move the turtle backward");
+        }
+    };
+    
+    Blockly.JavaScript['turtle_backward'] = function(block) {
+        const distance = Blockly.JavaScript.valueToCode(block, 'DISTANCE', Blockly.JavaScript.ORDER_ATOMIC) || '50';
+        return `moveBackward(${distance});\n`;
+    };
+    
+    Blockly.Blocks['turtle_right'] = {
+        init: function() {
+            this.appendValueInput("ANGLE")
+                .setCheck("Number")
+                .appendField("turn right");
+            this.appendDummyInput()
+                .appendField("degrees");
+            this.setPreviousStatement(true, null);
+            this.setNextStatement(true, null);
+            this.setColour(290);
+            this.setTooltip("Turn the turtle right");
+        }
+    };
+    
+    Blockly.JavaScript['turtle_right'] = function(block) {
+        const angle = Blockly.JavaScript.valueToCode(block, 'ANGLE', Blockly.JavaScript.ORDER_ATOMIC) || '90';
+        return `turnRight(${angle});\n`;
+    };
+    
+    Blockly.Blocks['turtle_left'] = {
+        init: function() {
+            this.appendValueInput("ANGLE")
+                .setCheck("Number")
+                .appendField("turn left");
+            this.appendDummyInput()
+                .appendField("degrees");
+            this.setPreviousStatement(true, null);
+            this.setNextStatement(true, null);
+            this.setColour(290);
+            this.setTooltip("Turn the turtle left");
+        }
+    };
+    
+    Blockly.JavaScript['turtle_left'] = function(block) {
+        const angle = Blockly.JavaScript.valueToCode(block, 'ANGLE', Blockly.JavaScript.ORDER_ATOMIC) || '90';
+        return `turnLeft(${angle});\n`;
+    };
+    
+    Blockly.Blocks['turtle_penup'] = {
+        init: function() {
+            this.appendDummyInput()
+                .appendField("pen up");
+            this.setPreviousStatement(true, null);
+            this.setNextStatement(true, null);
+            this.setColour(65);
+            this.setTooltip("Lift the pen (stop drawing)");
+        }
+    };
+    
+    Blockly.JavaScript['turtle_penup'] = function(block) {
+        return 'penUp();\n';
+    };
+    
+    Blockly.Blocks['turtle_pendown'] = {
+        init: function() {
+            this.appendDummyInput()
+                .appendField("pen down");
+            this.setPreviousStatement(true, null);
+            this.setNextStatement(true, null);
+            this.setColour(65);
+            this.setTooltip("Put the pen down (start drawing)");
+        }
+    };
+    
+    Blockly.JavaScript['turtle_pendown'] = function(block) {
+        return 'penDown();\n';
+    };
+    
+    Blockly.Blocks['turtle_color'] = {
+        init: function() {
+            this.appendDummyInput()
+                .appendField("set pen color to")
+                .appendField(new Blockly.FieldColour("#ff0000"), "COLOR");
+            this.setPreviousStatement(true, null);
+            this.setNextStatement(true, null);
+            this.setColour(20);
+            this.setTooltip("Change the pen color");
+        }
+    };
+    
+    Blockly.JavaScript['turtle_color'] = function(block) {
+        const color = block.getFieldValue('COLOR');
+        return `setColor('${color}');\n`;
+    };
+    
+    Blockly.Blocks['turtle_width'] = {
+        init: function() {
+            this.appendValueInput("WIDTH")
+                .setCheck("Number")
+                .appendField("set pen width to");
+            this.setPreviousStatement(true, null);
+            this.setNextStatement(true, null);
+            this.setColour(20);
+            this.setTooltip("Change the pen width");
+        }
+    };
+    
+    Blockly.JavaScript['turtle_width'] = function(block) {
+        const width = Blockly.JavaScript.valueToCode(block, 'WIDTH', Blockly.JavaScript.ORDER_ATOMIC) || '2';
+        return `setPenWidth(${width});\n`;
+    };
+    
+    Blockly.Blocks['turtle_goto'] = {
+        init: function() {
+            this.appendValueInput("X")
+                .setCheck("Number")
+                .appendField("go to X:");
+            this.appendValueInput("Y")
+                .setCheck("Number")
+                .appendField("Y:");
+            this.setPreviousStatement(true, null);
+            this.setNextStatement(true, null);
+            this.setColour(120);
+            this.setTooltip("Move to specific coordinates");
+        }
+    };
+    
+    Blockly.JavaScript['turtle_goto'] = function(block) {
+        const x = Blockly.JavaScript.valueToCode(block, 'X', Blockly.JavaScript.ORDER_ATOMIC) || '0';
+        const y = Blockly.JavaScript.valueToCode(block, 'Y', Blockly.JavaScript.ORDER_ATOMIC) || '0';
+        return `goToPosition(${x}, ${y});\n`;
+    };
+    
+    Blockly.Blocks['turtle_heading'] = {
+        init: function() {
+            this.appendValueInput("ANGLE")
+                .setCheck("Number")
+                .appendField("set heading to");
+            this.appendDummyInput()
+                .appendField("degrees");
+            this.setPreviousStatement(true, null);
+            this.setNextStatement(true, null);
+            this.setColour(290);
+            this.setTooltip("Set the turtle's direction (0 = right, 90 = down, etc.)");
+        }
+    };
+    
+    Blockly.JavaScript['turtle_heading'] = function(block) {
+        const angle = Blockly.JavaScript.valueToCode(block, 'ANGLE', Blockly.JavaScript.ORDER_ATOMIC) || '0';
+        return `setHeading(${angle});\n`;
+    };
+    
+    // Toolbox configuration
+    const toolbox = {
+        "kind": "categoryToolbox",
+        "contents": [
+            {
+                "kind": "category",
+                "name": "Movement",
+                "colour": "120",
+                "contents": [
+                    {
+                        "kind": "block",
+                        "type": "turtle_forward",
+                        "inputs": {
+                            "DISTANCE": {
+                                "shadow": {
+                                    "type": "math_number",
+                                    "fields": {
+                                        "NUM": 50
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    {
+                        "kind": "block",
+                        "type": "turtle_backward",
+                        "inputs": {
+                            "DISTANCE": {
+                                "shadow": {
+                                    "type": "math_number",
+                                    "fields": {
+                                        "NUM": 50
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    {
+                        "kind": "block",
+                        "type": "turtle_goto",
+                        "inputs": {
+                            "X": {
+                                "shadow": {
+                                    "type": "math_number",
+                                    "fields": {
+                                        "NUM": 0
+                                    }
+                                }
+                            },
+                            "Y": {
+                                "shadow": {
+                                    "type": "math_number",
+                                    "fields": {
+                                        "NUM": 0
+                                    }
+                                }
+                            }
+                        }
+                    }
+                ]
+            },
+            {
+                "kind": "category",
+                "name": "Rotation",
+                "colour": "290",
+                "contents": [
+                    {
+                        "kind": "block",
+                        "type": "turtle_right",
+                        "inputs": {
+                            "ANGLE": {
+                                "shadow": {
+                                    "type": "math_number",
+                                    "fields": {
+                                        "NUM": 90
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    {
+                        "kind": "block",
+                        "type": "turtle_left",
+                        "inputs": {
+                            "ANGLE": {
+                                "shadow": {
+                                    "type": "math_number",
+                                    "fields": {
+                                        "NUM": 90
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    {
+                        "kind": "block",
+                        "type": "turtle_heading",
+                        "inputs": {
+                            "ANGLE": {
+                                "shadow": {
+                                    "type": "math_number",
+                                    "fields": {
+                                        "NUM": 0
+                                    }
+                                }
+                            }
+                        }
+                    }
+                ]
+            },
+            {
+                "kind": "category",
+                "name": "Pen Control",
+                "colour": "65",
+                "contents": [
+                    {
+                        "kind": "block",
+                        "type": "turtle_penup"
+                    },
+                    {
+                        "kind": "block",
+                        "type": "turtle_pendown"
+                    },
+                    {
+                        "kind": "block",
+                        "type": "turtle_color",
+                        "fields": {
+                            "COLOR": "#ff0000"
+                        }
+                    },
+                    {
+                        "kind": "block",
+                        "type": "turtle_width",
+                        "inputs": {
+                            "WIDTH": {
+                                "shadow": {
+                                    "type": "math_number",
+                                    "fields": {
+                                        "NUM": 2
+                                    }
+                                }
+                            }
+                        }
+                    }
+                ]
+            },
+            {
+                "kind": "category",
+                "name": "Loops",
+                "colour": "210",
+                "contents": [
+                    {
+                        "kind": "block",
+                        "type": "controls_repeat_ext",
+                        "inputs": {
+                            "TIMES": {
+                                "shadow": {
+                                    "type": "math_number",
+                                    "fields": {
+                                        "NUM": 4
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    {
+                        "kind": "block",
+                        "type": "controls_whileUntil"
+                    },
+                    {
+                        "kind": "block",
+                        "type": "controls_for",
+                        "inputs": {
+                            "FROM": {
+                                "shadow": {
+                                    "type": "math_number",
+                                    "fields": {
+                                        "NUM": 1
+                                    }
+                                }
+                            },
+                            "TO": {
+                                "shadow": {
+                                    "type": "math_number",
+                                    "fields": {
+                                        "NUM": 10
+                                    }
+                                }
+                            },
+                            "BY": {
+                                "shadow": {
+                                    "type": "math_number",
+                                    "fields": {
+                                        "NUM": 1
+                                    }
+                                }
+                            }
+                        }
+                    }
+                ]
+            },
+            {
+                "kind": "category",
+                "name": "Logic",
+                "colour": "180",
+                "contents": [
+                    {
+                        "kind": "block",
+                        "type": "controls_if"
+                    },
+                    {
+                        "kind": "block",
+                        "type": "logic_compare"
+                    },
+                    {
+                        "kind": "block",
+                        "type": "logic_operation"
+                    },
+                    {
+                        "kind": "block",
+                        "type": "logic_negate"
+                    },
+                    {
+                        "kind": "block",
+                        "type": "logic_boolean"
+                    }
+                ]
+            },
+            {
+                "kind": "category",
+                "name": "Math",
+                "colour": "230",
+                "contents": [
+                    {
+                        "kind": "block",
+                        "type": "math_number"
+                    },
+                    {
+                        "kind": "block",
+                        "type": "math_arithmetic"
+                    },
+                    {
+                        "kind": "block",
+                        "type": "math_single"
+                    },
+                    {
+                        "kind": "block",
+                        "type": "math_trig"
+                    },
+                    {
+                        "kind": "block",
+                        "type": "math_constant"
+                    },
+                    {
+                        "kind": "block",
+                        "type": "math_number_property"
+                    },
+                    {
+                        "kind": "block",
+                        "type": "math_round"
+                    },
+                    {
+                        "kind": "block",
+                        "type": "math_modulo"
+                    },
+                    {
+                        "kind": "block",
+                        "type": "math_random_int"
+                    }
+                ]
+            },
+            {
+                "kind": "category",
+                "name": "Variables",
+                "colour": "330",
+                "custom": "VARIABLE"
+            }
+        ]
+    };
+    
+    // Initialize Blockly
+    const workspace = Blockly.inject('blocklyDiv', {
+        toolbox: toolbox,
+        grid: {
+            spacing: 20,
+            length: 3,
+            colour: '#ccc',
+            snap: true
+        },
+        zoom: {
+            controls: true,
+            wheel: true,
+            startScale: 1.0,
+            maxScale: 3,
+            minScale: 0.3,
+            scaleSpeed: 1.2
+        },
+        trashcan: true
+    });
+    
+    // Run the generated code
+    function runCode() {
+        clearCanvas();
+        const code = Blockly.JavaScript.workspaceToCode(workspace);
+        try {
+            eval(code);
+        } catch (e) {
+            alert('Error running code: ' + e);
+        }
+    }
+    
+    // Initialize
+    initCanvas();
+</script>
+
+</body>
+</html>

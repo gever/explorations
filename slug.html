@@ -1,0 +1,630 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Standing Lug Sail Designer</title>
+    <meta name="description" content="Interactive designer for standing lug sails. Enter dimensions, visualize the sail profile, and download the SVG diagram.">
+    <style>
+        :root {
+            --vellum: #f4f1ea;
+            --vellum-dark: #e8e3d3;
+            --ink: #2c2c2c;
+            --ink-light: #5a5a5a;
+            --accent: #d35400; 
+            --glass: rgba(244, 241, 234, 0.65);
+            --border: rgba(44, 44, 44, 0.15);
+            --shadow: 0 8px 32px rgba(0, 0, 0, 0.08);
+            --focus: rgba(211, 84, 0, 0.25);
+        }
+        
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            background-color: var(--vellum);
+            color: var(--ink);
+            font-family: 'Inter', system-ui, -apple-system, sans-serif;
+            display: flex;
+            height: 100vh;
+            overflow: hidden;
+            /* Vellum blueprint grid background */
+            background-image: 
+                linear-gradient(var(--vellum-dark) 1px, transparent 1px),
+                linear-gradient(90deg, var(--vellum-dark) 1px, transparent 1px);
+            background-size: 40px 40px;
+            background-position: center center;
+        }
+
+        /* Sidebar for inputs */
+        .sidebar {
+            width: 380px;
+            background: var(--glass);
+            backdrop-filter: blur(16px);
+            -webkit-backdrop-filter: blur(16px);
+            border-right: 1px solid var(--border);
+            padding: 2.5rem 2rem;
+            display: flex;
+            flex-direction: column;
+            gap: 1.5rem;
+            overflow-y: auto;
+            box-shadow: 4px 0 24px rgba(0, 0, 0, 0.03);
+            z-index: 10;
+        }
+
+        .header h1 {
+            font-size: 1.75rem;
+            font-weight: 700;
+            margin-bottom: 0.5rem;
+            color: var(--ink);
+            letter-spacing: -0.02em;
+        }
+
+        .header p {
+            font-size: 0.9rem;
+            color: var(--ink-light);
+            line-height: 1.5;
+        }
+
+        .input-group {
+            display: flex;
+            flex-direction: column;
+            gap: 0.5rem;
+            position: relative;
+        }
+
+        .input-group label {
+            font-size: 0.8rem;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.08em;
+            color: var(--ink-light);
+        }
+
+        .input-wrapper {
+            position: relative;
+            display: flex;
+            align-items: center;
+        }
+
+        .input-wrapper input {
+            width: 100%;
+            padding: 0.75rem 2.5rem 0.75rem 1rem;
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            background: rgba(255, 255, 255, 0.6);
+            font-size: 1.1rem;
+            font-family: 'Roboto Mono', monospace;
+            color: var(--ink);
+            transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+
+        .input-wrapper input:hover {
+            background: rgba(255, 255, 255, 0.8);
+        }
+
+        .input-wrapper input:focus {
+            outline: none;
+            border-color: var(--accent);
+            background: #ffffff;
+            box-shadow: 0 0 0 4px var(--focus);
+        }
+
+        .unit {
+            position: absolute;
+            right: 1rem;
+            font-size: 0.9rem;
+            font-weight: 500;
+            color: var(--ink-light);
+            pointer-events: none;
+            user-select: none;
+        }
+
+        .hint {
+            font-size: 0.8rem;
+            color: var(--ink-light);
+            margin-top: -0.25rem;
+        }
+
+        .error-msg {
+            color: #d32f2f;
+            font-size: 0.9rem;
+            min-height: 1.2rem;
+            font-weight: 500;
+            margin-top: 0.5rem;
+        }
+
+        /* Main Canvas */
+        .main-content {
+            flex: 1;
+            position: relative;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            padding: 2rem;
+        }
+
+        #svg-canvas {
+            width: 100%;
+            height: 100%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            /* Adds a subtle sense of depth to the drawing */
+            filter: drop-shadow(0 12px 32px rgba(0,0,0,0.06));
+        }
+
+        svg {
+            width: 100%;
+            height: 100%;
+            max-width: 1200px;
+        }
+
+        .actions {
+            position: absolute;
+            bottom: 2.5rem;
+            right: 2.5rem;
+        }
+
+        button.download-btn {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+            padding: 0.875rem 1.75rem;
+            background: var(--ink);
+            color: var(--vellum);
+            border: none;
+            border-radius: 50px;
+            font-size: 1rem;
+            font-weight: 600;
+            cursor: pointer;
+            box-shadow: var(--shadow);
+            transition: all 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+        }
+
+        button.download-btn:hover {
+            transform: translateY(-3px) scale(1.02);
+            box-shadow: 0 12px 28px rgba(0,0,0,0.15);
+            background: #1a1a1a;
+        }
+
+        button.download-btn:active {
+            transform: translateY(1px) scale(0.98);
+            box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+        }
+        
+        button.download-btn svg {
+            width: 20px;
+            height: 20px;
+            fill: currentColor;
+        }
+
+        @media (max-width: 850px) {
+            body { flex-direction: column; }
+            .sidebar { width: 100%; border-right: none; border-bottom: 1px solid var(--border); max-height: 55vh; padding: 1.5rem; }
+            .actions { bottom: 1.5rem; right: 1.5rem; }
+        }
+    </style>
+</head>
+<body>
+
+    <div class="sidebar">
+        <div class="header">
+            <h1>Standing Lug Designer</h1>
+            <p>Enter your sail dimensions below. The Foot and Luff always form a 90&deg; angle at the tack.</p>
+        </div>
+
+        <div class="input-group">
+            <label for="foot">Foot Length</label>
+            <div class="input-wrapper">
+                <input type="number" id="foot" value="84" step="1" min="1" placeholder="e.g. 84">
+                <span class="unit">in</span>
+            </div>
+        </div>
+
+        <div class="input-group">
+            <label for="luff">Luff Length</label>
+            <div class="input-wrapper">
+                <input type="number" id="luff" value="60" step="1" min="1" placeholder="e.g. 60">
+                <span class="unit">in</span>
+            </div>
+        </div>
+
+        <div class="input-group">
+            <label for="leach">Leach Length</label>
+            <div class="input-wrapper">
+                <input type="number" id="leach" value="108" step="1" min="1" placeholder="e.g. 108">
+                <span class="unit">in</span>
+            </div>
+        </div>
+
+        <div class="input-group">
+            <label for="head">Head Length</label>
+            <div class="input-wrapper">
+                <input type="number" id="head" value="65" step="1" min="1" placeholder="e.g. 65">
+                <span class="unit">in</span>
+            </div>
+        </div>
+
+        <div class="input-group">
+            <label for="yard-ext">Yard Extension</label>
+            <div class="input-wrapper">
+                <input type="number" id="yard-ext" value="25" step="1" min="0" max="100">
+                <span class="unit">%</span>
+            </div>
+            <div class="hint">Forward overhang past mast (e.g. 25%).</div>
+        </div>
+
+        <div class="input-group">
+            <label for="rake">Mast Angle (Rake)</label>
+            <div class="input-wrapper">
+                <input type="number" id="rake" value="0" step="1">
+                <span class="unit">&deg;</span>
+            </div>
+            <div class="hint">0&deg; is vertical, positive leans aft.</div>
+        </div>
+
+        <div class="input-group">
+            <label for="boat">Boat Length</label>
+            <div class="input-wrapper">
+                <input type="number" id="boat" value="120" step="1" min="12">
+                <span class="unit">in</span>
+            </div>
+        </div>
+
+        <div id="error" class="error-msg"></div>
+    </div>
+
+    <div class="main-content">
+        <div id="svg-canvas"></div>
+        <div class="actions">
+            <button class="download-btn" onclick="downloadSVG()" aria-label="Download SVG">
+                <svg viewBox="0 0 24 24" aria-hidden="true">
+                    <path d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z"/>
+                </svg>
+                Download SVG
+            </button>
+        </div>
+    </div>
+
+    <script>
+        /**
+         * Transforms local mathematically oriented coordinates (Y up, X right) 
+         * into SVG-oriented coordinates (Y down) with rotation for mast rake.
+         */
+        function toSVG(pt, rake, alpha = 0) {
+            if (!pt) return null;
+            let rad = rake * Math.PI / 180 + alpha;
+            let xp = pt.x * Math.cos(rad) - pt.y * Math.sin(rad);
+            let yp = pt.x * Math.sin(rad) + pt.y * Math.cos(rad);
+            return { x: xp, y: -yp };
+        }
+
+        function draw() {
+            const foot = parseFloat(document.getElementById('foot').value);
+            const luff = parseFloat(document.getElementById('luff').value);
+            const leach = parseFloat(document.getElementById('leach').value);
+            const head = parseFloat(document.getElementById('head').value);
+            
+            let yardExtRaw = parseFloat(document.getElementById('yard-ext').value);
+            const yardExt = isNaN(yardExtRaw) ? 25 : yardExtRaw;
+            
+            let rakeRaw = parseFloat(document.getElementById('rake').value);
+            const rake = isNaN(rakeRaw) ? 0 : rakeRaw;
+            
+            let boatRaw = parseFloat(document.getElementById('boat').value);
+            const boat = isNaN(boatRaw) ? 120 : boatRaw;
+            
+            const errEl = document.getElementById('error');
+            errEl.textContent = '';
+            
+            if (isNaN(foot) || isNaN(luff) || foot <= 0 || luff <= 0) {
+                document.getElementById('svg-canvas').innerHTML = '';
+                return;
+            }
+
+            // Local coordinates: Tack is at (0,0).
+            // Luff goes UP along +Y.
+            // Foot goes AFT along -X (since Bow is +X).
+            const ptsLocal = {
+                T: {x: 0, y: 0},
+                Th: {x: 0, y: luff},
+                C: {x: -foot, y: 0},
+                P: null
+            };
+            
+            let hasPeak = false;
+            if (!isNaN(leach) && !isNaN(head) && leach > 0 && head > 0) {
+                // To find Peak (P):
+                // P is distance `head` from Throat(0, luff)
+                // P is distance `leach` from Clew(-foot, 0)
+                // X^2 + (Y - luff)^2 = head^2
+                // (X + foot)^2 + Y^2 = leach^2
+                // Expanding and subtracting gives a line Y = A * X + B
+                let A = -foot / luff;
+                let B = (luff*luff - foot*foot + leach*leach - head*head) / (2 * luff);
+                
+                let a = 1 + A*A;
+                let b = 2 * A * (B - luff);
+                let c = (B - luff)*(B - luff) - head*head;
+                
+                let disc = b*b - 4*a*c;
+                if (disc >= 0) {
+                    let x1 = (-b + Math.sqrt(disc)) / (2*a);
+                    let x2 = (-b - Math.sqrt(disc)) / (2*a);
+                    // We want the peak to be outboard/aft, so X should be negative in our coordinates.
+                    let px = Math.min(x1, x2);
+                    let py = A * px + B;
+                    ptsLocal.P = {x: px, y: py};
+                    hasPeak = true;
+                } else {
+                    errEl.textContent = 'Dimensions do not form a closed quadrilateral (check triangle inequality).';
+                }
+            }
+
+            let areaSqIn = 0;
+            let coeLocal = {x: 0, y: 0};
+            let alpha = 0;
+            
+            if (hasPeak) {
+                let area1 = 0.5 * foot * luff;
+                let c1 = {x: -foot / 3, y: luff / 3};
+                
+                let px = ptsLocal.P.x;
+                let py = ptsLocal.P.y;
+                let area2 = 0.5 * Math.abs(-foot*(py - luff) + px*luff);
+                let c2 = {x: (-foot + px)/3, y: (py + luff)/3};
+                
+                areaSqIn = area1 + area2;
+                coeLocal = {
+                    x: (area1 * c1.x + area2 * c2.x) / areaSqIn,
+                    y: (area1 * c1.y + area2 * c2.y) / areaSqIn
+                };
+
+                // Determine rotation alpha to tilt the sail relative to the mast.
+                // The Mast crosses the Yard at the specified Yard Extension percentage aft of the Throat.
+                let yardVecX = px - ptsLocal.Th.x;
+                let yardVecY = py - ptsLocal.Th.y;
+                let overhang = head * (yardExt / 100);
+                let My = {
+                    x: ptsLocal.Th.x + (yardVecX / head) * overhang,
+                    y: ptsLocal.Th.y + (yardVecY / head) * overhang
+                };
+                alpha = Math.atan2(My.x, My.y);
+            } else {
+                areaSqIn = 0.5 * foot * luff;
+                coeLocal = {x: -foot / 3, y: luff / 3};
+            }
+            let areaSqFt = areaSqIn / 144;
+
+            // Transform sail points to SVG space applying the calculated alpha tilt
+            const T = toSVG(ptsLocal.T, rake, alpha);
+            const Th = toSVG(ptsLocal.Th, rake, alpha);
+            const C = toSVG(ptsLocal.C, rake, alpha);
+            const P = hasPeak ? toSVG(ptsLocal.P, rake, alpha) : null;
+            const coeSVG = toSVG(coeLocal, rake, alpha);
+            
+            // Calculate Yard (spar) points
+            let yardStart = null, yardEnd = null;
+            if (hasPeak) {
+                let yardVecX = ptsLocal.P.x - ptsLocal.Th.x;
+                let yardVecY = ptsLocal.P.y - ptsLocal.Th.y;
+                let visualOverhang = 0.5; // slight visual extension past lashing points
+                yardStart = toSVG({
+                    x: ptsLocal.Th.x - (yardVecX / head) * visualOverhang, 
+                    y: ptsLocal.Th.y - (yardVecY / head) * visualOverhang
+                }, rake, alpha);
+                yardEnd = toSVG({
+                    x: ptsLocal.P.x + (yardVecX / head) * visualOverhang, 
+                    y: ptsLocal.P.y + (yardVecY / head) * visualOverhang
+                }, rake, alpha);
+            }
+            
+            // Calculate Mast points (independent of sail's alpha tilt)
+            let mastBottom = toSVG({x: 0, y: -boat * 0.15}, rake, 0);
+            let mastTop = toSVG({x: 0, y: luff + (hasPeak ? head * 0.25 : luff * 0.15)}, rake, 0);
+            
+            // Calculate Boat line points (Boat doesn't tilt with mast rake, so we handle it manually)
+            // Tack T is at (0,0) in SVG space (since toSVG(0,0) is 0,0).
+            // Boat line is drawn horizontally slightly below the Tack.
+            let bow = {x: boat * 0.25, y: boat * 0.08};
+            let stern = {x: -boat * 0.75, y: boat * 0.08};
+            
+            // Bounding box calculation
+            let allPoints = [T, Th, C, mastBottom, mastTop, bow, stern];
+            if (hasPeak) {
+                allPoints.push(P, yardStart, yardEnd);
+            }
+            
+            let minX = Math.min(...allPoints.map(p => p.x));
+            let maxX = Math.max(...allPoints.map(p => p.x));
+            let minY = Math.min(...allPoints.map(p => p.y));
+            let maxY = Math.max(...allPoints.map(p => p.y));
+            
+            let width = maxX - minX;
+            let height = maxY - minY;
+            let pad = Math.max(width, height) * 0.15;
+            let vBox = `${minX - pad} ${minY - pad} ${width + pad*2} ${height + pad*2}`;
+            
+            // Dynamic styling values based on the viewBox scale
+            let vBoxSize = Math.max(width, height);
+            let fSize = Math.max(vBoxSize * 0.025, 2);
+            let sWidth = Math.max(vBoxSize * 0.004, 0.5);
+            let sWidthThick = Math.max(vBoxSize * 0.008, 0.8);
+            let offsetLabel = pad * 0.25;
+            let coeR = Math.max(vBoxSize * 0.012, 4);
+
+            // The CSS applied internally to the SVG so it downloads properly styled
+            let svgStyles = `
+                .sail-path { fill: none; stroke: #2c2c2c; stroke-width: ${sWidth}; stroke-linejoin: round; }
+                .mast, .boat { stroke: #2c2c2c; stroke-width: ${sWidthThick}; stroke-linecap: round; }
+                .yard { stroke: #2c2c2c; stroke-width: ${sWidth * 1.5}; stroke-linecap: round; }
+                .measurement-text { fill: #d35400; font-size: ${fSize}px; font-weight: bold; font-family: 'Courier New', Courier, monospace; text-anchor: middle; dominant-baseline: middle; }
+                .boat-label { fill: #5a5a5a; font-size: ${fSize*0.8}px; font-family: 'Courier New', Courier, monospace; text-anchor: middle; dominant-baseline: hanging; }
+                .area-text { fill: #d35400; font-size: ${fSize*1.1}px; font-weight: bold; font-family: 'Courier New', Courier, monospace; text-anchor: middle; dominant-baseline: hanging; }
+                .blueprint-title { fill: #2c2c2c; font-size: ${fSize*1.1}px; font-weight: bold; font-family: 'Courier New', Courier, monospace; }
+                .blueprint-text { fill: #2c2c2c; font-size: ${fSize*0.9}px; font-family: 'Courier New', Courier, monospace; }
+            `;
+
+            // Helper to draw text labels correctly offset from the midpoints
+            function getLabel(p1, p2, text) {
+                let mx = (p1.x + p2.x) / 2;
+                let my = (p1.y + p2.y) / 2;
+                let dx = p2.x - p1.x;
+                let dy = p2.y - p1.y;
+                let len = Math.sqrt(dx*dx + dy*dy);
+                let nx = -dy / len;
+                let ny = dx / len;
+                
+                // Centroid of the sail to determine outward normal
+                let cx = (T.x + C.x + (hasPeak ? P.x : 0) + Th.x) / (hasPeak ? 4 : 3);
+                let cy = (T.y + C.y + (hasPeak ? P.y : 0) + Th.y) / (hasPeak ? 4 : 3);
+                
+                // Ensure normal vector points outward from centroid
+                if (nx * (mx - cx) + ny * (my - cy) < 0) {
+                    nx = -nx; ny = -ny;
+                }
+                
+                let lx = mx + nx * offsetLabel;
+                let ly = my + ny * offsetLabel;
+                
+                // Calculate rotation angle to align text with the edge
+                let angle_deg = Math.atan2(dy, dx) * 180 / Math.PI;
+                // Keep text readable (upright)
+                if (angle_deg > 90) {
+                    angle_deg -= 180;
+                } else if (angle_deg < -90) {
+                    angle_deg += 180;
+                }
+                
+                return `<text x="${lx}" y="${ly}" transform="rotate(${angle_deg}, ${lx}, ${ly})" class="measurement-text">${text}"</text>`;
+            }
+
+            // Build SVG
+            let svgContent = `<svg viewBox="${vBox}" xmlns="http://www.w3.org/2000/svg">
+                <style>${svgStyles}</style>`;
+            
+            // Render Boat
+            svgContent += `<line x1="${bow.x}" y1="${bow.y}" x2="${stern.x}" y2="${stern.y}" class="boat" />`;
+            svgContent += `<text x="${(bow.x + stern.x)/2}" y="${bow.y + offsetLabel*0.5}" class="boat-label">Boat Length: ${boat}"</text>`;
+            
+            // Render Mast
+            svgContent += `<line x1="${mastBottom.x}" y1="${mastBottom.y}" x2="${mastTop.x}" y2="${mastTop.y}" class="mast" />`;
+            
+            // Render Yard
+            if (yardStart && yardEnd) {
+                svgContent += `<line x1="${yardStart.x}" y1="${yardStart.y}" x2="${yardEnd.x}" y2="${yardEnd.y}" class="yard" />`;
+            }
+            
+            // Render Sail and Labels
+            if (hasPeak) {
+                svgContent += `<polygon points="${T.x},${T.y} ${C.x},${C.y} ${P.x},${P.y} ${Th.x},${Th.y}" class="sail-path" />`;
+                svgContent += getLabel(T, C, `Foot: ${foot}`);
+                svgContent += getLabel(T, Th, `Luff: ${luff}`);
+                svgContent += getLabel(C, P, `Leach: ${leach}`);
+                svgContent += getLabel(P, Th, `Head: ${head}`);
+            } else {
+                svgContent += `<polyline points="${Th.x},${Th.y} ${T.x},${T.y} ${C.x},${C.y}" class="sail-path" />`;
+                svgContent += getLabel(T, C, `Foot: ${foot}`);
+                svgContent += getLabel(T, Th, `Luff: ${luff}`);
+            }
+            
+            // Render COE and Area
+            svgContent += `
+                <g class="coe-marker">
+                    <circle cx="${coeSVG.x}" cy="${coeSVG.y}" r="${coeR}" fill="none" stroke="#d35400" stroke-width="${sWidth}" />
+                    <line x1="${coeSVG.x - coeR*1.6}" y1="${coeSVG.y}" x2="${coeSVG.x + coeR*1.6}" y2="${coeSVG.y}" stroke="#d35400" stroke-width="${sWidth}" />
+                    <line x1="${coeSVG.x}" y1="${coeSVG.y - coeR*1.6}" x2="${coeSVG.x}" y2="${coeSVG.y + coeR*1.6}" stroke="#d35400" stroke-width="${sWidth}" />
+                    <text x="${coeSVG.x}" y="${coeSVG.y + coeR*2}" class="area-text">${areaSqFt.toFixed(1)} sq ft</text>
+                </g>
+            `;
+            
+            // Render Blueprint Details Box
+            const months = ["JAN", "FEB", "MAR", "APR", "MAY", "JUN", "JUL", "AUG", "SEP", "OCT", "NOV", "DEC"];
+            const d = new Date();
+            const dateStr = d.getDate() + "-" + months[d.getMonth()] + "-" + d.getFullYear();
+            
+            let lines = [
+                `Area: ${areaSqFt.toFixed(1)} sq ft`,
+                `Foot: ${foot}"`,
+                `Luff: ${luff}"`
+            ];
+            if (hasPeak) {
+                lines.push(`Leach: ${leach}"`);
+                lines.push(`Head: ${head}"`);
+                lines.push(`Yard Ext: ${yardExt}%`);
+                lines.push(`Mast Rake: ${rake}\xB0`);
+            }
+            
+            let boxX = minX - pad + pad * 0.1;
+            let boxY = minY - pad + pad * 0.1;
+            let lineSpacing = fSize * 1.3;
+            let padBox = fSize * 0.8;
+            
+            let boxHeight = padBox * 2 + fSize * 2 + lineSpacing * (lines.length + 0.5);
+            
+            // Calculate a safe width: max text width (approx 12 * fSize) + padding on both sides
+            let boxWidth = Math.max(vBoxSize * 0.25, fSize * 14.5);
+            
+            svgContent += `
+                <g class="blueprint-box" transform="translate(${boxX}, ${boxY})">
+                    <rect x="0" y="0" width="${boxWidth}" height="${boxHeight}" fill="rgba(244, 241, 234, 0.9)" stroke="#2c2c2c" stroke-width="${sWidth}" />
+                    <text x="${padBox}" y="${padBox + fSize}" class="blueprint-title">STANDING LUG SAIL</text>
+                    <text x="${padBox}" y="${padBox + fSize + lineSpacing}" class="blueprint-text">${dateStr}</text>
+                    <line x1="0" y1="${padBox + fSize + lineSpacing*1.5}" x2="${boxWidth}" y2="${padBox + fSize + lineSpacing*1.5}" stroke="#2c2c2c" stroke-width="${sWidth}" />
+            `;
+            
+            lines.forEach((line, i) => {
+                let y = padBox + fSize + lineSpacing * 1.5 + fSize + i * lineSpacing;
+                svgContent += `<text x="${padBox}" y="${y}" class="blueprint-text">${line}</text>`;
+            });
+            
+            svgContent += `</g>`;
+
+            svgContent += `</svg>`;
+            document.getElementById('svg-canvas').innerHTML = svgContent;
+        }
+
+        // Trigger file download
+        function downloadSVG() {
+            const svgEl = document.querySelector('#svg-canvas svg');
+            if (!svgEl) return;
+            
+            const serializer = new XMLSerializer();
+            let source = serializer.serializeToString(svgEl);
+            
+            if (!source.match(/^<svg[^>]+xmlns="http\:\/\/www\.w3\.org\/2000\/svg"/)) {
+                source = source.replace(/^<svg/, '<svg xmlns="http://www.w3.org/2000/svg"');
+            }
+            // Include XML declaration
+            source = '<?xml version="1.0" standalone="no"?>\r\n' + source;
+            
+            const url = "data:image/svg+xml;charset=utf-8," + encodeURIComponent(source);
+            const downloadLink = document.createElement("a");
+            downloadLink.href = url;
+            downloadLink.download = "standing_lug_sail.svg";
+            document.body.appendChild(downloadLink);
+            downloadLink.click();
+            document.body.removeChild(downloadLink);
+        }
+
+        // Attach event listeners for real-time validation and drawing
+        document.querySelectorAll('input').forEach(inp => {
+            inp.addEventListener('keydown', (e) => {
+                if (e.key === 'Enter') draw();
+            });
+            inp.addEventListener('input', () => {
+                // Instant update as they type or use arrows
+                draw();
+            });
+        });
+
+        // Initialize the first render
+        window.onload = draw;
+    </script>
+</body>
+</html>

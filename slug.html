@@ -113,6 +113,18 @@
             box-shadow: 0 0 0 4px var(--focus);
         }
 
+        .input-wrapper input[type="range"] {
+            padding: 0;
+            background: transparent;
+            border: none;
+            box-shadow: none;
+            cursor: pointer;
+        }
+
+        .input-wrapper input[type="range"]:focus {
+            box-shadow: none;
+        }
+
         .unit {
             position: absolute;
             right: 1rem;
@@ -276,6 +288,13 @@
             </div>
         </div>
 
+        <div class="input-group">
+            <label for="panels">Panels (<span id="panels-val">1</span>)</label>
+            <div class="input-wrapper" style="padding: 0.5rem 0;">
+                <input type="range" id="panels" value="1" min="1" max="15" step="1" class="slider">
+            </div>
+        </div>
+
         <div id="error" class="error-msg"></div>
     </div>
 
@@ -318,6 +337,12 @@
             
             let boatRaw = parseFloat(document.getElementById('boat').value);
             const boat = isNaN(boatRaw) ? 120 : boatRaw;
+            
+            let panelsRaw = parseInt(document.getElementById('panels').value);
+            const panels = isNaN(panelsRaw) || panelsRaw < 1 ? 1 : panelsRaw;
+            if (document.getElementById('panels-val')) {
+                document.getElementById('panels-val').textContent = panels;
+            }
             
             const errEl = document.getElementById('error');
             errEl.textContent = '';
@@ -476,6 +501,7 @@
             // The CSS applied internally to the SVG so it downloads properly styled
             let svgStyles = `
                 .sail-path { fill: none; stroke: #2c2c2c; stroke-width: ${sWidth}; stroke-linejoin: round; }
+                .panel-line { fill: none; stroke: #2980b9; stroke-width: ${sWidth * 0.75}; }
                 .mast, .boat { stroke: #2c2c2c; stroke-width: ${sWidthThick}; stroke-linecap: round; }
                 .yard { stroke: #2c2c2c; stroke-width: ${sWidth * 1.5}; stroke-linecap: round; }
                 .measurement-text { fill: #d35400; font-size: ${fSize}px; font-weight: bold; font-family: 'Courier New', Courier, monospace; text-anchor: middle; dominant-baseline: middle; }
@@ -547,6 +573,19 @@
                 svgContent += getLabel(T, C, `Foot: ${foot}`);
                 svgContent += getLabel(T, Th, `Luff: ${luff}`);
             }
+
+            // Render Panel Lines
+            if (panels > 1) {
+                let P_actual = hasPeak ? P : Th;
+                for (let i = 1; i < panels; i++) {
+                    let f = i / panels;
+                    let luffX = T.x + f * (Th.x - T.x);
+                    let luffY = T.y + f * (Th.y - T.y);
+                    let leachX = C.x + f * (P_actual.x - C.x);
+                    let leachY = C.y + f * (P_actual.y - C.y);
+                    svgContent += `<line x1="${luffX}" y1="${luffY}" x2="${leachX}" y2="${leachY}" class="panel-line" />`;
+                }
+            }
             
             // Render COE and Area
             svgContent += `
@@ -573,6 +612,9 @@
                 lines.push(`Head: ${head}"`);
                 lines.push(`Yard Ext: ${yardExt}%`);
                 lines.push(`Mast Rake: ${rake}\xB0`);
+            }
+            if (panels > 1) {
+                lines.push(`Panels: ${panels}`);
             }
             
             let boxX = minX - pad + pad * 0.1;

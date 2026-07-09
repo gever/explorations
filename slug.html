@@ -447,6 +447,21 @@
             
             let width = maxX - minX;
             let height = maxY - minY;
+            
+            // Ensure minimum width and height to fit 36" calibration marks
+            if (width < 40) {
+                let cx = (minX + maxX) / 2;
+                minX = cx - 20;
+                maxX = cx + 20;
+                width = 40;
+            }
+            if (height < 40) {
+                let cy = (minY + maxY) / 2;
+                minY = cy - 20;
+                maxY = cy + 20;
+                height = 40;
+            }
+            
             let pad = Math.max(width, height) * 0.15;
             let vBox = `${minX - pad} ${minY - pad} ${width + pad*2} ${height + pad*2}`;
             
@@ -584,6 +599,37 @@
             });
             
             svgContent += `</g>`;
+
+            // Calibration marks for projection scaling
+            function getCalibrationMarks(startX, startY, dirX, dirY) {
+                let marks = '<g class="calibration-marks">';
+                marks += `<line x1="${startX}" y1="${startY}" x2="${startX + 36 * dirX}" y2="${startY}" stroke="#5a5a5a" stroke-width="${sWidth * 0.5}" />`;
+                marks += `<line x1="${startX}" y1="${startY}" x2="${startX}" y2="${startY + 36 * dirY}" stroke="#5a5a5a" stroke-width="${sWidth * 0.5}" />`;
+                
+                let tickLenShort = Math.max(vBoxSize * 0.005, 0.5);
+                let tickLenLong = Math.max(vBoxSize * 0.015, 1.5);
+                
+                for (let i = 1; i <= 36; i++) {
+                    let len = (i % 12 === 0) ? tickLenLong : tickLenShort;
+                    // Horizontal arm ticks (perpendicular is Y)
+                    let px = startX + i * dirX;
+                    marks += `<line x1="${px}" y1="${startY}" x2="${px}" y2="${startY + len * dirY}" stroke="#5a5a5a" stroke-width="${sWidth * 0.5}" />`;
+                    // Vertical arm ticks (perpendicular is X)
+                    let py = startY + i * dirY;
+                    marks += `<line x1="${startX}" y1="${py}" x2="${startX + len * dirX}" y2="${py}" stroke="#5a5a5a" stroke-width="${sWidth * 0.5}" />`;
+                }
+                
+                marks += `<text x="${startX + 36 * dirX}" y="${startY + tickLenLong * 1.5 * dirY}" class="blueprint-text" style="fill: #5a5a5a; font-size: ${fSize * 0.75}px; text-anchor: middle; dominant-baseline: ${dirY > 0 ? 'hanging' : 'auto'};">36"</text>`;
+                marks += `<text x="${startX + tickLenLong * 1.5 * dirX}" y="${startY + 36 * dirY}" class="blueprint-text" style="fill: #5a5a5a; font-size: ${fSize * 0.75}px; text-anchor: ${dirX > 0 ? 'start' : 'end'}; dominant-baseline: middle;">36"</text>`;
+                marks += '</g>';
+                return marks;
+            }
+
+            let margin = pad * 0.05;
+            // Upper Right
+            svgContent += getCalibrationMarks(maxX + pad - margin, minY - pad + margin, -1, 1);
+            // Lower Left
+            svgContent += getCalibrationMarks(minX - pad + margin, maxY + pad - margin, 1, -1);
 
             svgContent += `</svg>`;
             document.getElementById('svg-canvas').innerHTML = svgContent;

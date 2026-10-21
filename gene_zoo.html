@@ -420,12 +420,14 @@ This should be written in a single HTML file using JavaScript and CSS as needed.
     ctx.shadowBlur = 0;
 
     /* --- vertex dots (control points of the gene) --- */
-    const r = Math.max(0.9, Math.min(w, h) * 0.006);
-    ctx.fillStyle = 'hsla(' + hue + ',95%,80%,0.85)';
-    for (let i = 0; i < pts.length; i++) {
-      ctx.beginPath();
-      ctx.arc(toX(pts[i]), toY(pts[i]), r, 0, Math.PI * 2);
-      ctx.fill();
+    if (renderMode === 'lines') {
+      const r = Math.max(0.9, Math.min(w, h) * 0.006);
+      ctx.fillStyle = 'hsla(' + hue + ',95%,80%,0.85)';
+      for (let i = 0; i < pts.length; i++) {
+        ctx.beginPath();
+        ctx.arc(toX(pts[i]), toY(pts[i]), r, 0, Math.PI * 2);
+        ctx.fill();
+      }
     }
   }
 

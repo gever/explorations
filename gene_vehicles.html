@@ -604,6 +604,64 @@
       return geometry;
     }
 
+    // --- shared low-poly octagonal wheel geometry & material (preview only, not exported) ---
+    let sharedWheelGeometry = null;
+    let sharedWheelMaterial = null;
+
+    function getWheelAssets() {
+      if (!sharedWheelGeometry) {
+        const radius = 20; // 40 mm diameter
+        const tireWidth = 14;
+        const octShape = new THREE.Shape();
+        for (let i = 0; i < 8; i++) {
+          // Rotate by PI/8 so top and bottom edges of the octagon are flat on the ground
+          const ang = (i / 8) * Math.PI * 2 + Math.PI / 8;
+          const x = Math.cos(ang) * radius;
+          const y = Math.sin(ang) * radius;
+          if (i === 0) octShape.moveTo(x, y);
+          else octShape.lineTo(x, y);
+        }
+        octShape.closePath();
+
+        sharedWheelGeometry = new THREE.ExtrudeGeometry(octShape, {
+          depth: tireWidth,
+          bevelEnabled: false,
+          steps: 1
+        });
+        sharedWheelGeometry.translate(0, 0, -tireWidth / 2);
+        sharedWheelGeometry.computeVertexNormals();
+
+        sharedWheelMaterial = new THREE.MeshStandardMaterial({
+          color: new THREE.Color().setHSL(0, 0, 0.4),
+          flatShading: true,
+          roughness: 0.7,
+          metalness: 0.1,
+          side: THREE.DoubleSide
+        });
+      }
+      return { geometry: sharedWheelGeometry, material: sharedWheelMaterial };
+    }
+
+    function createPreviewWheels(bodyWidth = FIXED_WIDTH) {
+      const { geometry, material } = getWheelAssets();
+      const wheelGroup = new THREE.Group();
+      const halfW = bodyWidth / 2;
+      // Place wheels at (-50, 0) and (50, 0), straddling the side faces of the extrusion
+      const zOffset = halfW - 2; // intersects the car body side wall and protrudes slightly
+      const positions = [
+        [-50, 0, -zOffset],
+        [-50, 0,  zOffset],
+        [ 50, 0, -zOffset],
+        [ 50, 0,  zOffset]
+      ];
+      for (const [wx, wy, wz] of positions) {
+        const tire = new THREE.Mesh(geometry, material);
+        tire.position.set(wx, wy, wz);
+        wheelGroup.add(tire);
+      }
+      return wheelGroup;
+    }
+
     // --- scene setup for each cell ---
     const container = document.getElementById('grid-container');
     const cells = [];
@@ -696,7 +754,8 @@
         
         const prevRotationY = carMesh ? carMesh.rotation.y : 0.5;
         carMesh = new THREE.Mesh(geometry, material);
-        carMesh.position.y = 10;
+        carMesh.add(createPreviewWheels(genome.width));
+        carMesh.position.y = 18;
         carMesh.rotation.y = prevRotationY;
         scene.add(carMesh);
         if (cellRecord) cellRecord.carMesh = carMesh;
@@ -871,7 +930,8 @@
             side: THREE.DoubleSide
           });
           const mesh = new THREE.Mesh(geom, mat);
-          mesh.position.y = 10;
+          mesh.add(createPreviewWheels(entry.genome.width));
+          mesh.position.y = 18;
           mesh.rotation.y = 0.6;
           previewScene.add(mesh);
           

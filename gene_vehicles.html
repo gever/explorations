@@ -964,6 +964,60 @@
     }
 
     // --- STL export ---
+    const SAFE_WORDS = [
+      'acorn', 'apple', 'apricot', 'badger', 'balloon', 'banana', 'banjo', 'basket',
+      'beaver', 'berry', 'blanket', 'blossom', 'blue', 'blueberry', 'boat', 'bouncy',
+      'breeze', 'bridge', 'bright', 'brook', 'bubble', 'bucket', 'bumblebee', 'bunny',
+      'buttercup', 'butterfly', 'button', 'cabin', 'cactus', 'camel', 'candle', 'canyon',
+      'carrot', 'castle', 'cedar', 'cherry', 'chickadee', 'cloud', 'clover', 'cobalt',
+      'coconut', 'comet', 'compass', 'cookie', 'coral', 'cozy', 'crayon', 'cricket',
+      'crystal', 'cupcake', 'daisy', 'dandelion', 'dolphin', 'donkey', 'dragonfly', 'drum',
+      'duckling', 'eagle', 'emerald', 'falcon', 'feather', 'ferret', 'fiddle', 'finch',
+      'firefly', 'flamingo', 'fluffy', 'flute', 'forest', 'fountain', 'friendly', 'frog',
+      'fuzzy', 'galaxy', 'garden', 'gazelle', 'gecko', 'gentle', 'giraffe', 'glacier',
+      'golden', 'gopher', 'green', 'guitar', 'hamster', 'happy', 'harbor', 'harmony',
+      'hazel', 'hedgehog', 'hibiscus', 'hilltop', 'honey', 'honeybee', 'horizon', 'hummingbird',
+      'igloo', 'indigo', 'island', 'jasmine', 'jellybean', 'jolly', 'jungle', 'juniper',
+      'kangaroo', 'kettle', 'kitten', 'kiwi', 'koala', 'ladybug', 'lagoon', 'lantern',
+      'lark', 'lavender', 'lemon', 'leopard', 'lighthouse', 'lilac', 'lily', 'little',
+      'llama', 'locket', 'lucky', 'magnet', 'mango', 'maple', 'marble', 'marigold',
+      'meadow', 'melon', 'mellow', 'mercury', 'mitten', 'monkey', 'moon', 'moonbeam',
+      'morning', 'mountain', 'muffin', 'mushroom', 'mustard', 'narwhal', 'nectar', 'noodle',
+      'nutmeg', 'oak', 'oasis', 'ocean', 'octopus', 'olive', 'orange', 'orchard',
+      'orchid', 'oriole', 'ostrich', 'otter', 'owl', 'paintbrush', 'palace', 'pancake',
+      'panda', 'pansy', 'papaya', 'parachute', 'parrot', 'peach', 'peanut', 'pear',
+      'pearl', 'pebble', 'pelican', 'penguin', 'peony', 'pepper', 'periwinkle', 'petal',
+      'piano', 'picnic', 'pillow', 'pinecone', 'pineapple', 'planet', 'platypus', 'plum',
+      'pocket', 'polka', 'pond', 'pony', 'popcorn', 'poppy', 'porcupine', 'potato',
+      'prairie', 'pretzel', 'prism', 'puffin', 'pumpkin', 'puppy', 'purple', 'puzzle',
+      'quail', 'quartz', 'quilt', 'rabbit', 'raccoon', 'radish', 'rainbow', 'raindrop',
+      'raspberry', 'red', 'redwood', 'ribbon', 'river', 'robin', 'rocket', 'rosebud',
+      'ruby', 'sailboat', 'salmon', 'sandcastle', 'sapphire', 'saturn', 'scooter', 'seagull',
+      'seahorse', 'seashell', 'sequoia', 'shadow', 'shamrock', 'shell', 'shimmer', 'silver',
+      'skillet', 'sky', 'skylark', 'sled', 'slipper', 'sloth', 'smoothie', 'snail',
+      'snowball', 'snowflake', 'snowman', 'sparkle', 'sparrow', 'speedy', 'spider', 'sponge',
+      'spring', 'sprout', 'spruce', 'squirrel', 'star', 'starfish', 'starlight', 'strawberry',
+      'stream', 'summer', 'sunbeam', 'sunflower', 'sunny', 'sunrise', 'sunset', 'swallow',
+      'swan', 'sweater', 'sweet', 'tangerine', 'teacup', 'teapot', 'thimble', 'thistle',
+      'thunder', 'tiger', 'timber', 'toadstool', 'toaster', 'tomato', 'topaz', 'tortoise',
+      'toucan', 'tractor', 'treasure', 'treehouse', 'tricycle', 'trumpet', 'tulip', 'tundra',
+      'turnip', 'turtle', 'twilight', 'twinkle', 'umbrella', 'unicorn', 'valley', 'vanilla',
+      'velvet', 'violet', 'violin', 'voyage', 'waffle', 'wagon', 'walnut', 'walrus',
+      'waterfall', 'watermelon', 'whale', 'whistle', 'willow', 'windmill', 'winter', 'wombat',
+      'woodland', 'wren', 'xylophone', 'yellow', 'zebra', 'zephyr', 'zinnia'
+    ];
+
+    function generateSafeFileName() {
+      const chosen = [];
+      while (chosen.length < 3) {
+        const word = SAFE_WORDS[Math.floor(Math.random() * SAFE_WORDS.length)];
+        if (/^[a-z]+$/.test(word) && !chosen.includes(word)) {
+          chosen.push(word);
+        }
+      }
+      return chosen.join('_');
+    }
+
     function geometryToASCIISTL(geometry, name = 'genetic_car') {
       const nonIndexed = geometry.index ? geometry.toNonIndexed() : geometry.clone();
       nonIndexed.computeVertexNormals();
@@ -999,15 +1053,16 @@
     exportBtn.addEventListener('click', () => {
       if (selectedIndex < 0 || !genomes[selectedIndex]) return;
       const g = genomes[selectedIndex];
+      const baseName = generateSafeFileName();
       const geom = buildCarGeometry(g);
-      const stl = geometryToASCIISTL(geom, 'genetic_car');
+      const stl = geometryToASCIISTL(geom, baseName);
       geom.dispose();
 
       const blob = new Blob([stl], { type: 'model/stl' });
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = `car_${g.length.toFixed(0)}x${g.width.toFixed(0)}x${g.height.toFixed(0)}mm_${g.profile.length}pts.stl`;
+      a.download = `${baseName}.stl`;
       a.click();
       URL.revokeObjectURL(url);
     });

@@ -232,6 +232,136 @@
       font-size: 13px;
       font-style: italic;
     }
+
+    /* 2D Net Modal */
+    #net-modal {
+      position: fixed;
+      inset: 0;
+      background: rgba(0, 0, 0, 0.8);
+      backdrop-filter: blur(6px);
+      display: none;
+      align-items: center;
+      justify-content: center;
+      z-index: 100;
+      padding: 24px;
+      box-sizing: border-box;
+    }
+
+    #net-modal.open {
+      display: flex;
+    }
+
+    .net-dialog {
+      background: #161616;
+      border: 1px solid #383838;
+      border-radius: 14px;
+      width: min(1150px, 95vw);
+      height: min(820px, 90vh);
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+      box-shadow: 0 20px 60px rgba(0, 0, 0, 0.75);
+    }
+
+    .net-header {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      padding: 12px 18px;
+      background: #1f1f1f;
+      border-bottom: 1px solid #333;
+      flex-wrap: wrap;
+    }
+
+    .net-title {
+      font-weight: 600;
+      font-size: 15px;
+      color: #ffaa66;
+      margin-right: 8px;
+    }
+
+    .net-header label {
+      font-size: 13px;
+      color: #ccc;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      cursor: pointer;
+    }
+
+    .net-header select {
+      background: #2a2a2a;
+      color: #eee;
+      border: 1px solid #444;
+      border-radius: 6px;
+      padding: 4px 8px;
+      font-size: 13px;
+    }
+
+    .net-header button {
+      background: #2a2a2a;
+      color: #eee;
+      border: 1px solid #444;
+      border-radius: 6px;
+      padding: 6px 14px;
+      font-size: 13px;
+      cursor: pointer;
+    }
+
+    .net-header button:hover {
+      background: #3a3a3a;
+    }
+
+    .net-header button.primary {
+      background: #66ccff22;
+      border-color: #66ccff88;
+      color: #cceeff;
+      margin-left: auto;
+    }
+
+    .net-header button.primary:hover {
+      background: #66ccff44;
+    }
+
+    #net-viewport {
+      flex: 1;
+      background: #0e0e0e;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      overflow: auto;
+      padding: 20px;
+    }
+
+    #net-viewport svg {
+      max-width: 100%;
+      max-height: 100%;
+      width: auto;
+      height: auto;
+      background: #141414;
+      border: 1px solid #2a2a2a;
+      border-radius: 8px;
+    }
+
+    .net-footer {
+      padding: 8px 18px;
+      background: #1a1a1a;
+      border-top: 1px solid #2a2a2a;
+      font-size: 12px;
+      color: #999;
+      display: flex;
+      justify-content: space-between;
+      font-family: monospace;
+    }
+
+    .legend-dot {
+      display: inline-block;
+      width: 10px;
+      height: 10px;
+      border-radius: 2px;
+      margin-right: 4px;
+      vertical-align: middle;
+    }
   </style>
 </head>
 <body>
@@ -244,6 +374,7 @@
     <div id="toolbar">
       <button id="reseed-btn">🔀 Re-seed All</button>
       <button id="export-btn" class="primary" disabled>💾 Export STL (selected)</button>
+      <button id="net-btn" class="primary" disabled>📐 View / Export 2D Net</button>
       <label>
         Initial points:
         <input type="range" id="points-slider" min="3" max="12" step="1" value="7">
@@ -257,6 +388,42 @@
       <span id="history-label">📜 Evolution history</span>
     </div>
     <div id="history"></div>
+  </div>
+
+  <div id="net-modal">
+    <div class="net-dialog">
+      <div class="net-header">
+        <span class="net-title">📐 Unwrapped 2D Polygon Net</span>
+        <label>
+          Layout:
+          <select id="net-layout-select">
+            <option value="connected">Connected Net (Single-piece fold-up)</option>
+            <option value="separate">Separate Panels (Side profiles + strip)</option>
+          </select>
+        </label>
+        <label>
+          <input type="checkbox" id="net-tabs-chk" checked>
+          Glue tabs
+        </label>
+        <label>
+          <input type="checkbox" id="net-labels-chk" checked>
+          Labels &amp; edge numbers
+        </label>
+        <button id="net-download-btn" class="primary">💾 Download SVG (1:1 mm)</button>
+        <button id="net-close-btn">✕ Close</button>
+      </div>
+      <div id="net-viewport"></div>
+      <div class="net-footer">
+        <span>
+          <span class="legend-dot" style="background:#ff4444;"></span>Solid Red = Cut
+          &nbsp;&nbsp;
+          <span class="legend-dot" style="background:#33aaff;"></span>Dashed Blue = Score / Fold
+          &nbsp;&nbsp;
+          <span class="legend-dot" style="background:#ffaa66;"></span>Amber = Etch / Labels
+        </span>
+        <span id="net-dimensions-info"></span>
+      </div>
+    </div>
   </div>
 
   <script type="importmap">
@@ -667,12 +834,21 @@
     const cells = [];
     const historyContainer = document.getElementById('history');
     const exportBtn = document.getElementById('export-btn');
+    const netBtn = document.getElementById('net-btn');
     const reseedBtn = document.getElementById('reseed-btn');
     const pointsSlider = document.getElementById('points-slider');
     const pointsValue = document.getElementById('points-value');
     const mutationSlider = document.getElementById('mutation-slider');
     const mutationValue = document.getElementById('mutation-value');
     const historyLabel = document.getElementById('history-label');
+    const netModal = document.getElementById('net-modal');
+    const netViewport = document.getElementById('net-viewport');
+    const netLayoutSelect = document.getElementById('net-layout-select');
+    const netTabsChk = document.getElementById('net-tabs-chk');
+    const netLabelsChk = document.getElementById('net-labels-chk');
+    const netDownloadBtn = document.getElementById('net-download-btn');
+    const netCloseBtn = document.getElementById('net-close-btn');
+    const netDimensionsInfo = document.getElementById('net-dimensions-info');
 
     // initialize genomes
     function initGenomes() {
@@ -817,8 +993,9 @@
         cell.element.classList.toggle('selected', i === index);
       });
       
-      // enable export button
+      // enable export & net buttons
       exportBtn.disabled = false;
+      netBtn.disabled = false;
       
       // add current genome to history (if not already the last one)
       const selectedGenome = genomes[index];
@@ -1050,10 +1227,17 @@
       return lines.join('\n');
     }
 
+    function getGenomeExportName(genome) {
+      if (!genome.exportName) {
+        genome.exportName = generateSafeFileName();
+      }
+      return genome.exportName;
+    }
+
     exportBtn.addEventListener('click', () => {
       if (selectedIndex < 0 || !genomes[selectedIndex]) return;
       const g = genomes[selectedIndex];
-      const baseName = generateSafeFileName();
+      const baseName = getGenomeExportName(g);
       const geom = buildCarGeometry(g);
       const stl = geometryToASCIISTL(geom, baseName);
       geom.dispose();
@@ -1067,10 +1251,404 @@
       URL.revokeObjectURL(url);
     });
 
+    // --- 2D Polygon Net Generator & Viewer ---
+    function buildCarNetSVG(genome, { layout = 'connected', includeTabs = true, includeLabels = true } = {}) {
+      const W = genome.width; // 80 mm
+      const pts = genome.profile;
+      const n = pts.length;
+      const carName = getGenomeExportName(genome);
+
+      // Compute edge lengths and cumulative X positions along the unfolded perimeter strip
+      // Edge i connects pts[i] -> pts[(i + 1) % n]
+      // Note: Edge 0 connects pts[0] (-70, 0) -> pts[1] (70, 0), length = 140 mm
+      const edges = [];
+      let totalPerimeter = 0;
+      for (let i = 0; i < n; i++) {
+        const a = pts[i];
+        const b = pts[(i + 1) % n];
+        const len = Math.hypot(b.x - a.x, b.y - a.y);
+        edges.push({
+          index: i,
+          a,
+          b,
+          length: len,
+          x0: totalPerimeter,
+          x1: totalPerimeter + len
+        });
+        totalPerimeter += len;
+      }
+
+      const cutPaths = [];
+      const foldLines = [];
+      const labelElements = [];
+
+      let minX = Infinity, maxX = -Infinity;
+      let minY = Infinity, maxY = -Infinity;
+      function trackPoint(x, y) {
+        if (x < minX) minX = x;
+        if (x > maxX) maxX = x;
+        if (y < minY) minY = y;
+        if (y > maxY) maxY = y;
+      }
+
+      const tabDepth = 10; // 10 mm glue tab depth
+      const tabBevel = 7;  // 7 mm bevel inset
+
+      if (layout === 'connected') {
+        // Center strip spans X in [0, totalPerimeter], Y in [0, W]
+        // Panel 0 (Base: X in [0, 140], Y in [0, W]) has the two side polygons attached at Y = 0 and Y = W:
+        //   - Top Side Polygon folds upward into Y <= 0: point (px, py) -> (X = px + HALF_BASE, Y = -py)
+        //   - Bottom Side Polygon folds downward into Y >= W: point (px, py) -> (X = px + HALF_BASE, Y = W + py)
+        const baseLen = edges[0].length; // 140 mm
+
+        // Fold lines along the base where the two side polygons attach
+        foldLines.push({ x1: 0, y1: 0, x2: baseLen, y2: 0 });
+        foldLines.push({ x1: 0, y1: W, x2: baseLen, y2: W });
+
+        // Interior vertical fold lines between strip panels 0..n-1
+        for (let i = 1; i < n; i++) {
+          const x = edges[i].x0;
+          foldLines.push({ x1: x, y1: 0, x2: x, y2: W });
+        }
+
+        // Left vertical cut at X = 0 (from Y = 0 to Y = W)
+        cutPaths.push(`M 0 0 L 0 ${W}`);
+
+        // Top Side Polygon outer cut path (from pts[0] at (0,0) through pts[n-1]..pts[2] to pts[1] at (140,0))
+        const topPolyPts = [];
+        for (let i = 0; i < n; i++) {
+          const ux = pts[i].x + HALF_BASE;
+          const uy = -pts[i].y;
+          topPolyPts.push({ x: ux, y: uy });
+          trackPoint(ux, uy);
+        }
+        // Trace from index 1 -> 2 -> ... -> n-1 -> 0 so we don't cut the fold line 0 -> 1
+        let topD = `M ${topPolyPts[1].x.toFixed(2)} ${topPolyPts[1].y.toFixed(2)}`;
+        for (let i = 2; i <= n; i++) {
+          const p = topPolyPts[i % n];
+          topD += ` L ${p.x.toFixed(2)} ${p.y.toFixed(2)}`;
+        }
+        cutPaths.push(topD);
+
+        // Bottom Side Polygon outer cut path (Y >= W)
+        const botPolyPts = [];
+        for (let i = 0; i < n; i++) {
+          const ux = pts[i].x + HALF_BASE;
+          const uy = W + pts[i].y;
+          botPolyPts.push({ x: ux, y: uy });
+          trackPoint(ux, uy);
+        }
+        let botD = `M ${botPolyPts[1].x.toFixed(2)} ${botPolyPts[1].y.toFixed(2)}`;
+        for (let i = 2; i <= n; i++) {
+          const p = botPolyPts[i % n];
+          botD += ` L ${p.x.toFixed(2)} ${p.y.toFixed(2)}`;
+        }
+        cutPaths.push(botD);
+
+        // Strip panels 1 .. n-1 top and bottom edges (with optional glue tabs)
+        for (let i = 1; i < n; i++) {
+          const { x0, x1, length } = edges[i];
+          trackPoint(x0, 0);
+          trackPoint(x1, W);
+
+          if (includeTabs && length >= 16) {
+            const bev = Math.min(tabBevel, length * 0.3);
+            // Top glue tab (folds up from Y = 0 to Y = -tabDepth)
+            cutPaths.push(
+              `M ${x0.toFixed(2)} 0 L ${(x0 + bev).toFixed(2)} ${(-tabDepth).toFixed(2)} ` +
+              `L ${(x1 - bev).toFixed(2)} ${(-tabDepth).toFixed(2)} L ${x1.toFixed(2)} 0`
+            );
+            foldLines.push({ x1: x0, y1: 0, x2: x1, y2: 0 });
+            trackPoint(x0, -tabDepth);
+            trackPoint(x1, -tabDepth);
+
+            // Bottom glue tab (folds down from Y = W to Y = W + tabDepth)
+            cutPaths.push(
+              `M ${x0.toFixed(2)} ${W} L ${(x0 + bev).toFixed(2)} ${(W + tabDepth).toFixed(2)} ` +
+              `L ${(x1 - bev).toFixed(2)} ${(W + tabDepth).toFixed(2)} L ${x1.toFixed(2)} ${W}`
+            );
+            foldLines.push({ x1: x0, y1: W, x2: x1, y2: W });
+            trackPoint(x0, W + tabDepth);
+            trackPoint(x1, W + tabDepth);
+          } else {
+            cutPaths.push(`M ${x0.toFixed(2)} 0 L ${x1.toFixed(2)} 0`);
+            cutPaths.push(`M ${x0.toFixed(2)} ${W} L ${x1.toFixed(2)} ${W}`);
+          }
+        }
+
+        // Right end of the perimeter strip at X = totalPerimeter
+        if (includeTabs) {
+          const endX = totalPerimeter;
+          foldLines.push({ x1: endX, y1: 0, x2: endX, y2: W });
+          cutPaths.push(
+            `M ${endX.toFixed(2)} 0 L ${(endX + tabDepth).toFixed(2)} ${tabBevel} ` +
+            `L ${(endX + tabDepth).toFixed(2)} ${(W - tabBevel)} L ${endX.toFixed(2)} ${W}`
+          );
+          trackPoint(endX + tabDepth, 0);
+          trackPoint(endX + tabDepth, W);
+        } else {
+          cutPaths.push(`M ${totalPerimeter.toFixed(2)} 0 L ${totalPerimeter.toFixed(2)} ${W}`);
+        }
+
+        // Labels & matching edge numbers
+        if (includeLabels) {
+          labelElements.push({
+            x: baseLen / 2,
+            y: W / 2 - 4,
+            text: carName,
+            size: 6.5
+          });
+          labelElements.push({
+            x: baseLen / 2,
+            y: W / 2 + 6,
+            text: `BASE ${ genome.length }×${ genome.width }×${ genome.height } mm`,
+            size: 4.5
+          });
+
+          for (let i = 1; i < n; i++) {
+            const e = edges[i];
+            const midStripX = (e.x0 + e.x1) / 2;
+            labelElements.push({
+              x: midStripX,
+              y: W / 2 + 1.5,
+              text: `${i} (${Math.round(e.length)}mm)`,
+              size: 4.2
+            });
+
+            // Matching edge numbers along the top & bottom side polygons
+            const pA = topPolyPts[i];
+            const pB = topPolyPts[(i + 1) % n];
+            const mx = (pA.x + pB.x) / 2;
+            const my = (pA.y + pB.y) / 2;
+            // Nudge slightly inward toward polygon interior
+            const cx = baseLen / 2;
+            const cyTop = -genome.height * 0.35;
+            const dx = cx - mx, dy = cyTop - my;
+            const dLen = Math.hypot(dx, dy) || 1;
+            labelElements.push({
+              x: mx + (dx / dLen) * 7,
+              y: my + (dy / dLen) * 7 + 1.5,
+              text: `${i}`,
+              size: 4.2
+            });
+
+            const qA = botPolyPts[i];
+            const qB = botPolyPts[(i + 1) % n];
+            const bmx = (qA.x + qB.x) / 2;
+            const bmy = (qA.y + qB.y) / 2;
+            const cyBot = W + genome.height * 0.35;
+            const bdx = cx - bmx, bdy = cyBot - bmy;
+            const bdLen = Math.hypot(bdx, bdy) || 1;
+            labelElements.push({
+              x: bmx + (bdx / bdLen) * 7,
+              y: bmy + (bdy / bdLen) * 7 + 1.5,
+              text: `${i}`,
+              size: 4.2
+            });
+          }
+        }
+      } else {
+        // Separate Panels layout:
+        // 1. Unfolded Perimeter Strip on top (Y in [0, W], X in [0, totalPerimeter])
+        trackPoint(0, 0);
+        trackPoint(totalPerimeter, W);
+
+        for (let i = 1; i < n; i++) {
+          const x = edges[i].x0;
+          foldLines.push({ x1: x, y1: 0, x2: x, y2: W });
+        }
+
+        if (includeTabs) {
+          // Top & bottom glue tabs on all strip panels 0..n-1
+          for (let i = 0; i < n; i++) {
+            const { x0, x1, length } = edges[i];
+            if (length >= 16) {
+              const bev = Math.min(tabBevel, length * 0.3);
+              cutPaths.push(
+                `M ${x0.toFixed(2)} 0 L ${(x0 + bev).toFixed(2)} ${(-tabDepth).toFixed(2)} ` +
+                `L ${(x1 - bev).toFixed(2)} ${(-tabDepth).toFixed(2)} L ${x1.toFixed(2)} 0`
+              );
+              foldLines.push({ x1: x0, y1: 0, x2: x1, y2: 0 });
+              cutPaths.push(
+                `M ${x0.toFixed(2)} ${W} L ${(x0 + bev).toFixed(2)} ${(W + tabDepth).toFixed(2)} ` +
+                `L ${(x1 - bev).toFixed(2)} ${(W + tabDepth).toFixed(2)} L ${x1.toFixed(2)} ${W}`
+              );
+              foldLines.push({ x1: x0, y1: W, x2: x1, y2: W });
+              trackPoint(x0, -tabDepth);
+              trackPoint(x1, W + tabDepth);
+            } else {
+              cutPaths.push(`M ${x0.toFixed(2)} 0 L ${x1.toFixed(2)} 0`);
+              cutPaths.push(`M ${x0.toFixed(2)} ${W} L ${x1.toFixed(2)} ${W}`);
+            }
+          }
+          cutPaths.push(`M 0 0 L 0 ${W}`);
+          foldLines.push({ x1: totalPerimeter, y1: 0, x2: totalPerimeter, y2: W });
+          cutPaths.push(
+            `M ${totalPerimeter.toFixed(2)} 0 L ${(totalPerimeter + tabDepth).toFixed(2)} ${tabBevel} ` +
+            `L ${(totalPerimeter + tabDepth).toFixed(2)} ${(W - tabBevel)} L ${totalPerimeter.toFixed(2)} ${W}`
+          );
+          trackPoint(totalPerimeter + tabDepth, W);
+        } else {
+          cutPaths.push(`M 0 0 L ${totalPerimeter.toFixed(2)} 0 L ${totalPerimeter.toFixed(2)} ${W} L 0 ${W} Z`);
+        }
+
+        // 2. Two separate side profile polygons placed below the strip
+        let polyMinX = Infinity, polyMaxX = -Infinity;
+        for (const p of pts) {
+          if (p.x < polyMinX) polyMinX = p.x;
+          if (p.x > polyMaxX) polyMaxX = p.x;
+        }
+        const polyWidth = polyMaxX - polyMinX;
+        const rowY = W + (includeTabs ? tabDepth : 0) + 18 + genome.height;
+
+        // Left side polygon
+        const leftOffsetX = -polyMinX;
+        const leftPts = pts.map(p => ({ x: p.x + leftOffsetX, y: rowY - p.y }));
+        leftPts.forEach(p => trackPoint(p.x, p.y));
+        cutPaths.push(
+          'M ' + leftPts.map(p => `${p.x.toFixed(2)} ${p.y.toFixed(2)}`).join(' L ') + ' Z'
+        );
+
+        // Right side polygon (mirrored horizontally)
+        const rightOffsetX = polyWidth + 20 + polyMaxX;
+        const rightPts = pts.map(p => ({ x: rightOffsetX - p.x, y: rowY - p.y }));
+        rightPts.forEach(p => trackPoint(p.x, p.y));
+        cutPaths.push(
+          'M ' + rightPts.map(p => `${p.x.toFixed(2)} ${p.y.toFixed(2)}`).join(' L ') + ' Z'
+        );
+
+        if (includeLabels) {
+          labelElements.push({
+            x: edges[0].length / 2,
+            y: W / 2 - 3,
+            text: carName,
+            size: 6
+          });
+          for (let i = 0; i < n; i++) {
+            const e = edges[i];
+            labelElements.push({
+              x: (e.x0 + e.x1) / 2,
+              y: W / 2 + 5,
+              text: `${i} (${Math.round(e.length)}mm)`,
+              size: 4.2
+            });
+          }
+          labelElements.push({
+            x: leftOffsetX,
+            y: rowY - genome.height * 0.35,
+            text: 'LEFT SIDE',
+            size: 5
+          });
+          labelElements.push({
+            x: rightOffsetX,
+            y: rowY - genome.height * 0.35,
+            text: 'RIGHT SIDE',
+            size: 5
+          });
+        }
+      }
+
+      const margin = 12;
+      const vx = minX - margin;
+      const vy = minY - margin;
+      const vw = (maxX - minX) + margin * 2;
+      const vh = (maxY - minY) + margin * 2;
+
+      const svgLines = [
+        `<?xml version="1.0" encoding="UTF-8"?>`,
+        `<svg xmlns="http://www.w3.org/2000/svg" width="${vw.toFixed(2)}mm" height="${vh.toFixed(2)}mm" viewBox="${vx.toFixed(2)} ${vy.toFixed(2)} ${vw.toFixed(2)} ${vh.toFixed(2)}">`,
+        `  <g id="score-fold-lines" fill="none" stroke="#33aaff" stroke-width="0.45" stroke-dasharray="3,2">`
+      ];
+
+      for (const fl of foldLines) {
+        svgLines.push(`    <line x1="${fl.x1.toFixed(2)}" y1="${fl.y1.toFixed(2)}" x2="${fl.x2.toFixed(2)}" y2="${fl.y2.toFixed(2)}" />`);
+      }
+      svgLines.push(`  </g>`);
+
+      svgLines.push(`  <g id="cut-lines" fill="none" stroke="#ff3333" stroke-width="0.6" stroke-linecap="round" stroke-linejoin="round">`);
+      for (const d of cutPaths) {
+        svgLines.push(`    <path d="${d}" />`);
+      }
+      svgLines.push(`  </g>`);
+
+      if (labelElements.length > 0) {
+        svgLines.push(`  <g id="labels" fill="#ffaa66" font-family="monospace, sans-serif" text-anchor="middle">`);
+        for (const lbl of labelElements) {
+          svgLines.push(`    <text x="${lbl.x.toFixed(2)}" y="${lbl.y.toFixed(2)}" font-size="${lbl.size}">${lbl.text}</text>`);
+        }
+        svgLines.push(`  </g>`);
+      }
+
+      svgLines.push(`</svg>`);
+
+      return {
+        svg: svgLines.join('\n'),
+        widthMm: Math.round(vw),
+        heightMm: Math.round(vh),
+        perimeterMm: Math.round(totalPerimeter),
+        carName
+      };
+    }
+
+    function updateNetModalPreview() {
+      if (selectedIndex < 0 || !genomes[selectedIndex]) return;
+      const g = genomes[selectedIndex];
+      const result = buildCarNetSVG(g, {
+        layout: netLayoutSelect.value,
+        includeTabs: netTabsChk.checked,
+        includeLabels: netLabelsChk.checked
+      });
+      netViewport.innerHTML = result.svg;
+      netDimensionsInfo.textContent =
+        `${result.carName}.svg · Sheet: ${result.widthMm} × ${result.heightMm} mm · Strip perimeter: ${result.perimeterMm} mm`;
+    }
+
+    netBtn.addEventListener('click', () => {
+      if (selectedIndex < 0 || !genomes[selectedIndex]) return;
+      updateNetModalPreview();
+      netModal.classList.add('open');
+    });
+
+    netLayoutSelect.addEventListener('change', updateNetModalPreview);
+    netTabsChk.addEventListener('change', updateNetModalPreview);
+    netLabelsChk.addEventListener('change', updateNetModalPreview);
+
+    netDownloadBtn.addEventListener('click', () => {
+      if (selectedIndex < 0 || !genomes[selectedIndex]) return;
+      const g = genomes[selectedIndex];
+      const result = buildCarNetSVG(g, {
+        layout: netLayoutSelect.value,
+        includeTabs: netTabsChk.checked,
+        includeLabels: netLabelsChk.checked
+      });
+      const blob = new Blob([result.svg], { type: 'image/svg+xml' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `${result.carName}.svg`;
+      a.click();
+      URL.revokeObjectURL(url);
+    });
+
+    netCloseBtn.addEventListener('click', () => {
+      netModal.classList.remove('open');
+    });
+
+    netModal.addEventListener('click', (e) => {
+      if (e.target === netModal) netModal.classList.remove('open');
+    });
+
+    window.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape' && netModal.classList.contains('open')) {
+        netModal.classList.remove('open');
+      }
+    });
+
     // --- toolbar controls ---
     reseedBtn.addEventListener('click', () => {
       selectedIndex = -1;
       exportBtn.disabled = true;
+      netBtn.disabled = true;
       cells.forEach(c => c.element.classList.remove('selected'));
       initGenomes();
       updateAllCells();
@@ -1081,6 +1659,7 @@
       pointsValue.textContent = String(profilePointCount);
       selectedIndex = -1;
       exportBtn.disabled = true;
+      netBtn.disabled = true;
       cells.forEach(c => c.element.classList.remove('selected'));
       initGenomes();
       updateAllCells();

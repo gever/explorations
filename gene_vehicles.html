@@ -1,0 +1,998 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Genetic car browser · low-poly laser-cut</title>
+  <style>
+    body {
+      margin: 0;
+      overflow: hidden;
+      font-family: system-ui, 'Segoe UI', Roboto, sans-serif;
+      background-color: #111;
+      color: white;
+    }
+    #info {
+      position: absolute;
+      top: 16px;
+      left: 16px;
+      background: rgba(0,0,0,0.65);
+      padding: 10px 20px;
+      border-radius: 40px;
+      backdrop-filter: blur(8px);
+      pointer-events: none;
+      font-size: 15px;
+      letter-spacing: 0.3px;
+      border: 1px solid #444;
+      z-index: 10;
+    }
+    #info span {
+      color: #ffaa66;
+      font-weight: 600;
+    }
+
+    #grid-container {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100vw;
+      height: calc(100vh - 140px);
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      grid-template-rows: repeat(3, 1fr);
+      gap: 6px;
+      padding: 6px;
+      box-sizing: border-box;
+      background: #1a1a1a;
+    }
+
+    .cell {
+      background: #0d0d0d;
+      border-radius: 12px;
+      overflow: hidden;
+      box-shadow: 0 0 0 1px #2a2a2a inset;
+      transition: box-shadow 0.2s;
+      cursor: pointer;
+      position: relative;
+    }
+
+    .cell:hover {
+      box-shadow: 0 0 0 2px #ffaa66 inset;
+      z-index: 5;
+    }
+
+    .cell.selected {
+      box-shadow: 0 0 0 3px #66ccff inset, 0 0 20px #66ccff44;
+    }
+
+    .cell canvas {
+      display: block;
+      width: 100%;
+      height: 100%;
+      outline: none;
+    }
+
+    .badge {
+      position: absolute;
+      bottom: 8px;
+      left: 8px;
+      background: rgba(0,0,0,0.7);
+      color: #ddd;
+      font-size: 11px;
+      padding: 2px 8px;
+      border-radius: 20px;
+      backdrop-filter: blur(4px);
+      pointer-events: none;
+      border: 1px solid #444;
+      font-family: monospace;
+    }
+
+    /* Bottom panel */
+    #bottom-panel {
+      position: absolute;
+      bottom: 0;
+      left: 0;
+      right: 0;
+      height: 140px;
+      background: #151515;
+      border-top: 1px solid #333;
+      display: flex;
+      flex-direction: column;
+      z-index: 20;
+    }
+
+    #toolbar {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 10px 16px;
+      border-bottom: 1px solid #2a2a2a;
+      flex-shrink: 0;
+    }
+
+    #toolbar button {
+      background: #2a2a2a;
+      color: #eee;
+      border: 1px solid #444;
+      border-radius: 6px;
+      padding: 6px 14px;
+      font-size: 13px;
+      cursor: pointer;
+      transition: background 0.15s;
+    }
+
+    #toolbar button:hover {
+      background: #3a3a3a;
+    }
+
+    #toolbar button:active {
+      background: #ffaa66;
+      color: #111;
+    }
+
+    #toolbar button.primary {
+      background: #66ccff22;
+      border-color: #66ccff88;
+      color: #cceeff;
+    }
+
+    #toolbar button.primary:hover {
+      background: #66ccff44;
+    }
+
+    #toolbar button:disabled {
+      opacity: 0.4;
+      cursor: not-allowed;
+    }
+
+    #toolbar label {
+      font-size: 13px;
+      color: #aaa;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    #toolbar input[type="range"] {
+      width: 120px;
+      accent-color: #66ccff;
+    }
+
+    #toolbar .value-badge {
+      font-family: monospace;
+      color: #66ccff;
+      background: #66ccff22;
+      padding: 2px 8px;
+      border-radius: 4px;
+      font-size: 12px;
+      min-width: 20px;
+      text-align: center;
+    }
+
+    #history-label {
+      font-size: 12px;
+      color: #888;
+      margin-left: auto;
+      font-family: monospace;
+    }
+
+    #history {
+      display: flex;
+      gap: 8px;
+      padding: 10px 16px;
+      overflow-x: auto;
+      flex: 1;
+      align-items: center;
+    }
+
+    .history-item {
+      flex-shrink: 0;
+      width: 90px;
+      height: 80px;
+      background: #0d0d0d;
+      border: 1px solid #333;
+      border-radius: 8px;
+      overflow: hidden;
+      position: relative;
+      cursor: pointer;
+      transition: border-color 0.15s;
+    }
+
+    .history-item:hover {
+      border-color: #66ccff;
+    }
+
+    .history-item.selected {
+      border-color: #66ccff;
+      box-shadow: 0 0 10px #66ccff66;
+    }
+
+    .history-item canvas {
+      display: block;
+      width: 100%;
+      height: 100%;
+    }
+
+    .history-item .history-badge {
+      position: absolute;
+      bottom: 2px;
+      left: 2px;
+      right: 2px;
+      font-size: 9px;
+      color: #aaa;
+      text-align: center;
+      background: rgba(0,0,0,0.6);
+      border-radius: 4px;
+      padding: 1px 0;
+      font-family: monospace;
+    }
+
+    .history-empty {
+      color: #555;
+      font-size: 13px;
+      font-style: italic;
+    }
+  </style>
+</head>
+<body>
+  <div id="info">
+    🧬 genetic car browser · click a car to <span>select &amp; breed</span> · dimensions in mm
+  </div>
+  <div id="grid-container"></div>
+
+  <div id="bottom-panel">
+    <div id="toolbar">
+      <button id="reseed-btn">🔀 Re-seed All</button>
+      <button id="export-btn" class="primary" disabled>💾 Export STL (selected)</button>
+      <label>
+        Initial points:
+        <input type="range" id="points-slider" min="3" max="12" step="1" value="7">
+        <span class="value-badge" id="points-value">7</span>
+      </label>
+      <label>
+        Mutation:
+        <input type="range" id="mutation-slider" min="5" max="100" step="5" value="35">
+        <span class="value-badge" id="mutation-value">35%</span>
+      </label>
+      <span id="history-label">📜 Evolution history</span>
+    </div>
+    <div id="history"></div>
+  </div>
+
+  <script type="importmap">
+    {
+      "imports": {
+        "three": "https://unpkg.com/three@0.128.0/build/three.module.js",
+        "three/addons/": "https://unpkg.com/three@0.128.0/examples/jsm/"
+      }
+    }
+  </script>
+
+  <script type="module">
+    import * as THREE from 'three';
+
+    // --- configuration ---
+    const GRID_SIZE = 3;
+    const TOTAL_CELLS = GRID_SIZE * GRID_SIZE;
+    const BASE_LENGTH  = 140; // flat bottom segment length in mm
+    const HALF_BASE    = BASE_LENGTH / 2; // 70 mm (-70 to +70)
+    const LENGTH_RANGE = [140, 200];
+    const FIXED_WIDTH  = 80;
+    const HEIGHT_RANGE = [60, 140];
+    const MIN_POINTS   = 3;
+    const MAX_POINTS   = 20;
+
+    // --- global state ---
+    let profilePointCount = 7;  // initial points count (3..12)
+    let mutationRate = 0.35;    // 0.05..1.0
+    let selectedIndex = -1;     // index of selected cell, -1 = none
+    let history = [];           // array of genomes (selected over time)
+    let genomes = [];           // current genomes for each cell
+
+    // --- helpers ---
+    function randInt(min, max) {
+      return Math.floor(min + Math.random() * (max - min + 1));
+    }
+
+    function clampInt(v, min, max) {
+      return Math.min(max, Math.max(min, Math.round(v)));
+    }
+
+    function gauss() {
+      let u = 0, v = 0;
+      while (u === 0) u = Math.random();
+      while (v === 0) v = Math.random();
+      return Math.sqrt(-2.0 * Math.log(u)) * Math.cos(2.0 * Math.PI * v);
+    }
+
+    // --- 2D integer polygon geometry & simplicity checks ---
+    function cross2D(ax, ay, bx, by, cx, cy) {
+      return (bx - ax) * (cy - ay) - (by - ay) * (cx - ax);
+    }
+
+    function onSegment(ax, ay, bx, by, px, py) {
+      return (
+        px >= Math.min(ax, bx) && px <= Math.max(ax, bx) &&
+        py >= Math.min(ay, by) && py <= Math.max(ay, by)
+      );
+    }
+
+    // Returns true if closed segments AB and CD intersect anywhere
+    function segmentsIntersect(a, b, c, d) {
+      const d1 = cross2D(c.x, c.y, d.x, d.y, a.x, a.y);
+      const d2 = cross2D(c.x, c.y, d.x, d.y, b.x, b.y);
+      const d3 = cross2D(a.x, a.y, b.x, b.y, c.x, c.y);
+      const d4 = cross2D(a.x, a.y, b.x, b.y, d.x, d.y);
+
+      if (((d1 > 0 && d2 < 0) || (d1 < 0 && d2 > 0)) &&
+          ((d3 > 0 && d4 < 0) || (d3 < 0 && d4 > 0))) {
+        return true;
+      }
+      if (d1 === 0 && onSegment(c.x, c.y, d.x, d.y, a.x, a.y)) return true;
+      if (d2 === 0 && onSegment(c.x, c.y, d.x, d.y, b.x, b.y)) return true;
+      if (d3 === 0 && onSegment(a.x, a.y, b.x, b.y, c.x, c.y)) return true;
+      if (d4 === 0 && onSegment(a.x, a.y, b.x, b.y, d.x, d.y)) return true;
+      return false;
+    }
+
+    function polygonSignedArea(pts) {
+      let area2 = 0;
+      const n = pts.length;
+      for (let i = 0; i < n; i++) {
+        const p = pts[i];
+        const q = pts[(i + 1) % n];
+        area2 += p.x * q.y - q.x * p.y;
+      }
+      return area2 * 0.5;
+    }
+
+    // Verify that `pts` forms a non-degenerate, non-self-intersecting simple 2D polygon
+    function isSimplePolygon(pts) {
+      const n = pts.length;
+      if (n < 3) return false;
+
+      // Minimum area check so polygon doesn't collapse into a sliver
+      if (Math.abs(polygonSignedArea(pts)) < 1200) return false;
+
+      // Check edge lengths and sharp hairpin turns
+      for (let i = 0; i < n; i++) {
+        const prev = pts[(i - 1 + n) % n];
+        const curr = pts[i];
+        const next = pts[(i + 1) % n];
+
+        const ux = prev.x - curr.x;
+        const uy = prev.y - curr.y;
+        const vx = next.x - curr.x;
+        const vy = next.y - curr.y;
+        const lenU = Math.hypot(ux, uy);
+        const lenV = Math.hypot(vx, vy);
+
+        if (lenU < 8 || lenV < 8) return false;
+
+        // Avoid near-0° or near-180° collapsed turns
+        const cosTheta = (ux * vx + uy * vy) / (lenU * lenV);
+        if (cosTheta > 0.94 || cosTheta < -0.995) return false;
+      }
+
+      // Check all non-adjacent edge pairs for intersection
+      for (let i = 0; i < n; i++) {
+        const a = pts[i];
+        const b = pts[(i + 1) % n];
+        for (let j = i + 1; j < n; j++) {
+          // Skip adjacent edges (they share a vertex)
+          if (j === i || j === (i + 1) % n || i === (j + 1) % n) continue;
+          const c = pts[j];
+          const d = pts[(j + 1) % n];
+          if (segmentsIntersect(a, b, c, d)) return false;
+        }
+      }
+      return true;
+    }
+
+    // Enforce the flat 140 mm bottom on points 0 and 1, and compute integer bounds
+    function normalizePolygonBounds(pts) {
+      const out = pts.map((p, idx) => {
+        if (idx === 0) return { x: -HALF_BASE, y: 0 };
+        if (idx === 1) return { x:  HALF_BASE, y: 0 };
+        return {
+          x: clampInt(p.x, -110, 110),
+          y: clampInt(p.y, 10, HEIGHT_RANGE[1])
+        };
+      });
+
+      let minX = Infinity, maxX = -Infinity;
+      let minY = Infinity, maxY = -Infinity;
+      for (const p of out) {
+        if (p.x < minX) minX = p.x;
+        if (p.x > maxX) maxX = p.x;
+        if (p.y < minY) minY = p.y;
+        if (p.y > maxY) maxY = p.y;
+      }
+      return {
+        profile: out,
+        length: Math.max(BASE_LENGTH, Math.round(maxX - minX)),
+        height: Math.max(1, Math.round(maxY - minY))
+      };
+    }
+
+    // Generate a random non-self-intersecting 2D polygon with `n` integer (x, y) vertices
+    // where profile[0] = (-70, 0) and profile[1] = (70, 0) form the 140 mm flat bottom
+    function generateProfile(n) {
+      n = clampInt(n, MIN_POINTS, MAX_POINTS);
+      const upperCount = n - 2; // number of points above the 2-point flat base
+      const targetL = randInt(LENGTH_RANGE[0], LENGTH_RANGE[1]);
+      const targetH = randInt(HEIGHT_RANGE[0], HEIGHT_RANGE[1]);
+
+      for (let attempt = 0; attempt < 80; attempt++) {
+        const pts = [
+          { x: -HALF_BASE, y: 0 },
+          { x:  HALF_BASE, y: 0 }
+        ];
+
+        // Generate `upperCount` angles across the upper half-plane (0 to PI, right to left)
+        const sector = Math.PI / upperCount;
+        for (let i = 0; i < upperCount; i++) {
+          const baseAng = (i + 0.5) * sector;
+          const jitter = (Math.random() - 0.5) * sector * 0.65;
+          const ang = Math.min(Math.PI - 0.12, Math.max(0.12, baseAng + jitter));
+          const rFrac = 0.5 + Math.random() * 0.5;
+          const x = Math.round(Math.cos(ang) * (targetL * 0.5) * rFrac);
+          const y = clampInt(Math.sin(ang) * targetH * rFrac, 14, targetH);
+          pts.push({ x, y });
+        }
+
+        if (isSimplePolygon(pts)) {
+          return normalizePolygonBounds(pts);
+        }
+      }
+
+      // Fallback arch polygon above the 140 mm base
+      const fallback = [
+        { x: -HALF_BASE, y: 0 },
+        { x:  HALF_BASE, y: 0 }
+      ];
+      for (let i = 0; i < upperCount; i++) {
+        const ang = ((i + 0.5) / upperCount) * Math.PI;
+        fallback.push({
+          x: Math.round(Math.cos(ang) * HALF_BASE),
+          y: Math.max(20, Math.round(Math.sin(ang) * targetH))
+        });
+      }
+      return normalizePolygonBounds(fallback);
+    }
+
+    // Genome class representing a car with integer (x, y) profile points
+    class Genome {
+      constructor(data = null) {
+        this.width = FIXED_WIDTH;
+        if (data) {
+          this.profile = data.profile.map(p => ({
+            x: Math.round(p.x),
+            y: Math.round(p.y)
+          }));
+          const norm = normalizePolygonBounds(this.profile);
+          this.profile = norm.profile;
+          this.length = norm.length;
+          this.height = norm.height;
+        } else {
+          const generated = generateProfile(profilePointCount);
+          this.profile = generated.profile;
+          this.length = generated.length;
+          this.height = generated.height;
+        }
+      }
+
+      // Create a mutated child using coordinate mutation, vertex deletion, and vertex insertion
+      mutate(rate = mutationRate) {
+        const child = new Genome(this);
+
+        let pts = child.profile.map(p => ({ x: p.x, y: p.y }));
+        // Always lock the first two points as the 140 mm flat bottom at y = 0
+        pts[0] = { x: -HALF_BASE, y: 0 };
+        pts[1] = { x:  HALF_BASE, y: 0 };
+
+        // 1. Deletion: occasionally remove an upper vertex (index >= 2) if polygon stays valid
+        if (pts.length > MIN_POINTS && Math.random() < rate * 0.55) {
+          const removable = [];
+          for (let i = 2; i < pts.length; i++) removable.push(i);
+          removable.sort(() => Math.random() - 0.5);
+          for (const idx of removable) {
+            const candidate = pts.filter((_, i) => i !== idx);
+            if (isSimplePolygon(candidate)) {
+              pts = candidate;
+              break;
+            }
+          }
+        }
+
+        // 2. Insertion: occasionally split a non-bottom edge (index >= 1) and offset the new integer vertex
+        if (pts.length < MAX_POINTS && Math.random() < rate * 0.65) {
+          const edges = [];
+          for (let i = 1; i < pts.length; i++) edges.push(i); // skip edge 0 (the flat bottom)
+          edges.sort(() => Math.random() - 0.5);
+          let inserted = false;
+          for (const idx of edges) {
+            if (inserted) break;
+            const a = pts[idx];
+            const b = pts[(idx + 1) % pts.length];
+            const mx = (a.x + b.x) * 0.5;
+            const my = (a.y + b.y) * 0.5;
+            const ex = b.x - a.x;
+            const ey = b.y - a.y;
+            const edgeLen = Math.hypot(ex, ey);
+            if (edgeLen < 16) continue;
+
+            // Normal vector to edge
+            const nx = -ey / edgeLen;
+            const ny =  ex / edgeLen;
+
+            for (let tryNum = 0; tryNum < 8; tryNum++) {
+              const offset = (Math.random() - 0.5) * Math.min(50, edgeLen * 0.8) * (0.4 + rate);
+              const along = (Math.random() - 0.5) * edgeLen * 0.25;
+              const newPt = {
+                x: clampInt(mx + nx * offset + (ex / edgeLen) * along, -110, 110),
+                y: clampInt(my + ny * offset + (ey / edgeLen) * along, 10, HEIGHT_RANGE[1])
+              };
+              const candidate = pts.slice();
+              candidate.splice(idx + 1, 0, newPt);
+              if (isSimplePolygon(candidate)) {
+                pts = candidate;
+                inserted = true;
+                break;
+              }
+            }
+          }
+        }
+
+        // 3. Coordinate modification: nudge upper integer (x, y) pairs (index >= 2) while preserving non-self-intersection
+        const stepX = Math.max(3, Math.round(28 * rate));
+        const stepY = Math.max(3, Math.round(24 * rate));
+        for (let i = 2; i < pts.length; i++) {
+          if (Math.random() < 0.75) {
+            for (let tryNum = 0; tryNum < 6; tryNum++) {
+              const dx = Math.round(gauss() * stepX);
+              const dy = Math.round(gauss() * stepY);
+              if (dx === 0 && dy === 0) continue;
+              const prevPt = pts[i];
+              pts[i] = {
+                x: clampInt(prevPt.x + dx, -110, 110),
+                y: clampInt(prevPt.y + dy, 10, HEIGHT_RANGE[1])
+              };
+              if (isSimplePolygon(pts)) {
+                break;
+              } else {
+                pts[i] = prevPt;
+              }
+            }
+          }
+        }
+
+        const norm = normalizePolygonBounds(pts);
+        child.profile = norm.profile;
+        child.length = norm.length;
+        child.height = norm.height;
+        return child;
+      }
+    }
+
+    // --- geometry builder: extrude the non-self-intersecting 2D polygon along width ---
+    function buildCarGeometry(genome) {
+      const { width: W, profile } = genome;
+      const n = profile.length;
+      if (n < 3) return new THREE.BufferGeometry();
+
+      // Build THREE.Shape from the integer 2D polygon so Three.js ear-clipping
+      // properly triangulates concave & convex profiles without any stray faces
+      const shape = new THREE.Shape();
+      shape.moveTo(profile[0].x, profile[0].y);
+      for (let i = 1; i < n; i++) {
+        shape.lineTo(profile[i].x, profile[i].y);
+      }
+      shape.closePath();
+
+      const extrudeSettings = {
+        depth: W,
+        bevelEnabled: false,
+        steps: 1
+      };
+
+      const geometry = new THREE.ExtrudeGeometry(shape, extrudeSettings);
+      // Center extrusion along Z axis (-W/2 to +W/2)
+      geometry.translate(0, 0, -W / 2);
+      geometry.computeVertexNormals();
+
+      return geometry;
+    }
+
+    // --- scene setup for each cell ---
+    const container = document.getElementById('grid-container');
+    const cells = [];
+    const historyContainer = document.getElementById('history');
+    const exportBtn = document.getElementById('export-btn');
+    const reseedBtn = document.getElementById('reseed-btn');
+    const pointsSlider = document.getElementById('points-slider');
+    const pointsValue = document.getElementById('points-value');
+    const mutationSlider = document.getElementById('mutation-slider');
+    const mutationValue = document.getElementById('mutation-value');
+    const historyLabel = document.getElementById('history-label');
+
+    // initialize genomes
+    function initGenomes() {
+      genomes = [];
+      for (let i = 0; i < TOTAL_CELLS; i++) {
+        genomes.push(new Genome());
+      }
+    }
+    initGenomes();
+
+    // update all cells with genomes
+    function updateAllCells() {
+      cells.forEach((cell, i) => {
+        cell.updateCar(genomes[i]);
+      });
+    }
+
+    // create a renderer/scene/camera for each cell
+    function createCellView(cellElement, index) {
+      const scene = new THREE.Scene();
+      scene.background = new THREE.Color(0x0d0d0d);
+      
+      const width = cellElement.clientWidth || 300;
+      const height = cellElement.clientHeight || 300;
+      
+      const camera = new THREE.PerspectiveCamera(35, width / height, 0.1, 2000);
+      camera.position.set(200, 120, 280);
+      camera.lookAt(0, 50, 0);
+      
+      const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false });
+      renderer.setSize(width, height);
+      renderer.setPixelRatio(window.devicePixelRatio);
+      cellElement.appendChild(renderer.domElement);
+      
+      // lighting
+      scene.add(new THREE.AmbientLight(0x404060));
+      
+      const dirLight1 = new THREE.DirectionalLight(0xffeedd, 1.1);
+      dirLight1.position.set(100, 200, 150);
+      scene.add(dirLight1);
+      
+      const dirLight2 = new THREE.DirectionalLight(0x99aaff, 0.7);
+      dirLight2.position.set(-150, 80, -200);
+      scene.add(dirLight2);
+      
+      const fillLight = new THREE.PointLight(0xffaa88, 0.5);
+      fillLight.position.set(0, 80, 150);
+      scene.add(fillLight);
+      
+      const gridHelper = new THREE.GridHelper(300, 10, 0x333333, 0x222222);
+      gridHelper.position.y = -2;
+      scene.add(gridHelper);
+      
+      let carMesh = null;
+      
+      const badge = document.createElement('div');
+      badge.className = 'badge';
+      cellElement.appendChild(badge);
+      
+      function updateCar(genome) {
+        if (carMesh) {
+          scene.remove(carMesh);
+          carMesh.geometry.dispose();
+          carMesh.material.dispose();
+        }
+        
+        const geometry = buildCarGeometry(genome);
+        
+        const hue = Math.random() * 0.2 + 0.05;
+        const material = new THREE.MeshStandardMaterial({
+          color: new THREE.Color().setHSL(hue, 0.8, 0.55),
+          flatShading: true,
+          roughness: 0.45,
+          metalness: 0.3,
+          emissive: new THREE.Color(0x221100),
+          emissiveIntensity: 0.15,
+          side: THREE.DoubleSide
+        });
+        
+        const prevRotationY = carMesh ? carMesh.rotation.y : 0.5;
+        carMesh = new THREE.Mesh(geometry, material);
+        carMesh.position.y = 10;
+        carMesh.rotation.y = prevRotationY;
+        scene.add(carMesh);
+        if (cellRecord) cellRecord.carMesh = carMesh;
+        
+        badge.textContent = `${genome.length.toFixed(0)} × ${genome.width.toFixed(0)} × ${genome.height.toFixed(0)} mm · ${genome.profile.length} pts`;
+        
+        cellElement._genome = genome;
+      }
+      
+      const cellRecord = {
+        element: cellElement,
+        scene,
+        camera,
+        renderer,
+        carMesh: null,
+        updateCar,
+        index
+      };
+      
+      // initial car
+      updateCar(genomes[index]);
+      
+      cells.push(cellRecord);
+      
+      // click handler
+      cellElement.addEventListener('click', (e) => {
+        e.stopPropagation();
+        selectCell(index);
+      });
+      
+      // resize observer
+      const resizeObserver = new ResizeObserver(() => {
+        const w = cellElement.clientWidth;
+        const h = cellElement.clientHeight;
+        if (w === 0 || h === 0) return;
+        renderer.setSize(w, h);
+        camera.aspect = w / h;
+        camera.updateProjectionMatrix();
+      });
+      resizeObserver.observe(cellElement);
+      
+      return { scene, camera, renderer, carMesh };
+    }
+
+    // build grid cells
+    for (let i = 0; i < TOTAL_CELLS; i++) {
+      const cellDiv = document.createElement('div');
+      cellDiv.className = 'cell';
+      container.appendChild(cellDiv);
+      createCellView(cellDiv, i);
+    }
+
+    // --- selection & breeding logic ---
+    function selectCell(index) {
+      selectedIndex = index;
+      
+      // update highlight
+      cells.forEach((cell, i) => {
+        cell.element.classList.toggle('selected', i === index);
+      });
+      
+      // enable export button
+      exportBtn.disabled = false;
+      
+      // add current genome to history (if not already the last one)
+      const selectedGenome = genomes[index];
+      // We want to record the genome state when selected.
+      // To avoid duplicates if clicking same cell multiple times, we can check if
+      // the last history item is the same genome (by reference or content).
+      // For simplicity, we'll just add it if it's a new object.
+      // But since genomes[index] might be the same object as before, we can store a clone.
+      // Actually we want to capture the current genome.
+      // Let's store a copy to avoid later mutations affecting history.
+      const historyEntry = {
+        genome: new Genome(selectedGenome), // deep copy
+        sourceIndex: index,
+        timestamp: Date.now()
+      };
+      
+      // Avoid exact duplicates (same dimensions and profile length? not robust, but fine)
+      const last = history[history.length - 1];
+      const isDuplicate = last && 
+        Math.abs(last.genome.length - historyEntry.genome.length) < 0.01 &&
+        Math.abs(last.genome.width - historyEntry.genome.width) < 0.01 &&
+        Math.abs(last.genome.height - historyEntry.genome.height) < 0.01 &&
+        last.genome.profile.length === historyEntry.genome.profile.length;
+      
+      if (!isDuplicate) {
+        history.push(historyEntry);
+      }
+      
+      // update history display
+      renderHistory();
+      
+      // breed variations in other cells
+      for (let i = 0; i < cells.length; i++) {
+        if (i === index) continue;
+        const mutated = selectedGenome.mutate(mutationRate);
+        genomes[i] = mutated;
+        cells[i].updateCar(mutated);
+      }
+      
+      // ensure the selected cell's genome remains intact
+      genomes[index] = selectedGenome;
+    }
+
+    // --- history rendering ---
+    let sharedPreviewRenderer = null;
+
+    function getPreviewRenderer() {
+      if (!sharedPreviewRenderer) {
+        sharedPreviewRenderer = new THREE.WebGLRenderer({ antialias: true, alpha: false, preserveDrawingBuffer: true });
+        sharedPreviewRenderer.setSize(90, 80, false);
+        sharedPreviewRenderer.setPixelRatio(1);
+      }
+      return sharedPreviewRenderer;
+    }
+
+    function renderHistory() {
+      historyContainer.innerHTML = '';
+      
+      if (history.length === 0) {
+        const empty = document.createElement('span');
+        empty.className = 'history-empty';
+        empty.textContent = 'Click a car to start the evolution history';
+        historyContainer.appendChild(empty);
+        historyLabel.textContent = '📜 Evolution history';
+        return;
+      }
+      
+      history.forEach((entry, idx) => {
+        const item = document.createElement('div');
+        item.className = 'history-item';
+        if (idx === history.length - 1) item.classList.add('selected');
+        
+        // mini canvas preview (2D copy from shared WebGL renderer to avoid WebGL context exhaustion)
+        const canvas = document.createElement('canvas');
+        canvas.width = 90;
+        canvas.height = 80;
+        item.appendChild(canvas);
+        
+        const badge = document.createElement('div');
+        badge.className = 'history-badge';
+        badge.textContent = `#${idx+1}`;
+        item.appendChild(badge);
+        
+        // render mini preview
+        try {
+          const previewRenderer = getPreviewRenderer();
+          
+          const previewScene = new THREE.Scene();
+          previewScene.background = new THREE.Color(0x0d0d0d);
+          
+          const previewCamera = new THREE.PerspectiveCamera(35, 90/80, 0.1, 2000);
+          previewCamera.position.set(200, 120, 280);
+          previewCamera.lookAt(0, 50, 0);
+          
+          previewScene.add(new THREE.AmbientLight(0x404060));
+          const dl1 = new THREE.DirectionalLight(0xffeedd, 1.1);
+          dl1.position.set(100, 200, 150);
+          previewScene.add(dl1);
+          const dl2 = new THREE.DirectionalLight(0x99aaff, 0.7);
+          dl2.position.set(-150, 80, -200);
+          previewScene.add(dl2);
+          
+          const geom = buildCarGeometry(entry.genome);
+          const mat = new THREE.MeshStandardMaterial({
+            color: new THREE.Color().setHSL(0.1, 0.8, 0.55),
+            flatShading: true,
+            roughness: 0.45,
+            metalness: 0.3,
+            side: THREE.DoubleSide
+          });
+          const mesh = new THREE.Mesh(geom, mat);
+          mesh.position.y = 10;
+          mesh.rotation.y = 0.6;
+          previewScene.add(mesh);
+          
+          previewRenderer.render(previewScene, previewCamera);
+          const ctx2d = canvas.getContext('2d');
+          ctx2d.drawImage(previewRenderer.domElement, 0, 0);
+          
+          geom.dispose();
+          mat.dispose();
+        } catch (e) {
+          // fallback: just a placeholder
+          canvas.style.background = '#222';
+        }
+        
+        // Clicking a history item loads that genome into the selected cell (or cell 4) and breeds from it
+        item.addEventListener('click', () => {
+          const targetIdx = selectedIndex >= 0 ? selectedIndex : 4;
+          genomes[targetIdx] = new Genome(entry.genome);
+          cells[targetIdx].updateCar(genomes[targetIdx]);
+          selectCell(targetIdx);
+        });
+        
+        historyContainer.appendChild(item);
+      });
+      
+      historyLabel.textContent = `📜 Evolution history (${history.length})`;
+      
+      // scroll to end
+      historyContainer.scrollLeft = historyContainer.scrollWidth;
+    }
+
+    // --- STL export ---
+    function geometryToASCIISTL(geometry, name = 'genetic_car') {
+      const nonIndexed = geometry.index ? geometry.toNonIndexed() : geometry.clone();
+      nonIndexed.computeVertexNormals();
+      const pos = nonIndexed.getAttribute('position');
+      const lines = [`solid ${name}`];
+      const vA = new THREE.Vector3();
+      const vB = new THREE.Vector3();
+      const vC = new THREE.Vector3();
+      const cb = new THREE.Vector3();
+      const ab = new THREE.Vector3();
+
+      for (let i = 0; i < pos.count; i += 3) {
+        vA.fromBufferAttribute(pos, i);
+        vB.fromBufferAttribute(pos, i + 1);
+        vC.fromBufferAttribute(pos, i + 2);
+        cb.subVectors(vC, vB);
+        ab.subVectors(vA, vB);
+        cb.cross(ab).normalize();
+
+        lines.push(`  facet normal ${cb.x.toExponential(6)} ${cb.y.toExponential(6)} ${cb.z.toExponential(6)}`);
+        lines.push('    outer loop');
+        lines.push(`      vertex ${vA.x.toExponential(6)} ${vA.y.toExponential(6)} ${vA.z.toExponential(6)}`);
+        lines.push(`      vertex ${vB.x.toExponential(6)} ${vB.y.toExponential(6)} ${vB.z.toExponential(6)}`);
+        lines.push(`      vertex ${vC.x.toExponential(6)} ${vC.y.toExponential(6)} ${vC.z.toExponential(6)}`);
+        lines.push('    endloop');
+        lines.push('  endfacet');
+      }
+      lines.push(`endsolid ${name}`);
+      nonIndexed.dispose();
+      return lines.join('\n');
+    }
+
+    exportBtn.addEventListener('click', () => {
+      if (selectedIndex < 0 || !genomes[selectedIndex]) return;
+      const g = genomes[selectedIndex];
+      const geom = buildCarGeometry(g);
+      const stl = geometryToASCIISTL(geom, 'genetic_car');
+      geom.dispose();
+
+      const blob = new Blob([stl], { type: 'model/stl' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `car_${g.length.toFixed(0)}x${g.width.toFixed(0)}x${g.height.toFixed(0)}mm_${g.profile.length}pts.stl`;
+      a.click();
+      URL.revokeObjectURL(url);
+    });
+
+    // --- toolbar controls ---
+    reseedBtn.addEventListener('click', () => {
+      selectedIndex = -1;
+      exportBtn.disabled = true;
+      cells.forEach(c => c.element.classList.remove('selected'));
+      initGenomes();
+      updateAllCells();
+    });
+
+    pointsSlider.addEventListener('input', () => {
+      profilePointCount = parseInt(pointsSlider.value, 10);
+      pointsValue.textContent = String(profilePointCount);
+      selectedIndex = -1;
+      exportBtn.disabled = true;
+      cells.forEach(c => c.element.classList.remove('selected'));
+      initGenomes();
+      updateAllCells();
+    });
+
+    mutationSlider.addEventListener('input', () => {
+      const pct = parseInt(mutationSlider.value, 10);
+      mutationRate = pct / 100;
+      mutationValue.textContent = `${pct}%`;
+    });
+
+    // initialize history UI
+    renderHistory();
+
+    // --- animation loop ---
+    function animate() {
+      requestAnimationFrame(animate);
+
+      cells.forEach((cell) => {
+        if (cell.carMesh) {
+          cell.carMesh.rotation.y += 0.008;
+        }
+        cell.renderer.render(cell.scene, cell.camera);
+      });
+    }
+
+    animate();
+  </script>
+</body>
+</html>

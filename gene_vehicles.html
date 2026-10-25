@@ -140,6 +140,16 @@
       background: #66ccff44;
     }
 
+    #toolbar button.active {
+      background: #ffaa6622;
+      border-color: #ffaa6688;
+      color: #ffcc99;
+    }
+
+    #toolbar button.active:hover {
+      background: #ffaa6644;
+    }
+
     #toolbar button:disabled {
       opacity: 0.4;
       cursor: not-allowed;
@@ -373,6 +383,7 @@
   <div id="bottom-panel">
     <div id="toolbar">
       <button id="reseed-btn">🔀 Re-seed All</button>
+      <button id="pause-btn">⏸️ Pause Rotation</button>
       <button id="export-btn" class="primary" disabled>💾 Export STL (selected)</button>
       <button id="net-btn" class="primary" disabled>📐 View / Export 2D Net</button>
       <label>
@@ -455,6 +466,8 @@
     let selectedIndex = -1;     // index of selected cell, -1 = none
     let history = [];           // array of genomes (selected over time)
     let genomes = [];           // current genomes for each cell
+    let isRotationPaused = false;
+    let currentRotationY = 0.5;
 
     // --- helpers ---
     function randInt(min, max) {
@@ -836,6 +849,7 @@
     const exportBtn = document.getElementById('export-btn');
     const netBtn = document.getElementById('net-btn');
     const reseedBtn = document.getElementById('reseed-btn');
+    const pauseBtn = document.getElementById('pause-btn');
     const pointsSlider = document.getElementById('points-slider');
     const pointsValue = document.getElementById('points-value');
     const mutationSlider = document.getElementById('mutation-slider');
@@ -928,11 +942,10 @@
           side: THREE.DoubleSide
         });
         
-        const prevRotationY = carMesh ? carMesh.rotation.y : 0.5;
         carMesh = new THREE.Mesh(geometry, material);
         carMesh.add(createPreviewWheels(genome.width));
         carMesh.position.y = 18;
-        carMesh.rotation.y = prevRotationY;
+        carMesh.rotation.y = currentRotationY;
         scene.add(carMesh);
         if (cellRecord) cellRecord.carMesh = carMesh;
         
@@ -1645,6 +1658,12 @@
     });
 
     // --- toolbar controls ---
+    pauseBtn.addEventListener('click', () => {
+      isRotationPaused = !isRotationPaused;
+      pauseBtn.classList.toggle('active', isRotationPaused);
+      pauseBtn.textContent = isRotationPaused ? '▶️ Resume Rotation' : '⏸️ Pause Rotation';
+    });
+
     reseedBtn.addEventListener('click', () => {
       selectedIndex = -1;
       exportBtn.disabled = true;
@@ -1678,9 +1697,13 @@
     function animate() {
       requestAnimationFrame(animate);
 
+      if (!isRotationPaused) {
+        currentRotationY += 0.008;
+      }
+
       cells.forEach((cell) => {
         if (cell.carMesh) {
-          cell.carMesh.rotation.y += 0.008;
+          cell.carMesh.rotation.y = currentRotationY;
         }
         cell.renderer.render(cell.scene, cell.camera);
       });

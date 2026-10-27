@@ -483,6 +483,11 @@
     const AXLE_HOLE_RADIUS   = AXLE_HOLE_DIAMETER / 2; // 5.5 mm
     const AXLE_Y             = 10.5; // centered 10.5 mm up on the Y axis
     const AXLE_X_POSITIONS   = [-50, 50];
+    const WHEEL_DIAMETER     = 40;
+    const WHEEL_RADIUS       = WHEEL_DIAMETER / 2; // 20 mm
+    const WHEEL_MOUNT_HOLE_DIAMETER = 4.7;
+    const WHEEL_MOUNT_HOLE_RADIUS   = WHEEL_MOUNT_HOLE_DIAMETER / 2; // 2.35 mm
+    const WHEEL_DISC_COUNT   = 8; // glued in pairs to create 4 wheels
 
     // --- global state ---
     let profilePointCount = 7;  // initial points count (3..12)
@@ -1357,6 +1362,13 @@
         trackPoint(cx + AXLE_HOLE_RADIUS, cy + AXLE_HOLE_RADIUS);
       }
 
+      function addWheelDisc(cx, cy) {
+        cutCircles.push({ cx, cy, r: WHEEL_RADIUS });
+        cutCircles.push({ cx, cy, r: WHEEL_MOUNT_HOLE_RADIUS });
+        trackPoint(cx - WHEEL_RADIUS, cy - WHEEL_RADIUS);
+        trackPoint(cx + WHEEL_RADIUS, cy + WHEEL_RADIUS);
+      }
+
       const tabDepth = 10; // 10 mm glue tab depth
       const tabBevel = 7;  // 7 mm bevel inset
 
@@ -1460,6 +1472,20 @@
           trackPoint(endX + tabDepth, W);
         } else {
           cutPaths.push(`M ${totalPerimeter.toFixed(2)} 0 L ${totalPerimeter.toFixed(2)} ${W}`);
+        }
+
+        // Eight 40mm wheel discs with 4.7mm center axle mount holes (4 above strip, 4 below strip)
+        const maxPolyX = Math.max(...topPolyPts.map(p => p.x));
+        const wheelGap = 6;
+        const wheelStep = WHEEL_DIAMETER + wheelGap;
+        const wheelStartX = maxPolyX + 10 + WHEEL_RADIUS;
+        const topWheelY = -(includeTabs ? tabDepth : 0) - wheelGap - WHEEL_RADIUS;
+        const botWheelY = W + (includeTabs ? tabDepth : 0) + wheelGap + WHEEL_RADIUS;
+        const wheelsPerRow = WHEEL_DISC_COUNT / 2;
+        for (let i = 0; i < wheelsPerRow; i++) {
+          const cx = wheelStartX + i * wheelStep;
+          addWheelDisc(cx, topWheelY);
+          addWheelDisc(cx, botWheelY);
         }
 
         // Labels & matching edge numbers
@@ -1593,6 +1619,19 @@
         for (const ax of AXLE_X_POSITIONS) {
           addAxleCircle(ax + leftOffsetX, rowY - AXLE_Y);
           addAxleCircle(rightOffsetX - ax, rowY - AXLE_Y);
+        }
+
+        // Eight 40mm wheel discs with 4.7mm center axle mount holes (4x2 grid beside the side panels)
+        const wheelGap = 6;
+        const wheelStep = WHEEL_DIAMETER + wheelGap;
+        const wheelStartX = (2 * polyWidth + 20) + 16 + WHEEL_RADIUS;
+        const wheelRow0Y = W + (includeTabs ? tabDepth : 0) + 18 + WHEEL_RADIUS;
+        const wheelRow1Y = wheelRow0Y + wheelStep;
+        const wheelsPerRow = WHEEL_DISC_COUNT / 2;
+        for (let i = 0; i < wheelsPerRow; i++) {
+          const cx = wheelStartX + i * wheelStep;
+          addWheelDisc(cx, wheelRow0Y);
+          addWheelDisc(cx, wheelRow1Y);
         }
 
         if (includeLabels) {

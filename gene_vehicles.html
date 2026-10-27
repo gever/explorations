@@ -308,6 +308,22 @@
       font-size: 13px;
     }
 
+    .net-header input[type="text"] {
+      background: #2a2a2a;
+      color: #eee;
+      border: 1px solid #444;
+      border-radius: 6px;
+      padding: 4px 10px;
+      font-size: 13px;
+      font-family: monospace;
+      width: 190px;
+    }
+
+    .net-header input[type="text"]:focus {
+      outline: none;
+      border-color: #66ccff;
+    }
+
     .net-header button {
       background: #2a2a2a;
       color: #eee;
@@ -376,7 +392,7 @@
 </head>
 <body>
   <div id="info">
-    🧬 genetic car browser · click a car to <span>select &amp; breed</span> · dimensions in mm
+    🧬 genetic car browser · click a car to <span>select &amp; breed</span> · <span>spacebar</span> toggles wheel transparency · dimensions in mm
   </div>
   <div id="grid-container"></div>
 
@@ -420,15 +436,19 @@
           <input type="checkbox" id="net-labels-chk" checked>
           Labels &amp; edge numbers
         </label>
+        <label>
+          File name:
+          <input type="text" id="net-filename-input" spellcheck="false" placeholder="car_name">
+        </label>
         <button id="net-download-btn" class="primary">💾 Download SVG (1:1 mm)</button>
         <button id="net-close-btn">✕ Close</button>
       </div>
       <div id="net-viewport"></div>
       <div class="net-footer">
         <span>
-          <span class="legend-dot" style="background:#ff4444;"></span>Solid Red = Cut
+          <span class="legend-dot" style="background:#FF0000;"></span>Solid Red (#FF0000) = Cut
           &nbsp;&nbsp;
-          <span class="legend-dot" style="background:#33aaff;"></span>Dashed Blue = Score / Fold
+          <span class="legend-dot" style="background:#0000FF;"></span>Solid Blue (#0000FF) = Score / Fold
           &nbsp;&nbsp;
           <span class="legend-dot" style="background:#ffaa66;"></span>Amber = Etch / Labels
         </span>
@@ -459,6 +479,10 @@
     const HEIGHT_RANGE = [60, 140];
     const MIN_POINTS   = 3;
     const MAX_POINTS   = 20;
+    const AXLE_HOLE_DIAMETER = 11;
+    const AXLE_HOLE_RADIUS   = AXLE_HOLE_DIAMETER / 2; // 5.5 mm
+    const AXLE_Y             = 10.5; // centered 10.5 mm up on the Y axis
+    const AXLE_X_POSITIONS   = [-50, 50];
 
     // --- global state ---
     let profilePointCount = 7;  // initial points count (3..12)
@@ -467,6 +491,7 @@
     let history = [];           // array of genomes (selected over time)
     let genomes = [];           // current genomes for each cell
     let isRotationPaused = false;
+    let areWheelsTransparent = false;
     let currentRotationY = 0.5;
 
     // --- helpers ---
@@ -770,10 +795,18 @@
       }
       shape.closePath();
 
+      // Add 11 mm circular axle holes centered at (-50, 10.5) and (50, 10.5)
+      for (const ax of AXLE_X_POSITIONS) {
+        const holePath = new THREE.Path();
+        holePath.absarc(ax, AXLE_Y, AXLE_HOLE_RADIUS, 0, Math.PI * 2, true);
+        shape.holes.push(holePath);
+      }
+
       const extrudeSettings = {
         depth: W,
         bevelEnabled: false,
-        steps: 1
+        steps: 1,
+        curveSegments: 24
       };
 
       const geometry = new THREE.ExtrudeGeometry(shape, extrudeSettings);
@@ -816,10 +849,22 @@
           flatShading: true,
           roughness: 0.7,
           metalness: 0.1,
-          side: THREE.DoubleSide
+          side: THREE.DoubleSide,
+          transparent: areWheelsTransparent,
+          opacity: areWheelsTransparent ? 0.25 : 1.0,
+          depthWrite: !areWheelsTransparent
         });
       }
       return { geometry: sharedWheelGeometry, material: sharedWheelMaterial };
+    }
+
+    function toggleWheelTransparency() {
+      areWheelsTransparent = !areWheelsTransparent;
+      const { material } = getWheelAssets();
+      material.transparent = areWheelsTransparent;
+      material.opacity = areWheelsTransparent ? 0.25 : 1.0;
+      material.depthWrite = !areWheelsTransparent;
+      material.needsUpdate = true;
     }
 
     function createPreviewWheels(bodyWidth = FIXED_WIDTH) {
@@ -860,6 +905,7 @@
     const netLayoutSelect = document.getElementById('net-layout-select');
     const netTabsChk = document.getElementById('net-tabs-chk');
     const netLabelsChk = document.getElementById('net-labels-chk');
+    const netFilenameInput = document.getElementById('net-filename-input');
     const netDownloadBtn = document.getElementById('net-download-btn');
     const netCloseBtn = document.getElementById('net-close-btn');
     const netDimensionsInfo = document.getElementById('net-dimensions-info');
@@ -1292,6 +1338,7 @@
       }
 
       const cutPaths = [];
+      const cutCircles = [];
       const foldLines = [];
       const labelElements = [];
 
@@ -1302,6 +1349,12 @@
         if (x > maxX) maxX = x;
         if (y < minY) minY = y;
         if (y > maxY) maxY = y;
+      }
+
+      function addAxleCircle(cx, cy) {
+        cutCircles.push({ cx, cy, r: AXLE_HOLE_RADIUS });
+        trackPoint(cx - AXLE_HOLE_RADIUS, cy - AXLE_HOLE_RADIUS);
+        trackPoint(cx + AXLE_HOLE_RADIUS, cy + AXLE_HOLE_RADIUS);
       }
 
       const tabDepth = 10; // 10 mm glue tab depth
@@ -1357,6 +1410,12 @@
           botD += ` L ${p.x.toFixed(2)} ${p.y.toFixed(2)}`;
         }
         cutPaths.push(botD);
+
+        // Axle holes on Top and Bottom Side Polygons (centered at AXLE_Y = 10.5 mm up from base)
+        for (const ax of AXLE_X_POSITIONS) {
+          addAxleCircle(ax + HALF_BASE, -AXLE_Y);
+          addAxleCircle(ax + HALF_BASE, W + AXLE_Y);
+        }
 
         // Strip panels 1 .. n-1 top and bottom edges (with optional glue tabs)
         for (let i = 1; i < n; i++) {
@@ -1530,6 +1589,12 @@
           'M ' + rightPts.map(p => `${p.x.toFixed(2)} ${p.y.toFixed(2)}`).join(' L ') + ' Z'
         );
 
+        // Axle holes on Left and Right Side Polygons (centered at AXLE_Y = 10.5 mm up from base)
+        for (const ax of AXLE_X_POSITIONS) {
+          addAxleCircle(ax + leftOffsetX, rowY - AXLE_Y);
+          addAxleCircle(rightOffsetX - ax, rowY - AXLE_Y);
+        }
+
         if (includeLabels) {
           labelElements.push({
             x: edges[0].length / 2,
@@ -1570,7 +1635,7 @@
       const svgLines = [
         `<?xml version="1.0" encoding="UTF-8"?>`,
         `<svg xmlns="http://www.w3.org/2000/svg" width="${vw.toFixed(2)}mm" height="${vh.toFixed(2)}mm" viewBox="${vx.toFixed(2)} ${vy.toFixed(2)} ${vw.toFixed(2)} ${vh.toFixed(2)}">`,
-        `  <g id="score-fold-lines" fill="none" stroke="#33aaff" stroke-width="0.45" stroke-dasharray="3,2">`
+        `  <g id="score-fold-lines" fill="none" stroke="#0000FF" stroke-width="0.45">`
       ];
 
       for (const fl of foldLines) {
@@ -1578,9 +1643,12 @@
       }
       svgLines.push(`  </g>`);
 
-      svgLines.push(`  <g id="cut-lines" fill="none" stroke="#ff3333" stroke-width="0.6" stroke-linecap="round" stroke-linejoin="round">`);
+      svgLines.push(`  <g id="cut-lines" fill="none" stroke="#FF0000" stroke-width="0.6" stroke-linecap="round" stroke-linejoin="round">`);
       for (const d of cutPaths) {
         svgLines.push(`    <path d="${d}" />`);
+      }
+      for (const c of cutCircles) {
+        svgLines.push(`    <circle cx="${c.cx.toFixed(2)}" cy="${c.cy.toFixed(2)}" r="${c.r.toFixed(2)}" />`);
       }
       svgLines.push(`  </g>`);
 
@@ -1603,9 +1671,18 @@
       };
     }
 
+    function syncFilenameFromInput(genome) {
+      const cleaned = netFilenameInput.value.trim().replace(/\.(svg|stl)$/i, '');
+      if (cleaned) {
+        genome.exportName = cleaned;
+      }
+      return getGenomeExportName(genome);
+    }
+
     function updateNetModalPreview() {
       if (selectedIndex < 0 || !genomes[selectedIndex]) return;
       const g = genomes[selectedIndex];
+      syncFilenameFromInput(g);
       const result = buildCarNetSVG(g, {
         layout: netLayoutSelect.value,
         includeTabs: netTabsChk.checked,
@@ -1618,6 +1695,8 @@
 
     netBtn.addEventListener('click', () => {
       if (selectedIndex < 0 || !genomes[selectedIndex]) return;
+      const g = genomes[selectedIndex];
+      netFilenameInput.value = getGenomeExportName(g);
       updateNetModalPreview();
       netModal.classList.add('open');
     });
@@ -1625,10 +1704,13 @@
     netLayoutSelect.addEventListener('change', updateNetModalPreview);
     netTabsChk.addEventListener('change', updateNetModalPreview);
     netLabelsChk.addEventListener('change', updateNetModalPreview);
+    netFilenameInput.addEventListener('input', updateNetModalPreview);
 
     netDownloadBtn.addEventListener('click', () => {
       if (selectedIndex < 0 || !genomes[selectedIndex]) return;
       const g = genomes[selectedIndex];
+      const finalName = syncFilenameFromInput(g);
+      netFilenameInput.value = finalName;
       const result = buildCarNetSVG(g, {
         layout: netLayoutSelect.value,
         includeTabs: netTabsChk.checked,
@@ -1654,6 +1736,12 @@
     window.addEventListener('keydown', (e) => {
       if (e.key === 'Escape' && netModal.classList.contains('open')) {
         netModal.classList.remove('open');
+        return;
+      }
+      if ((e.code === 'Space' || e.key === ' ') && !netModal.classList.contains('open')) {
+        if (e.repeat) return;
+        e.preventDefault();
+        toggleWheelTransparency();
       }
     });
 

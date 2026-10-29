@@ -481,6 +481,7 @@
     const MAX_POINTS   = 20;
     const AXLE_HOLE_DIAMETER = 11;
     const AXLE_HOLE_RADIUS   = AXLE_HOLE_DIAMETER / 2; // 5.5 mm
+    const AXLE_HOLE_SEGMENTS = 12; // 12-sided polygon hole for clean triangulation
     const AXLE_Y             = 10.5; // centered 10.5 mm up on the Y axis
     const AXLE_X_POSITIONS   = [-50, 50];
     const WHEEL_DIAMETER     = 40;
@@ -556,7 +557,28 @@
       return area2 * 0.5;
     }
 
+    function pointInPolygon(px, py, ring) {
+      let inside = false;
+      for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+        const xi = ring[i].x, yi = ring[i].y;
+        const xj = ring[j].x, yj = ring[j].y;
+        if (((yi > py) !== (yj > py)) && (px < (xj - xi) * (py - yi) / (yj - yi) + xi)) {
+          inside = !inside;
+        }
+      }
+      return inside;
+    }
+
+    function distToSegment(px, py, ax, ay, bx, by) {
+      const dx = bx - ax, dy = by - ay;
+      const len2 = dx * dx + dy * dy;
+      if (len2 === 0) return Math.hypot(px - ax, py - ay);
+      const t = Math.max(0, Math.min(1, ((px - ax) * dx + (py - ay) * dy) / len2));
+      return Math.hypot(px - (ax + t * dx), py - (ay + t * dy));
+    }
+
     // Verify that `pts` forms a non-degenerate, non-self-intersecting simple 2D polygon
+    // with sufficient wall clearance around both axle holes
     function isSimplePolygon(pts) {
       const n = pts.length;
       if (n < 3) return false;
@@ -596,6 +618,18 @@
           if (segmentsIntersect(a, b, c, d)) return false;
         }
       }
+
+      // Ensure both axle holes are strictly inside the polygon with >= 3.5 mm wall clearance
+      for (const ax of AXLE_X_POSITIONS) {
+        if (!pointInPolygon(ax, AXLE_Y, pts)) return false;
+        for (let i = 0; i < n; i++) {
+          const a = pts[i];
+          const b = pts[(i + 1) % n];
+          if (distToSegment(ax, AXLE_Y, a.x, a.y, b.x, b.y) < AXLE_HOLE_RADIUS + 3.5) {
+            return false;
+          }
+        }
+      }
       return true;
     }
 
@@ -630,10 +664,10 @@
     function generateProfile(n) {
       n = clampInt(n, MIN_POINTS, MAX_POINTS);
       const upperCount = n - 2; // number of points above the 2-point flat base
-      const targetL = randInt(LENGTH_RANGE[0], LENGTH_RANGE[1]);
-      const targetH = randInt(HEIGHT_RANGE[0], HEIGHT_RANGE[1]);
 
-      for (let attempt = 0; attempt < 80; attempt++) {
+      for (let attempt = 0; attempt < 120; attempt++) {
+        const targetL = randInt(LENGTH_RANGE[0], LENGTH_RANGE[1]);
+        const targetH = randInt(upperCount === 1 ? 95 : HEIGHT_RANGE[0], HEIGHT_RANGE[1]);
         const pts = [
           { x: -HALF_BASE, y: 0 },
           { x:  HALF_BASE, y: 0 }
@@ -645,9 +679,9 @@
           const baseAng = (i + 0.5) * sector;
           const jitter = (Math.random() - 0.5) * sector * 0.65;
           const ang = Math.min(Math.PI - 0.12, Math.max(0.12, baseAng + jitter));
-          const rFrac = 0.5 + Math.random() * 0.5;
+          const rFrac = upperCount === 1 ? (0.85 + Math.random() * 0.15) : (0.5 + Math.random() * 0.5);
           const x = Math.round(Math.cos(ang) * (targetL * 0.5) * rFrac);
-          const y = clampInt(Math.sin(ang) * targetH * rFrac, 14, targetH);
+          const y = clampInt(Math.sin(ang) * targetH * rFrac, 18, targetH);
           pts.push({ x, y });
         }
 
@@ -656,7 +690,7 @@
         }
       }
 
-      // Fallback arch polygon above the 140 mm base
+      // Fallback arch polygon above the 140 mm base guaranteed to clear both axle holes
       const fallback = [
         { x: -HALF_BASE, y: 0 },
         { x:  HALF_BASE, y: 0 }
@@ -665,7 +699,7 @@
         const ang = ((i + 0.5) / upperCount) * Math.PI;
         fallback.push({
           x: Math.round(Math.cos(ang) * HALF_BASE),
-          y: Math.max(20, Math.round(Math.sin(ang) * targetH))
+          y: Math.max(28, Math.round(Math.sin(ang) * 110))
         });
       }
       return normalizePolygonBounds(fallback);
@@ -785,38 +819,385 @@
       }
     }
 
-    // --- geometry builder: extrude the non-self-intersecting 2D polygon along width ---
+    // --- side-face Delaunay triangulation & watertight 3D extrusion ---
+    function edgeKey(u, v) {
+      return u < v ? `${u}_${v}` : `${v}_${u}`;
+    }
+
+    function inCircumcircle(ax, ay, bx, by, cx, cy, px, py) {
+      // Assumes triangle (a, b, c) is oriented counter-clockwise
+      const adx = ax - px, ady = ay - py;
+      const bdx = bx - px, bdy = by - py;
+      const cdx = cx - px, cdy = cy - py;
+      const abdet = adx * bdy - bdx * ady;
+      const bcdet = bdx * cdy - cdx * bdy;
+      const cadet = cdx * ady - adx * cdy;
+      const alift = adx * adx + ady * ady;
+      const blift = bdx * bdx + bdy * bdy;
+      const clift = cdx * cdx + cdy * cdy;
+      return (alift * bcdet + blift * cadet + clift * abdet) > 1e-7;
+    }
+
+    // Build a discrete 12-segment clockwise hole ring (no duplicate start/end point)
+    function makeAxleHoleRing(cx, cy, r = AXLE_HOLE_RADIUS, segments = AXLE_HOLE_SEGMENTS) {
+      const pts = [];
+      for (let i = 0; i < segments; i++) {
+        // Half-step offset aligns bottom/top hole edges parallel to the car base
+        const ang = -((i + 0.5) / segments) * Math.PI * 2;
+        pts.push({
+          x: cx + Math.cos(ang) * r,
+          y: cy + Math.sin(ang) * r
+        });
+      }
+      return pts;
+    }
+
+    // Subdivide long outer edges (with denser anchor vertices along the bottom edge under the axle holes)
+    function subdivideProfileContour(pts, baseMaxLen = 22) {
+      const out = [];
+      const n = pts.length;
+      for (let i = 0; i < n; i++) {
+        const a = pts[i];
+        const b = pts[(i + 1) % n];
+        if (i === 0 && a.y === 0 && b.y === 0) {
+          // Place anchor vertices under the left (-50) and right (+50) axle holes along the 140 mm base
+          const xs = [-70, -58, -50, -42, -28, -14, 0, 14, 28, 42, 50, 58];
+          for (const x of xs) out.push({ x, y: 0 });
+        } else {
+          const len = Math.hypot(b.x - a.x, b.y - a.y);
+          const steps = Math.max(1, Math.ceil(len / baseMaxLen));
+          for (let s = 0; s < steps; s++) {
+            const t = s / steps;
+            out.push({
+              x: a.x + (b.x - a.x) * t,
+              y: a.y + (b.y - a.y) * t
+            });
+          }
+        }
+      }
+      return out;
+    }
+
+    // Ear-clipping on a single bridged vertex index loop
+    function earclipBridgedLoop(loopIndices, vertices) {
+      const m = loopIndices.length;
+      const nodes = loopIndices.map((vIdx) => ({
+        idx: vIdx,
+        x: vertices[vIdx].x,
+        y: vertices[vIdx].y
+      }));
+      for (let i = 0; i < m; i++) {
+        nodes[i].prev = nodes[(i - 1 + m) % m];
+        nodes[i].next = nodes[(i + 1) % m];
+      }
+
+      function ptInTri(ax, ay, bx, by, cx, cy, px, py) {
+        return cross2D(ax, ay, bx, by, px, py) >= -1e-7 &&
+               cross2D(bx, by, cx, cy, px, py) >= -1e-7 &&
+               cross2D(cx, cy, ax, ay, px, py) >= -1e-7;
+      }
+
+      function isEar(ear, pass) {
+        const a = ear.prev, b = ear, c = ear.next;
+        const area2 = cross2D(a.x, a.y, b.x, b.y, c.x, c.y);
+        if (pass === 0 ? area2 <= 1e-7 : area2 < -1e-9) return false;
+        let p = c.next;
+        while (p !== a) {
+          if (p.idx !== a.idx && p.idx !== b.idx && p.idx !== c.idx) {
+            if (ptInTri(a.x, a.y, b.x, b.y, c.x, c.y, p.x, p.y)) {
+              if (cross2D(p.prev.x, p.prev.y, p.x, p.y, p.next.x, p.next.y) <= 1e-7) {
+                return false;
+              }
+            }
+          }
+          p = p.next;
+        }
+        return true;
+      }
+
+      const tris = [];
+      let curr = nodes[0];
+      let rem = m;
+      for (let pass = 0; pass < 2 && rem > 2; pass++) {
+        let stop = curr;
+        while (rem > 2) {
+          if (isEar(curr, pass)) {
+            if (curr.prev.idx !== curr.idx && curr.idx !== curr.next.idx && curr.next.idx !== curr.prev.idx) {
+              tris.push([curr.prev.idx, curr.idx, curr.next.idx]);
+            }
+            curr.prev.next = curr.next;
+            curr.next.prev = curr.prev;
+            curr = curr.next;
+            stop = curr;
+            rem--;
+            continue;
+          }
+          curr = curr.next;
+          if (curr === stop) break;
+        }
+      }
+      return tris;
+    }
+
+    // Bridge each clockwise hole ring to the bottom edge and triangulate
+    function triangulatePolygonWithHoles(outer, holes) {
+      const vertices = [...outer];
+      const holeIndexGroups = [];
+      for (const h of holes) {
+        const start = vertices.length;
+        const idxs = [];
+        for (let i = 0; i < h.length; i++) {
+          vertices.push(h[i]);
+          idxs.push(start + i);
+        }
+        holeIndexGroups.push(idxs);
+      }
+
+      const loop = outer.map((_, i) => i);
+      for (const hIdxs of holeIndexGroups) {
+        let botPos = 0;
+        for (let i = 1; i < hIdxs.length; i++) {
+          const pi = vertices[hIdxs[i]], pb = vertices[hIdxs[botPos]];
+          if (pi.y < pb.y || (pi.y === pb.y && pi.x < pb.x)) botPos = i;
+        }
+        const hBotIdx = hIdxs[botPos];
+        const hx = vertices[hBotIdx].x, hy = vertices[hBotIdx].y;
+
+        let bestLoopPos = 0;
+        let bestDist = Infinity;
+        for (let i = 0; i < loop.length; i++) {
+          const v = vertices[loop[i]];
+          const vNext = vertices[loop[(i + 1) % loop.length]];
+          if (v.y === 0 && vNext.y === 0 && v.x <= hx + 25) {
+            const d = Math.hypot(v.x - hx, v.y - hy);
+            if (d < bestDist) {
+              bestDist = d;
+              bestLoopPos = i;
+            }
+          }
+        }
+        const outerBridgeIdx = loop[bestLoopPos];
+        const orderedHole = [];
+        for (let i = 0; i < hIdxs.length; i++) {
+          orderedHole.push(hIdxs[(botPos + i) % hIdxs.length]);
+        }
+        loop.splice(bestLoopPos + 1, 0, ...orderedHole, hBotIdx, outerBridgeIdx);
+      }
+
+      const tris = earclipBridgedLoop(loop, vertices);
+      return { vertices, tris };
+    }
+
+    // Lawson Constrained Delaunay edge-flipping to maximize minimum triangle angles
+    function lawsonDelaunayFlip(tris, vertices, constrainedEdges) {
+      let flipped = true;
+      let iter = 0;
+      const maxIter = tris.length * 10;
+
+      while (flipped && iter < maxIter) {
+        flipped = false;
+        iter++;
+
+        const halfEdges = new Map();
+        for (let t = 0; t < tris.length; t++) {
+          const [i0, i1, i2] = tris[t];
+          halfEdges.set(`${i0}_${i1}`, { t, opp: i2 });
+          halfEdges.set(`${i1}_${i2}`, { t, opp: i0 });
+          halfEdges.set(`${i2}_${i0}`, { t, opp: i1 });
+        }
+
+        for (let t1 = 0; t1 < tris.length; t1++) {
+          const tri1 = tris[t1];
+          let didFlipOnT1 = false;
+          for (let e = 0; e < 3; e++) {
+            const u = tri1[e];
+            const v = tri1[(e + 1) % 3];
+            const w1 = tri1[(e + 2) % 3];
+
+            if (constrainedEdges.has(edgeKey(u, v))) continue;
+
+            const twin = halfEdges.get(`${v}_${u}`);
+            if (!twin) continue;
+            const t2 = twin.t;
+            if (t2 <= t1) continue;
+            const w2 = twin.opp;
+            if (w1 === w2) continue;
+
+            const pU = vertices[u], pV = vertices[v], pW1 = vertices[w1], pW2 = vertices[w2];
+            const area1 = cross2D(pW1.x, pW1.y, pU.x, pU.y, pW2.x, pW2.y);
+            const area2 = cross2D(pW2.x, pW2.y, pV.x, pV.y, pW1.x, pW1.y);
+            if (area1 <= 1e-6 || area2 <= 1e-6) continue;
+
+            if (inCircumcircle(pU.x, pU.y, pV.x, pV.y, pW1.x, pW1.y, pW2.x, pW2.y)) {
+              tris[t1] = [w1, u, w2];
+              tris[t2] = [w2, v, w1];
+              flipped = true;
+              didFlipOnT1 = true;
+              break;
+            }
+          }
+          if (didFlipOnT1) break;
+        }
+      }
+      return tris;
+    }
+
+    // Insert an interior Steiner point (via 1->3 triangle split or 2->4 interior edge split)
+    function insertSteinerPoint(tris, vertices, constrainedEdges, pt, minClearance = 3.0) {
+      for (const v of vertices) {
+        if (Math.hypot(v.x - pt.x, v.y - pt.y) < minClearance) return false;
+      }
+      for (const key of constrainedEdges) {
+        const [u, v] = key.split('_').map(Number);
+        if (distToSegment(pt.x, pt.y, vertices[u].x, vertices[u].y, vertices[v].x, vertices[v].y) < minClearance) {
+          return false;
+        }
+      }
+
+      for (let t = 0; t < tris.length; t++) {
+        const [i0, i1, i2] = tris[t];
+        const a = vertices[i0], b = vertices[i1], c = vertices[i2];
+        const c0 = cross2D(a.x, a.y, b.x, b.y, pt.x, pt.y);
+        const c1 = cross2D(b.x, b.y, c.x, c.y, pt.x, pt.y);
+        const c2 = cross2D(c.x, c.y, a.x, a.y, pt.x, pt.y);
+
+        if (c0 >= -1e-5 && c1 >= -1e-5 && c2 >= -1e-5) {
+          const edges = [
+            { u: i0, v: i1, w: i2, d: distToSegment(pt.x, pt.y, a.x, a.y, b.x, b.y) },
+            { u: i1, v: i2, w: i0, d: distToSegment(pt.x, pt.y, b.x, b.y, c.x, c.y) },
+            { u: i2, v: i0, w: i1, d: distToSegment(pt.x, pt.y, c.x, c.y, a.x, a.y) }
+          ];
+          edges.sort((e1, e2) => e1.d - e2.d);
+
+          if (edges[0].d < 0.25) {
+            const { u, v, w } = edges[0];
+            if (constrainedEdges.has(edgeKey(u, v))) return false;
+            let twinIdx = -1, w2 = -1;
+            for (let k = 0; k < tris.length; k++) {
+              if (k === t) continue;
+              const tk = tris[k];
+              for (let ei = 0; ei < 3; ei++) {
+                if (tk[ei] === v && tk[(ei + 1) % 3] === u) {
+                  twinIdx = k;
+                  w2 = tk[(ei + 2) % 3];
+                  break;
+                }
+              }
+              if (twinIdx >= 0) break;
+            }
+            if (twinIdx < 0) return false;
+            const newIdx = vertices.length;
+            vertices.push({ x: pt.x, y: pt.y });
+            tris[t] = [u, newIdx, w];
+            tris[twinIdx] = [v, newIdx, w2];
+            tris.push([newIdx, v, w]);
+            tris.push([newIdx, u, w2]);
+            return true;
+          }
+
+          if (c0 > 1e-4 && c1 > 1e-4 && c2 > 1e-4) {
+            const newIdx = vertices.length;
+            vertices.push({ x: pt.x, y: pt.y });
+            tris[t] = [i0, i1, newIdx];
+            tris.push([i1, i2, newIdx]);
+            tris.push([i2, i0, newIdx]);
+            return true;
+          }
+        }
+      }
+      return false;
+    }
+
     function buildCarGeometry(genome) {
       const { width: W, profile } = genome;
       const n = profile.length;
       if (n < 3) return new THREE.BufferGeometry();
 
-      // Build THREE.Shape from the integer 2D polygon so Three.js ear-clipping
-      // properly triangulates concave & convex profiles without any stray faces
-      const shape = new THREE.Shape();
-      shape.moveTo(profile[0].x, profile[0].y);
-      for (let i = 1; i < n; i++) {
-        shape.lineTo(profile[i].x, profile[i].y);
-      }
-      shape.closePath();
+      // 1. Subdivide long outer boundary edges and build 12-segment axle hole rings
+      const outer = subdivideProfileContour(profile, 22);
+      const holes = AXLE_X_POSITIONS.map(ax => makeAxleHoleRing(ax, AXLE_Y, AXLE_HOLE_RADIUS, AXLE_HOLE_SEGMENTS));
 
-      // Add 11 mm circular axle holes centered at (-50, 10.5) and (50, 10.5)
+      // 2. Initial polygon-with-holes triangulation
+      const { vertices, tris } = triangulatePolygonWithHoles(outer, holes);
+
+      // Mark all outer boundary and hole boundary edges as constrained
+      const constrained = new Set();
+      for (let i = 0; i < outer.length; i++) {
+        constrained.add(edgeKey(i, (i + 1) % outer.length));
+      }
+      let hOffset = outer.length;
+      for (const h of holes) {
+        for (let i = 0; i < h.length; i++) {
+          constrained.add(edgeKey(hOffset + i, hOffset + ((i + 1) % h.length)));
+        }
+        hOffset += h.length;
+      }
+
+      // 3. Optimize initial triangulation with Lawson Delaunay edge flipping
+      lawsonDelaunayFlip(tris, vertices, constrained);
+
+      // 4. Insert a staggered 12-point collar ring around each axle hole (r = 11 mm)
+      // so hole edges transition smoothly into uniform triangles instead of long radial fans
+      const collarRadius = 11.0;
       for (const ax of AXLE_X_POSITIONS) {
-        const holePath = new THREE.Path();
-        holePath.absarc(ax, AXLE_Y, AXLE_HOLE_RADIUS, 0, Math.PI * 2, true);
-        shape.holes.push(holePath);
+        for (let i = 0; i < AXLE_HOLE_SEGMENTS; i++) {
+          const ang = (i / AXLE_HOLE_SEGMENTS) * Math.PI * 2;
+          const px = ax + Math.cos(ang) * collarRadius;
+          const py = AXLE_Y + Math.sin(ang) * collarRadius;
+          if (insertSteinerPoint(tris, vertices, constrained, { x: px, y: py }, 3.2)) {
+            lawsonDelaunayFlip(tris, vertices, constrained);
+          }
+        }
       }
 
-      const extrudeSettings = {
-        depth: W,
-        bevelEnabled: false,
-        steps: 1,
-        curveSegments: 24
-      };
+      // 5. Insert interior staggered grid Steiner points across the upper body
+      const gridStep = 25;
+      for (let gy = 22; gy <= genome.height; gy += gridStep) {
+        const rowShift = ((Math.round((gy - 22) / gridStep) % 2) === 1) ? gridStep * 0.5 : 0;
+        for (let gx = -90 + rowShift; gx <= 90; gx += gridStep) {
+          if (insertSteinerPoint(tris, vertices, constrained, { x: gx, y: gy }, 8.0)) {
+            lawsonDelaunayFlip(tris, vertices, constrained);
+          }
+        }
+      }
 
-      const geometry = new THREE.ExtrudeGeometry(shape, extrudeSettings);
-      // Center extrusion along Z axis (-W/2 to +W/2)
-      geometry.translate(0, 0, -W / 2);
+      // 6. Extrude into a watertight 2-manifold 3D BufferGeometry centered on Z in [-W/2, +W/2]
+      const halfW = W / 2;
+      const positions = [];
+
+      function pushTri(ax, ay, az, bx, by, bz, cx, cy, cz) {
+        positions.push(ax, ay, az, bx, by, bz, cx, cy, cz);
+      }
+
+      // Front cap (z = +halfW, CCW) and Back cap (z = -halfW, reversed winding)
+      for (const [i0, i1, i2] of tris) {
+        const v0 = vertices[i0], v1 = vertices[i1], v2 = vertices[i2];
+        pushTri(v0.x, v0.y,  halfW, v1.x, v1.y,  halfW, v2.x, v2.y,  halfW);
+        pushTri(v0.x, v0.y, -halfW, v2.x, v2.y, -halfW, v1.x, v1.y, -halfW);
+      }
+
+      // Outer perimeter walls (exact edge match with subdivided outer contour)
+      for (let i = 0; i < outer.length; i++) {
+        const a = vertices[i];
+        const b = vertices[(i + 1) % outer.length];
+        pushTri(a.x, a.y, -halfW, b.x, b.y, -halfW, b.x, b.y,  halfW);
+        pushTri(a.x, a.y, -halfW, b.x, b.y,  halfW, a.x, a.y,  halfW);
+      }
+
+      // Inner 12-segment axle hole walls
+      let holeStart = outer.length;
+      for (const h of holes) {
+        for (let i = 0; i < h.length; i++) {
+          const a = vertices[holeStart + i];
+          const b = vertices[holeStart + ((i + 1) % h.length)];
+          pushTri(a.x, a.y, -halfW, b.x, b.y, -halfW, b.x, b.y,  halfW);
+          pushTri(a.x, a.y, -halfW, b.x, b.y,  halfW, a.x, a.y,  halfW);
+        }
+        holeStart += h.length;
+      }
+
+      const geometry = new THREE.BufferGeometry();
+      geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
       geometry.computeVertexNormals();
 
       return geometry;

@@ -1,0 +1,2296 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Wild Pack — 512x512 Hex Tactical Prototype</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&display=swap');
+        body {
+            font-family: 'Inter', sans-serif;
+            overflow: hidden;
+            user-select: none;
+            -webkit-user-select: none;
+            background-color: #0f172a;
+        }
+        canvas {
+            display: block;
+            width: 100vw;
+            height: 100vh;
+            touch-action: none;
+            cursor: grab;
+        }
+        canvas:active {
+            cursor: grabbing;
+        }
+        ::-webkit-scrollbar {
+            width: 5px;
+            height: 5px;
+        }
+        ::-webkit-scrollbar-track {
+            background: rgba(15, 23, 42, 0.5);
+        }
+        ::-webkit-scrollbar-thumb {
+            background: rgba(100, 116, 139, 0.6);
+            border-radius: 4px;
+        }
+        .unit-card {
+            transition: all 0.15s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+        .unit-card:hover {
+            transform: translateY(-2px);
+        }
+        .unit-card.selected {
+            transform: translateY(-4px);
+            box-shadow: 0 0 0 3px #f59e0b, 0 10px 15px -3px rgba(0, 0, 0, 0.5);
+        }
+    </style>
+</head>
+<body class="relative w-screen h-screen overflow-hidden text-slate-100">
+
+    <!-- Main Game Canvas -->
+    <canvas id="hexCanvas"></canvas>
+
+    <!-- Top Status Bar -->
+    <header class="fixed top-0 left-0 right-0 z-20 p-2 sm:p-3 pointer-events-none">
+        <div class="max-w-7xl mx-auto bg-slate-900/95 backdrop-blur-md border border-slate-700/80 rounded-2xl shadow-2xl px-3 py-2 sm:px-5 sm:py-2.5 flex flex-wrap items-center justify-between gap-2 pointer-events-auto">
+            
+            <!-- Left: Title & Squad Status -->
+            <div class="flex items-center gap-3 sm:gap-5 flex-wrap">
+                <div class="flex items-center gap-2">
+                    <div class="w-9 h-9 rounded-xl bg-amber-500/20 border border-amber-500/40 flex items-center justify-center text-amber-400 font-bold text-lg shadow-inner">
+                        <i class="fa-solid fa-paw"></i>
+                    </div>
+                    <div>
+                        <h1 class="font-extrabold text-sm sm:text-base tracking-tight text-white leading-none">WILD PACK</h1>
+                        <span class="text-[10px] sm:text-xs text-slate-400 font-medium">512×512 Tactical Hex</span>
+                    </div>
+                </div>
+
+                <!-- Counters -->
+                <div class="flex items-center gap-2.5 sm:gap-4 bg-slate-800/90 px-3 py-1.5 rounded-xl border border-slate-700">
+                    <div class="flex items-center gap-1.5" title="Bears (Move: 2, Vision: 2, Kills: 1-2 Trogs)">
+                        <span class="text-base sm:text-lg">🐻</span>
+                        <div>
+                            <div class="text-[10px] uppercase tracking-wider text-slate-400 leading-none">Bears</div>
+                            <div id="bearCount" class="font-bold text-sm sm:text-base text-amber-400 leading-tight">6</div>
+                        </div>
+                    </div>
+                    <div class="h-6 w-px bg-slate-700"></div>
+                    <div class="flex items-center gap-1.5" title="Wolf Scouts (Move: 3, Vision: 6, 2 Wolves kill 1 Trog)">
+                        <span class="text-base sm:text-lg">🐺</span>
+                        <div>
+                            <div class="text-[10px] uppercase tracking-wider text-slate-400 leading-none">Scouts</div>
+                            <div id="wolfCount" class="font-bold text-sm sm:text-base text-sky-400 leading-tight">2</div>
+                        </div>
+                    </div>
+                    <div class="h-6 w-px bg-slate-700"></div>
+                    <div class="flex items-center gap-1.5" title="Enemies Remaining (Visible in sight / Total on map)">
+                        <span class="text-base sm:text-lg">🧌</span>
+                        <div>
+                            <div class="text-[10px] uppercase tracking-wider text-slate-400 leading-none">Trogs (Vis/All)</div>
+                            <div id="trogCount" class="font-bold text-sm sm:text-base text-rose-400 leading-tight">0 / 350</div>
+                        </div>
+                    </div>
+                    <div class="h-6 w-px bg-slate-700 hidden sm:block"></div>
+                    <div class="hidden sm:flex items-center gap-1.5">
+                        <div>
+                            <div class="text-[10px] uppercase tracking-wider text-slate-400 leading-none">Turn</div>
+                            <div id="turnCount" class="font-bold text-sm sm:text-base text-emerald-400 leading-tight">1</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Right: Fog of War Toggle, Reset, Rules & Move Button -->
+            <div class="flex items-center gap-2 sm:gap-2.5 ml-auto">
+                <!-- Turn Execution Phase Pill -->
+                <div id="turnPhaseBadge" class="hidden items-center gap-2 text-xs font-extrabold px-3 py-1.5 rounded-xl bg-amber-500/20 text-amber-300 border border-amber-400/50 shadow-lg">
+                    <i class="fa-solid fa-spinner fa-spin"></i>
+                    <span id="turnPhaseText">Moving Squad...</span>
+                </div>
+
+                <!-- Fog of War Toggle Button (ON by default) -->
+                <button id="fogToggleBtn" onclick="toggleFogOfWar()" class="px-3 py-2 rounded-xl bg-indigo-500/25 hover:bg-indigo-500/35 text-indigo-100 border border-indigo-400/60 text-xs font-bold transition flex items-center gap-1.5 shadow" title="Toggle Fog of War (Wolves see 6 tiles, Bears see 2 tiles)">
+                    <i id="fogToggleIcon" class="fa-solid fa-eye-low-vision text-indigo-300"></i>
+                    <span>Fog:</span>
+                    <span id="fogToggleState" class="font-extrabold text-emerald-300">ON</span>
+                </button>
+
+                <button id="clearPlansBtn" onclick="clearAllPlans()" class="px-2.5 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 active:bg-slate-600 text-slate-300 border border-slate-600 text-xs font-semibold transition flex items-center gap-1.5 shadow" title="Clear all planned movements">
+                    <i class="fa-solid fa-rotate-left"></i>
+                    <span class="hidden md:inline">Reset</span>
+                </button>
+
+                <button id="rulesBtn" onclick="toggleModal('rulesModal')" class="px-2.5 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-600 text-xs font-semibold transition flex items-center gap-1.5 shadow" title="Game Rules & Guide">
+                    <i class="fa-solid fa-circle-info text-sky-400"></i>
+                    <span class="hidden lg:inline">Rules</span>
+                </button>
+
+                <button id="moveBtn" onclick="executeTurn()" class="px-4 sm:px-5 py-2 sm:py-2.5 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-400 hover:to-teal-500 active:scale-95 text-white font-extrabold text-xs sm:text-sm uppercase tracking-wider shadow-lg shadow-emerald-900/50 border border-emerald-400/50 flex items-center gap-2 transition">
+                    <span>Move</span>
+                    <i class="fa-solid fa-play text-xs"></i>
+                </button>
+            </div>
+        </div>
+    </header>
+
+    <!-- Left Side Floating Panel: Hex Inspector, Combat Preview & Battle Log -->
+    <div class="fixed top-20 left-3 z-10 flex flex-col gap-2 max-w-xs pointer-events-none">
+        <!-- Hovered / Selected Hex Info -->
+        <div id="hexInspector" class="bg-slate-900/90 backdrop-blur-md border border-slate-700/80 rounded-xl p-2.5 text-xs shadow-lg pointer-events-auto">
+            <div class="flex items-center justify-between gap-3">
+                <span id="inspectCoords" class="font-mono text-slate-400">Hex (256, 256)</span>
+                <span id="inspectTerrain" class="font-bold px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">Field (1 MP)</span>
+            </div>
+            <div id="inspectDetail" class="mt-1 text-slate-300 text-[11px] leading-snug">
+                Tap a Wolf or Bear to plan their movement path.
+            </div>
+        </div>
+
+        <!-- Combat Prediction Box (Appears when targeting Trogs) -->
+        <div id="combatPreviewBox" class="hidden bg-rose-950/95 backdrop-blur-md border border-rose-500/60 rounded-xl p-3 text-xs shadow-xl pointer-events-auto">
+            <div class="font-bold text-rose-300 uppercase tracking-wider text-[10px] flex items-center gap-1.5 mb-1">
+                <i class="fa-solid fa-skull-crossbones"></i> Planned Assault Preview
+            </div>
+            <div id="combatPreviewContent" class="space-y-1 text-slate-200 text-[11px]"></div>
+        </div>
+
+        <!-- Turn / Combat Feed -->
+        <div id="eventLogContainer" class="bg-slate-900/85 backdrop-blur-md border border-slate-700/80 rounded-xl p-2.5 text-xs shadow-lg max-h-40 overflow-y-auto pointer-events-auto hidden sm:block">
+            <div class="font-bold text-slate-400 uppercase tracking-wider text-[10px] mb-1 flex justify-between items-center">
+                <span>Battle Log</span>
+                <span class="text-[10px] text-slate-500">Space = Move</span>
+            </div>
+            <div id="eventLog" class="space-y-1 text-[11px] text-slate-300">
+                <div class="text-emerald-400">● Pack deployed at (256, 256). Fog of War is ON (Wolves see 6, Bears see 2).</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Right Side Floating Controls: Camera & Zoom -->
+    <div class="fixed right-3 top-20 z-10 flex flex-col gap-2 pointer-events-auto">
+        <div class="bg-slate-900/90 backdrop-blur-md border border-slate-700/80 rounded-2xl p-1.5 flex flex-col items-center gap-1 shadow-xl">
+            <button onclick="zoomCamera(1.25)" class="w-9 h-9 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 flex items-center justify-center transition" title="Zoom In">
+                <i class="fa-solid fa-plus"></i>
+            </button>
+            <div id="zoomLabel" class="text-[10px] font-mono text-slate-400 py-0.5">100%</div>
+            <button onclick="zoomCamera(0.8)" class="w-9 h-9 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 flex items-center justify-center transition" title="Zoom Out (Max ~25x50 cells)">
+                <i class="fa-solid fa-minus"></i>
+            </button>
+            <div class="w-6 h-px bg-slate-700 my-0.5"></div>
+            <button onclick="centerOnSquad()" class="w-9 h-9 rounded-xl bg-amber-500/20 hover:bg-amber-500/30 text-amber-400 border border-amber-500/40 flex items-center justify-center transition" title="Center on Squad">
+                <i class="fa-solid fa-crosshairs"></i>
+            </button>
+            <button onclick="centerOnNearestTrog()" class="w-9 h-9 rounded-xl bg-rose-500/20 hover:bg-rose-500/30 text-rose-400 border border-rose-500/40 flex items-center justify-center transition" title="Center on Nearest Visible Trog">
+                <i class="fa-solid fa-skull"></i>
+            </button>
+        </div>
+    </div>
+
+    <!-- Bottom Interactive Squad Roster Bar -->
+    <div class="fixed bottom-0 left-0 right-0 z-20 p-2 sm:p-3 pointer-events-none">
+        <div class="max-w-4xl mx-auto flex flex-col gap-1.5 items-center">
+            <!-- Selected Unit Quick Bar -->
+            <div id="selectedUnitBanner" class="hidden bg-slate-900/95 border border-amber-500/60 text-slate-100 px-3.5 py-1.5 rounded-full shadow-lg text-xs flex items-center gap-3 pointer-events-auto">
+                <span id="selectedUnitTitle" class="font-bold text-amber-400">Wolf #1 Selected</span>
+                <span id="selectedUnitStatus" class="text-slate-300">Tap any highlighted hex to set destination</span>
+                <button id="cancelUnitPlanBtn" onclick="cancelSelectedUnitPlan()" class="hidden px-2 py-0.5 rounded bg-rose-500/20 hover:bg-rose-500/40 text-rose-300 border border-rose-500/40 font-semibold text-[11px]">
+                    Clear Path
+                </button>
+            </div>
+
+            <!-- Squad Dock -->
+            <div class="bg-slate-900/95 backdrop-blur-md border border-slate-700/80 rounded-2xl px-3 py-2 shadow-2xl pointer-events-auto w-full overflow-x-auto">
+                <div class="flex items-center justify-between gap-2 min-w-max">
+                    <div class="text-[11px] font-bold uppercase tracking-wider text-slate-400 px-1 hidden sm:block">
+                        Squad<br><span id="plannedText" class="text-[10px] font-semibold text-amber-400">0/8 Planned</span>
+                    </div>
+                    <div id="squadDock" class="flex items-center gap-2 flex-1 justify-center">
+                        <!-- Populated dynamically by JS -->
+                    </div>
+                    <button onclick="selectNextUnplannedUnit()" class="px-3 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-amber-400 border border-slate-700 text-xs font-bold transition flex flex-col items-center justify-center shrink-0" title="Cycle to next unit without a planned move (Tab)">
+                        <i class="fa-solid fa-forward-step"></i>
+                        <span class="text-[9px] text-slate-300 mt-0.5">Next</span>
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Rules & Legend Modal -->
+    <div id="rulesModal" class="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm hidden items-center justify-center p-4">
+        <div class="bg-slate-900 border border-slate-700 rounded-2xl max-w-lg w-full p-5 shadow-2xl text-slate-200 space-y-4 max-h-[90vh] overflow-y-auto">
+            <div class="flex items-center justify-between border-b border-slate-800 pb-3">
+                <h2 class="text-lg font-extrabold text-white flex items-center gap-2">
+                    <i class="fa-solid fa-book-skull text-amber-400"></i> Tactical Field Guide
+                </h2>
+                <button onclick="toggleModal('rulesModal')" class="w-8 h-8 rounded-lg bg-slate-800 hover:bg-slate-700 flex items-center justify-center text-slate-400">
+                    <i class="fa-solid fa-xmark"></i>
+                </button>
+            </div>
+
+            <div class="space-y-3 text-xs sm:text-sm leading-relaxed">
+                <div>
+                    <h3 class="font-bold text-amber-400 uppercase tracking-wider text-xs mb-1">1. Pack Movement & Fog of War</h3>
+                    <p class="text-slate-300">Command <strong>2 Wolf Scouts</strong> (Move 3, <strong>Vision 6</strong>) and <strong>6 Bears</strong> (Move 2, <strong>Vision 2</strong>).</p>
+                    <ul class="list-disc list-inside text-slate-400 mt-1 space-y-1 text-xs">
+                        <li>When a unit is selected for movement planning, all other pack members dim slightly so your active unit and reachable hexes stand out.</li>
+                        <li><strong>Fog of War (ON by default):</strong> Unseen tiles are dark; tiles previously seen by a Wolf or Bear turn <strong>neutral gray</strong>; active vision shows vibrant colors and spots Trogs. Toggle the <strong>Fog</strong> button in the top bar at any time to reveal the entire map.</li>
+                    </ul>
+                </div>
+
+                <div>
+                    <h3 class="font-bold text-emerald-400 uppercase tracking-wider text-xs mb-1">2. 512×512 Terrain Distribution</h3>
+                    <div class="grid grid-cols-2 sm:grid-cols-3 gap-2 text-xs mt-1">
+                        <div class="p-2 rounded-lg bg-slate-800 border border-slate-700 flex items-center gap-2">
+                            <span class="w-4 h-4 rounded bg-[#4d8c40] shrink-0"></span>
+                            <div><div class="font-bold">Field (40%)</div><div class="text-[10px] text-slate-400">Cost: 1 MP</div></div>
+                        </div>
+                        <div class="p-2 rounded-lg bg-slate-800 border border-slate-700 flex items-center gap-2">
+                            <span class="w-4 h-4 rounded bg-[#d4b46a] shrink-0"></span>
+                            <div><div class="font-bold">Sand (10%)</div><div class="text-[10px] text-slate-400">Cost: 1 MP</div></div>
+                        </div>
+                        <div class="p-2 rounded-lg bg-slate-800 border border-slate-700 flex items-center gap-2">
+                            <span class="w-4 h-4 rounded bg-[#235328] shrink-0"></span>
+                            <div><div class="font-bold">Forest (20%)</div><div class="text-[10px] text-slate-400">Cost: 2 MP (-1 move)</div></div>
+                        </div>
+                        <div class="p-2 rounded-lg bg-slate-800 border border-slate-700 flex items-center gap-2">
+                            <span class="w-4 h-4 rounded bg-[#64707d] shrink-0"></span>
+                            <div><div class="font-bold">Rocks (15%)</div><div class="text-[10px] text-slate-400">Cost: 2 MP (-1 move)</div></div>
+                        </div>
+                        <div class="p-2 rounded-lg bg-slate-800 border border-slate-700 flex items-center gap-2">
+                            <span class="w-4 h-4 rounded bg-[#1e56a0] shrink-0"></span>
+                            <div><div class="font-bold">Water (15%)</div><div class="text-[10px] text-rose-400">Impassable</div></div>
+                        </div>
+                    </div>
+                </div>
+
+                <div>
+                    <h3 class="font-bold text-rose-400 uppercase tracking-wider text-xs mb-1">3. Trogs, Grouping & Scaling Hunting AI</h3>
+                    <p class="text-slate-300 text-xs">Enemies ("Trogs" with clubs 🧌) wander randomly when alone. <strong>When Trogs meet, they stick together and actively hunt your nearest Bear or Wolf!</strong></p>
+                    <ul class="list-disc list-inside text-slate-300 mt-1.5 space-y-1 text-xs">
+                        <li><strong>Scaling Hunting Efficiency:</strong> The larger the Trog group, the more directly and efficiently they track toward your nearest squad member.</li>
+                        <li><strong>1 Bear</strong> kills <strong>1–2 Trogs</strong>. <strong>3 Trogs</strong> together kill <strong>1 Bear</strong>.</li>
+                        <li><strong>2 Wolves</strong> together kill <strong>1 Trog</strong> (a lone Wolf attacking a Trog dies).</li>
+                        <li><strong>Coordinated Placement:</strong> When multiple squad members defeat a Trog, the first moved unit takes the hex and others slide into adjacent non-water cells.</li>
+                    </ul>
+                </div>
+            </div>
+
+            <div class="pt-2 flex justify-end">
+                <button onclick="toggleModal('rulesModal')" class="px-5 py-2 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs uppercase tracking-wider">
+                    Got It, Let's Hunt
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        /***********************************************************************
+         * 1. CONSTANTS & TERRAIN DEFINITIONS
+         ***********************************************************************/
+        const GRID_WIDTH = 512;
+        const GRID_HEIGHT = 512;
+        const SQRT3 = Math.sqrt(3);
+
+        const TERRAIN = {
+            WATER: 0,
+            FIELD: 1,
+            FOREST: 2,
+            ROCKS: 3,
+            SAND: 4
+        };
+
+        const TERRAIN_INFO = {
+            [TERRAIN.WATER]:  { name: 'Water',  cost: Infinity, fill: '#1e56a0', stroke: '#16437d' },
+            [TERRAIN.FIELD]:  { name: 'Field',  cost: 1,        fill: '#4d8c40', stroke: '#3f7534' },
+            [TERRAIN.FOREST]: { name: 'Forest', cost: 2,        fill: '#235328', stroke: '#1a401e' },
+            [TERRAIN.ROCKS]:  { name: 'Rocks',  cost: 2,        fill: '#64707d', stroke: '#505a66' },
+            [TERRAIN.SAND]:   { name: 'Sand',   cost: 1,        fill: '#d4b46a', stroke: '#bfa058' }
+        };
+
+        // Odd-R Pointy-Top Hex Neighbor Directions
+        const ODD_R_DIRS = [
+            [[+1, 0], [0, -1], [-1, -1], [-1, 0], [-1, +1], [0, +1]], // Even rows
+            [[+1, 0], [+1, -1], [0, -1], [-1, 0], [0, +1], [+1, +1]]  // Odd rows
+        ];
+
+        /***********************************************************************
+         * 2. GAME STATE
+         ***********************************************************************/
+        const mapGrid = new Uint8Array(GRID_WIDTH * GRID_HEIGHT);
+        const tileDetailSeed = new Uint8Array(GRID_WIDTH * GRID_HEIGHT);
+        // Fog of War state per cell: 0 = Unexplored, 1 = Seen (Neutral Gray), 2 = Currently Visible
+        const fogGrid = new Uint8Array(GRID_WIDTH * GRID_HEIGHT);
+        let fogOfWarEnabled = true;
+
+        let squad = [];
+        let trogGroups = [];
+        let nextPlanOrder = 1;
+        let turnNumber = 1;
+
+        let selectedUnitId = null;
+        let reachableMap = new Map();
+        let hoveredHex = { q: 256, r: 256 };
+
+        let isAnimatingTurn = false;
+        let activeSkirmishes = [];
+        let activeMergePulses = [];
+        let visualEffects = [];
+
+        const canvas = document.getElementById('hexCanvas');
+        const ctx = canvas.getContext('2d');
+
+        let camera = {
+            x: 0,
+            y: 0,
+            hexRadius: 34,
+            minRadius: 12,
+            maxRadius: 68
+        };
+
+        /***********************************************************************
+         * 3. HEXAGONAL GRID MATH HELPERS
+         ***********************************************************************/
+        function idx(q, r) {
+            return r * GRID_WIDTH + q;
+        }
+
+        function inBounds(q, r) {
+            return q >= 0 && q < GRID_WIDTH && r >= 0 && r < GRID_HEIGHT;
+        }
+
+        function hexKey(q, r) {
+            return `${q},${r}`;
+        }
+
+        function hexToUnitPixel(q, r) {
+            return {
+                x: SQRT3 * (q + 0.5 * (r & 1)),
+                y: 1.5 * r
+            };
+        }
+
+        function unitPixelToHex(ux, uy) {
+            const qf = (SQRT3 / 3) * ux - (1 / 3) * uy;
+            const rf = (2 / 3) * uy;
+            return axialRoundToOffset(qf, rf);
+        }
+
+        function axialRoundToOffset(qf, rf) {
+            let x = qf;
+            let z = rf;
+            let y = -x - z;
+
+            let rx = Math.round(x);
+            let ry = Math.round(y);
+            let rz = Math.round(z);
+
+            const xDiff = Math.abs(rx - x);
+            const yDiff = Math.abs(ry - y);
+            const zDiff = Math.abs(rz - z);
+
+            if (xDiff > yDiff && xDiff > zDiff) {
+                rx = -ry - rz;
+            } else if (yDiff > zDiff) {
+                ry = -rx - rz;
+            } else {
+                rz = -rx - ry;
+            }
+
+            const q = rx + ((rz - (rz & 1)) >> 1);
+            const r = rz;
+            return { q, r };
+        }
+
+        function getNeighbors(q, r) {
+            const dirs = ODD_R_DIRS[r & 1];
+            const res = [];
+            for (let i = 0; i < 6; i++) {
+                const nq = q + dirs[i][0];
+                const nr = r + dirs[i][1];
+                if (inBounds(nq, nr)) {
+                    res.push({ q: nq, r: nr });
+                }
+            }
+            return res;
+        }
+
+        function hexDistance(q1, r1, q2, r2) {
+            const x1 = q1 - ((r1 - (r1 & 1)) >> 1);
+            const z1 = r1;
+            const y1 = -x1 - z1;
+
+            const x2 = q2 - ((r2 - (r2 & 1)) >> 1);
+            const z2 = r2;
+            const y2 = -x2 - z2;
+
+            return Math.max(Math.abs(x1 - x2), Math.abs(y1 - y2), Math.abs(z1 - z2));
+        }
+
+        /***********************************************************************
+         * 4. MAP GENERATION & ENTITY INITIALIZATION
+         ***********************************************************************/
+        function generateMap() {
+            // Exact target distribution: 40% Field, 20% Forest, 15% Water, 15% Rocks, 10% Sand
+            const totalCells = GRID_WIDTH * GRID_HEIGHT;
+            for (let i = 0; i < totalCells; i++) {
+                const rand = Math.random() * 100;
+                let t;
+                if (rand < 40) t = TERRAIN.FIELD;
+                else if (rand < 60) t = TERRAIN.FOREST;
+                else if (rand < 75) t = TERRAIN.WATER;
+                else if (rand < 90) t = TERRAIN.ROCKS;
+                else t = TERRAIN.SAND;
+
+                mapGrid[i] = t;
+                tileDetailSeed[i] = Math.floor(Math.random() * 255);
+            }
+
+            // Ensure starting area around (256, 256) is passable
+            const centerQ = 256;
+            const centerR = 256;
+            for (let r = centerR - 3; r <= centerR + 3; r++) {
+                for (let q = centerQ - 3; q <= centerQ + 3; q++) {
+                    if (inBounds(q, r) && hexDistance(centerQ, centerR, q, r) <= 3) {
+                        if (mapGrid[idx(q, r)] === TERRAIN.WATER) {
+                            mapGrid[idx(q, r)] = Math.random() < 0.75 ? TERRAIN.FIELD : TERRAIN.SAND;
+                        }
+                    }
+                }
+            }
+        }
+
+        function initEntities() {
+            squad = [];
+            trogGroups = [];
+            const centerQ = 256;
+            const centerR = 256;
+
+            const startHexes = [];
+            for (let dist = 0; dist <= 3; dist++) {
+                for (let r = centerR - dist; r <= centerR + dist; r++) {
+                    for (let q = centerQ - dist; q <= centerQ + dist; q++) {
+                        if (inBounds(q, r) && hexDistance(centerQ, centerR, q, r) === dist) {
+                            if (mapGrid[idx(q, r)] !== TERRAIN.WATER) {
+                                startHexes.push({ q, r });
+                            }
+                        }
+                    }
+                }
+            }
+
+            // 2 Wolf Scouts (Move 3, Vision 6) + 6 Bears (Move 2, Vision 2)
+            let unitId = 1;
+            for (let i = 0; i < 2; i++) {
+                const pos = startHexes[i];
+                squad.push({
+                    id: unitId++,
+                    type: 'wolf',
+                    number: i + 1,
+                    q: pos.q,
+                    r: pos.r,
+                    maxMp: 3,
+                    visionRadius: 6,
+                    plannedPath: [],
+                    planOrder: 0
+                });
+            }
+
+            for (let i = 0; i < 6; i++) {
+                const pos = startHexes[i + 2];
+                squad.push({
+                    id: unitId++,
+                    type: 'bear',
+                    number: i + 1,
+                    q: pos.q,
+                    r: pos.r,
+                    maxMp: 2,
+                    visionRadius: 2,
+                    plannedPath: [],
+                    planOrder: 0
+                });
+            }
+
+            const occupied = new Set(squad.map(u => hexKey(u.q, u.r)));
+            let trogId = 1;
+
+            // Spawn nearby Trogs (distance 3 to 11) so some are immediately visible in Wolf scout vision (radius 6)
+            let localTrogs = 0;
+            let attempts = 0;
+            while (localTrogs < 24 && attempts < 600) {
+                attempts++;
+                const angle = Math.random() * Math.PI * 2;
+                const dist = 3 + Math.floor(Math.random() * 9);
+                const q = Math.round(centerQ + Math.cos(angle) * dist);
+                const r = Math.round(centerR + Math.sin(angle) * dist);
+                if (inBounds(q, r) && mapGrid[idx(q, r)] !== TERRAIN.WATER && !occupied.has(hexKey(q, r))) {
+                    if (hexDistance(centerQ, centerR, q, r) >= 3) {
+                        occupied.add(hexKey(q, r));
+                        const initialCount = localTrogs < 4 ? 2 : 1;
+                        trogGroups.push({ id: trogId++, q, r, count: initialCount });
+                        localTrogs += initialCount;
+                    }
+                }
+            }
+
+            // Mid-range Trogs (distance 12 to 45)
+            let midTrogs = 0;
+            while (midTrogs < 76) {
+                const q = centerQ + Math.floor((Math.random() - 0.5) * 84);
+                const r = centerR + Math.floor((Math.random() - 0.5) * 84);
+                if (inBounds(q, r) && mapGrid[idx(q, r)] !== TERRAIN.WATER && !occupied.has(hexKey(q, r))) {
+                    if (hexDistance(centerQ, centerR, q, r) > 11) {
+                        occupied.add(hexKey(q, r));
+                        trogGroups.push({ id: trogId++, q, r, count: 1 });
+                        midTrogs++;
+                    }
+                }
+            }
+
+            // Global Trogs across the 512x512 map
+            let globalTrogs = 0;
+            while (globalTrogs < 250) {
+                const q = Math.floor(Math.random() * GRID_WIDTH);
+                const r = Math.floor(Math.random() * GRID_HEIGHT);
+                if (mapGrid[idx(q, r)] !== TERRAIN.WATER && !occupied.has(hexKey(q, r))) {
+                    occupied.add(hexKey(q, r));
+                    trogGroups.push({ id: trogId++, q, r, count: 1 });
+                    globalTrogs++;
+                }
+            }
+
+            mergeAdjacentTrogs(false);
+            updateFogOfWar();
+        }
+
+        /***********************************************************************
+         * 5. FOG OF WAR SYSTEM (Scout/Wolf = 6, Bear = 2)
+         ***********************************************************************/
+        function updateFogOfWar() {
+            const total = GRID_WIDTH * GRID_HEIGHT;
+            // Transition currently visible tiles (2) to explored neutral gray memory (1)
+            for (let i = 0; i < total; i++) {
+                if (fogGrid[i] === 2) {
+                    fogGrid[i] = 1;
+                }
+            }
+
+            for (const unit of squad) {
+                let centerQ = unit.q;
+                let centerR = unit.r;
+                if (unit.animPos) {
+                    const approx = unitPixelToHex(unit.animPos.x, unit.animPos.y);
+                    if (inBounds(approx.q, approx.r)) {
+                        centerQ = approx.q;
+                        centerR = approx.r;
+                    }
+                }
+
+                const radius = unit.visionRadius || (unit.type === 'wolf' ? 6 : 2);
+                const minR = Math.max(0, centerR - radius);
+                const maxR = Math.min(GRID_HEIGHT - 1, centerR + radius);
+                const minQ = Math.max(0, centerQ - radius - 1);
+                const maxQ = Math.min(GRID_WIDTH - 1, centerQ + radius + 1);
+
+                for (let r = minR; r <= maxR; r++) {
+                    for (let q = minQ; q <= maxQ; q++) {
+                        if (hexDistance(centerQ, centerR, q, r) <= radius) {
+                            fogGrid[idx(q, r)] = 2;
+                        }
+                    }
+                }
+            }
+        }
+
+        function isHexCurrentlyVisible(q, r) {
+            if (!inBounds(q, r)) return false;
+            if (!fogOfWarEnabled) return true;
+            return fogGrid[idx(q, r)] === 2;
+        }
+
+        function toggleFogOfWar() {
+            fogOfWarEnabled = !fogOfWarEnabled;
+            const btn = document.getElementById('fogToggleBtn');
+            const stateEl = document.getElementById('fogToggleState');
+            const iconEl = document.getElementById('fogToggleIcon');
+
+            if (fogOfWarEnabled) {
+                stateEl.textContent = 'ON';
+                stateEl.className = 'font-extrabold text-emerald-300';
+                iconEl.className = 'fa-solid fa-eye-low-vision text-indigo-300';
+                btn.className = 'px-3 py-2 rounded-xl bg-indigo-500/25 hover:bg-indigo-500/35 text-indigo-100 border border-indigo-400/60 text-xs font-bold transition flex items-center gap-1.5 shadow';
+                logEvent('Fog of War enabled (Scouts see 6 tiles, Bears see 2 tiles).', 'text-indigo-300');
+            } else {
+                stateEl.textContent = 'OFF';
+                stateEl.className = 'font-extrabold text-amber-300';
+                iconEl.className = 'fa-solid fa-eye text-amber-300';
+                btn.className = 'px-3 py-2 rounded-xl bg-amber-500/25 hover:bg-amber-500/35 text-amber-100 border border-amber-400/60 text-xs font-bold transition flex items-center gap-1.5 shadow';
+                logEvent('Fog of War disabled — entire 512×512 map revealed.', 'text-amber-300');
+            }
+
+            updateUI();
+            updateInspector(hoveredHex.q, hoveredHex.r);
+            requestRender();
+        }
+
+        /***********************************************************************
+         * 6. DIJKSTRA PATHFINDING & REACHABLE HEXES
+         ***********************************************************************/
+        function computeReachableHexes(unit) {
+            reachableMap.clear();
+            if (!unit) return;
+
+            const startKey = hexKey(unit.q, unit.r);
+            reachableMap.set(startKey, { q: unit.q, r: unit.r, cost: 0, parentKey: null });
+
+            const queue = [{ q: unit.q, r: unit.r, cost: 0 }];
+
+            while (queue.length > 0) {
+                queue.sort((a, b) => a.cost - b.cost);
+                const current = queue.shift();
+                const currKey = hexKey(current.q, current.r);
+
+                if (current.cost > reachableMap.get(currKey).cost) continue;
+
+                const neighbors = getNeighbors(current.q, current.r);
+                for (const nb of neighbors) {
+                    const terrainType = mapGrid[idx(nb.q, nb.r)];
+                    if (terrainType === TERRAIN.WATER) continue;
+
+                    const stepCost = TERRAIN_INFO[terrainType].cost;
+                    const newCost = current.cost + stepCost;
+
+                    if (newCost <= unit.maxMp) {
+                        const nbKey = hexKey(nb.q, nb.r);
+                        const existing = reachableMap.get(nbKey);
+                        if (!existing || newCost < existing.cost) {
+                            reachableMap.set(nbKey, {
+                                q: nb.q,
+                                r: nb.r,
+                                cost: newCost,
+                                parentKey: currKey
+                            });
+                            queue.push({ q: nb.q, r: nb.r, cost: newCost });
+                        }
+                    }
+                }
+            }
+        }
+
+        function reconstructPath(targetQ, targetR) {
+            const targetKey = hexKey(targetQ, targetR);
+            if (!reachableMap.has(targetKey)) return null;
+
+            const path = [];
+            let currKey = targetKey;
+            while (currKey) {
+                const node = reachableMap.get(currKey);
+                path.unshift({ q: node.q, r: node.r, cost: node.cost });
+                currKey = node.parentKey;
+            }
+            return path;
+        }
+
+        /***********************************************************************
+         * 7. SQUAD SELECTION & MOVEMENT PLANNING
+         ***********************************************************************/
+        function selectUnit(unitId, panToUnit = false) {
+            if (isAnimatingTurn) return;
+            selectedUnitId = unitId;
+            const unit = squad.find(u => u.id === unitId);
+            if (unit) {
+                computeReachableHexes(unit);
+                if (panToUnit) {
+                    const distFromCam = getPixelDistanceFromCamera(unit.q, unit.r);
+                    if (distFromCam > Math.min(canvas.width, canvas.height) * 0.38) {
+                        const up = hexToUnitPixel(unit.q, unit.r);
+                        camera.x = up.x;
+                        camera.y = up.y;
+                    }
+                }
+            } else {
+                reachableMap.clear();
+            }
+            updateUI();
+            requestRender();
+        }
+
+        function selectNextUnplannedUnit() {
+            if (isAnimatingTurn || squad.length === 0) return;
+            const unplanned = squad.filter(u => u.plannedPath.length <= 1);
+            const pool = unplanned.length > 0 ? unplanned : squad;
+            const currentIdx = pool.findIndex(u => u.id === selectedUnitId);
+            const nextUnit = pool[(currentIdx + 1) % pool.length];
+            selectUnit(nextUnit.id, true);
+        }
+
+        function cancelSelectedUnitPlan() {
+            if (isAnimatingTurn) return;
+            const unit = squad.find(u => u.id === selectedUnitId);
+            if (unit) {
+                unit.plannedPath = [];
+                unit.planOrder = 0;
+                updateUI();
+                requestRender();
+            }
+        }
+
+        function clearAllPlans() {
+            if (isAnimatingTurn) return;
+            for (const unit of squad) {
+                unit.plannedPath = [];
+                unit.planOrder = 0;
+            }
+            nextPlanOrder = 1;
+            logEvent('Cleared all planned squad paths.', 'text-slate-400');
+            updateUI();
+            requestRender();
+        }
+
+        function getUnitPlannedDest(unit) {
+            if (unit.plannedPath && unit.plannedPath.length > 1) {
+                const last = unit.plannedPath[unit.plannedPath.length - 1];
+                return { q: last.q, r: last.r };
+            }
+            return { q: unit.q, r: unit.r };
+        }
+
+        function handleHexTap(q, r) {
+            if (isAnimatingTurn || !inBounds(q, r)) return;
+
+            const tappedKey = hexKey(q, r);
+            const selectedUnit = squad.find(u => u.id === selectedUnitId);
+            const unitAtHex = squad.find(u => u.q === q && u.r === r);
+            const trogAtHex = trogGroups.find(t => t.q === q && t.r === r);
+            const visibleTrogAtHex = (trogAtHex && isHexCurrentlyVisible(q, r)) ? trogAtHex : null;
+
+            // Tapping selected unit's own hex clears path or deselects
+            if (selectedUnit && selectedUnit.q === q && selectedUnit.r === r) {
+                if (selectedUnit.plannedPath.length > 1) {
+                    selectedUnit.plannedPath = [];
+                    selectedUnit.planOrder = 0;
+                    updateUI();
+                    requestRender();
+                } else {
+                    selectUnit(null);
+                }
+                return;
+            }
+
+            // Tapping a reachable hex plots path
+            if (selectedUnit && reachableMap.has(tappedKey)) {
+                if (unitAtHex && unitAtHex.id !== selectedUnit.id && unitAtHex.plannedPath.length <= 1 && !visibleTrogAtHex) {
+                    selectUnit(unitAtHex.id);
+                    return;
+                }
+
+                if (!visibleTrogAtHex) {
+                    const conflictingUnit = squad.find(u => {
+                        if (u.id === selectedUnit.id) return false;
+                        const dest = getUnitPlannedDest(u);
+                        return dest.q === q && dest.r === r;
+                    });
+                    if (conflictingUnit) {
+                        selectUnit(conflictingUnit.id);
+                        logEvent(`Switched to ${formatUnitName(conflictingUnit)} (already moving to (${q},${r})).`, 'text-amber-300');
+                        return;
+                    }
+                }
+
+                const path = reconstructPath(q, r);
+                if (path && path.length > 1) {
+                    selectedUnit.plannedPath = path;
+                    selectedUnit.planOrder = nextPlanOrder++;
+                    updateUI();
+                    updateInspector(q, r);
+                    requestRender();
+                    return;
+                }
+            }
+
+            // Tapping any squad member selects it
+            if (unitAtHex) {
+                selectUnit(unitAtHex.id);
+                return;
+            }
+
+            // Tapping a planned ghost marker selects that unit
+            const unitPlanningHere = squad.find(u => {
+                if (u.plannedPath.length <= 1) return false;
+                const last = u.plannedPath[u.plannedPath.length - 1];
+                return last.q === q && last.r === r;
+            });
+            if (unitPlanningHere) {
+                selectUnit(unitPlanningHere.id);
+                return;
+            }
+
+            selectUnit(null);
+        }
+
+        /***********************************************************************
+         * 8. TROG GROUPING, SCALING HUNTING AI & ANIMATED TURN EXECUTION
+         ***********************************************************************/
+        function mergeAdjacentTrogs(recordPulses = false) {
+            const mergedPulses = [];
+            let mergedAny = true;
+            while (mergedAny) {
+                mergedAny = false;
+                for (let i = 0; i < trogGroups.length; i++) {
+                    const g1 = trogGroups[i];
+                    if (g1.count <= 0) continue;
+
+                    for (let j = i + 1; j < trogGroups.length; j++) {
+                        const g2 = trogGroups[j];
+                        if (g2.count <= 0) continue;
+
+                        if (Math.abs(g1.q - g2.q) <= 2 && Math.abs(g1.r - g2.r) <= 2) {
+                            if (hexDistance(g1.q, g1.r, g2.q, g2.r) <= 1) {
+                                g1.count += g2.count;
+                                g2.count = 0;
+                                mergedAny = true;
+                                if (recordPulses) {
+                                    mergedPulses.push({ q: g1.q, r: g1.r, count: g1.count, progress: 0 });
+                                }
+                            }
+                        }
+                    }
+                }
+                trogGroups = trogGroups.filter(g => g.count > 0);
+            }
+            return mergedPulses;
+        }
+
+        // Scaling Trog Hunting AI:
+        // - Single Trogs (count === 1) wander randomly.
+        // - Grouped Trogs (count >= 2) track toward the nearest Bear or Wolf with some random variation.
+        // - Larger groups move more efficiently toward their target.
+        function chooseTrogNextHex(trog, neighbors) {
+            if (neighbors.length === 0) return null;
+
+            if (trog.count <= 1 || squad.length === 0) {
+                return neighbors[Math.floor(Math.random() * neighbors.length)];
+            }
+
+            // Find nearest Wolf or Bear
+            let nearestUnit = squad[0];
+            let minDist = hexDistance(trog.q, trog.r, nearestUnit.q, nearestUnit.r);
+            for (let i = 1; i < squad.length; i++) {
+                const d = hexDistance(trog.q, trog.r, squad[i].q, squad[i].r);
+                if (d < minDist) {
+                    minDist = d;
+                    nearestUnit = squad[i];
+                }
+            }
+
+            // Rank passable neighbor hexes by distance to target
+            const scored = neighbors.map(nb => ({
+                nb,
+                score: hexDistance(nb.q, nb.r, nearestUnit.q, nearestUnit.r) + (Math.random() * 0.15)
+            }));
+            scored.sort((a, b) => a.score - b.score);
+
+            // Efficiency scales with group size:
+            // Size 2: 56% optimal step, 28% 2nd best angled step, 16% random
+            // Size 3: 76% optimal step, 18% 2nd best angled step, 6% random
+            // Size 4+: up to 95% optimal step
+            const bestProb = trog.count === 2 ? 0.56 : (trog.count === 3 ? 0.76 : Math.min(0.95, 0.76 + (trog.count - 3) * 0.08));
+            const secondProb = trog.count === 2 ? 0.28 : (trog.count === 3 ? 0.18 : 0.04);
+            const roll = Math.random();
+
+            if (roll < bestProb) {
+                return scored[0].nb;
+            } else if (roll < bestProb + secondProb && scored.length > 1) {
+                return scored[1].nb;
+            } else {
+                return neighbors[Math.floor(Math.random() * neighbors.length)];
+            }
+        }
+
+        function findNearestFreePassableHex(centerQ, centerR, occupiedSet) {
+            const visited = new Set([hexKey(centerQ, centerR)]);
+            const queue = [{ q: centerQ, r: centerR }];
+
+            while (queue.length > 0) {
+                const curr = queue.shift();
+                const neighbors = getNeighbors(curr.q, curr.r);
+                for (const nb of neighbors) {
+                    const key = hexKey(nb.q, nb.r);
+                    if (visited.has(key)) continue;
+                    visited.add(key);
+
+                    if (mapGrid[idx(nb.q, nb.r)] !== TERRAIN.WATER && !occupiedSet.has(key)) {
+                        return nb;
+                    }
+                    queue.push(nb);
+                }
+            }
+            return { q: centerQ, r: centerR };
+        }
+
+        function evaluateBattle(bears, wolves, trogCount) {
+            let survivingBears = [...bears];
+            let survivingWolves = [...wolves];
+            let remTrogs = trogCount;
+
+            // 2 Wolves kill 1 Trog
+            const wolfPairs = Math.floor(survivingWolves.length / 2);
+            const killedByWolves = Math.min(remTrogs, wolfPairs);
+            remTrogs -= killedByWolves;
+
+            // 3 Trogs kill 1 Bear
+            while (remTrogs >= 3 && survivingBears.length > 0) {
+                remTrogs -= 3;
+                survivingBears.pop();
+            }
+
+            // Each surviving Bear kills up to 2 remaining Trogs
+            if (survivingBears.length > 0 && remTrogs > 0) {
+                const bearKillCapacity = survivingBears.length * 2;
+                remTrogs = Math.max(0, remTrogs - bearKillCapacity);
+            }
+
+            // Any remaining Trogs kill unpaired Wolves
+            if (remTrogs > 0 && survivingWolves.length > 0) {
+                const wolvesKilled = Math.min(survivingWolves.length, remTrogs * 2);
+                survivingWolves.splice(survivingWolves.length - wolvesKilled, wolvesKilled);
+            }
+
+            return {
+                survivingUnits: [...survivingBears, ...survivingWolves],
+                killedUnits: [
+                    ...bears.filter(b => !survivingBears.includes(b)),
+                    ...wolves.filter(w => !survivingWolves.includes(w))
+                ],
+                remainingTrogs: remTrogs,
+                trogsKilled: trogCount - remTrogs
+            };
+        }
+
+        function setTurnPhaseUI(phaseText, badgeColorClass = 'bg-amber-500/20 text-amber-300 border-amber-400/50') {
+            const badge = document.getElementById('turnPhaseBadge');
+            const textEl = document.getElementById('turnPhaseText');
+            const moveBtn = document.getElementById('moveBtn');
+            const clearBtn = document.getElementById('clearPlansBtn');
+
+            if (phaseText) {
+                badge.className = `flex items-center gap-2 text-xs font-extrabold px-3 py-1.5 rounded-xl border shadow-lg ${badgeColorClass}`;
+                textEl.textContent = phaseText;
+                moveBtn.disabled = true;
+                clearBtn.disabled = true;
+                moveBtn.classList.add('opacity-50', 'pointer-events-none');
+                clearBtn.classList.add('opacity-50', 'pointer-events-none');
+            } else {
+                badge.className = 'hidden';
+                moveBtn.disabled = false;
+                clearBtn.disabled = false;
+                moveBtn.classList.remove('opacity-50', 'pointer-events-none');
+                clearBtn.classList.remove('opacity-50', 'pointer-events-none');
+            }
+        }
+
+        function animateDuration(durationMs, onProgress) {
+            return new Promise((resolve) => {
+                const start = performance.now();
+                function frame(now) {
+                    const t = Math.min(1, (now - start) / durationMs);
+                    onProgress(t);
+                    requestRender();
+                    if (t < 1) {
+                        requestAnimationFrame(frame);
+                    } else {
+                        resolve();
+                    }
+                }
+                requestAnimationFrame(frame);
+            });
+        }
+
+        function easeInOutQuad(t) {
+            return t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2;
+        }
+
+        function createSkirmishEffect(q, r, result) {
+            const sparks = [];
+            for (let i = 0; i < 14; i++) {
+                const angle = (Math.PI * 2 * i) / 14 + (Math.random() - 0.5) * 0.3;
+                const speed = 0.6 + Math.random() * 0.9;
+                sparks.push({ angle, speed, size: 2 + Math.random() * 3 });
+            }
+            const isVictory = result.killedUnits.length === 0 && result.trogsKilled > 0;
+            return { q, r, progress: 0, isVictory, sparks };
+        }
+
+        async function executeTurn() {
+            if (isAnimatingTurn || squad.length === 0) return;
+            isAnimatingTurn = true;
+
+            const previousSelectedId = selectedUnitId;
+            selectedUnitId = null;
+            reachableMap.clear();
+            updateUI();
+
+            turnNumber++;
+
+            const orderedSquad = [...squad].sort((a, b) => (a.planOrder || 999999) - (b.planOrder || 999999));
+
+            // STEP 1: Animate Squad Movement along Planned Paths
+            const movingUnits = orderedSquad.filter(u => u.plannedPath && u.plannedPath.length > 1);
+            if (movingUnits.length > 0) {
+                setTurnPhaseUI('Moving Squad...', 'bg-emerald-500/20 text-emerald-300 border-emerald-400/50');
+                for (const u of movingUnits) {
+                    u.animWaypoints = u.plannedPath.map(p => hexToUnitPixel(p.q, p.r));
+                }
+
+                await animateDuration(600, (t) => {
+                    const eased = easeInOutQuad(t);
+                    for (const u of movingUnits) {
+                        const pts = u.animWaypoints;
+                        const totalSegs = pts.length - 1;
+                        const scaled = eased * totalSegs;
+                        const segIdx = Math.min(totalSegs - 1, Math.floor(scaled));
+                        const segT = scaled - segIdx;
+                        u.animPos = {
+                            x: pts[segIdx].x + (pts[segIdx + 1].x - pts[segIdx].x) * segT,
+                            y: pts[segIdx].y + (pts[segIdx + 1].y - pts[segIdx].y) * segT
+                        };
+                    }
+                    updateFogOfWar();
+                });
+
+                for (const u of movingUnits) {
+                    delete u.animWaypoints;
+                    delete u.animPos;
+                }
+            }
+
+            // Detect Combat Zones
+            const combatZones = new Map();
+            const attackingUnitIds = new Set();
+
+            for (const unit of orderedSquad) {
+                const dest = getUnitPlannedDest(unit);
+                const targetTrog = trogGroups.find(t => t.count > 0 && t.q === dest.q && t.r === dest.r);
+
+                unit.q = dest.q;
+                unit.r = dest.r;
+                unit.plannedPath = [];
+
+                if (targetTrog) {
+                    attackingUnitIds.add(unit.id);
+                    const key = hexKey(dest.q, dest.r);
+                    if (!combatZones.has(key)) {
+                        combatZones.set(key, { q: dest.q, r: dest.r, units: [], trogGroup: targetTrog });
+                    }
+                    combatZones.get(key).units.push(unit);
+                }
+            }
+
+            updateFogOfWar();
+
+            const occupiedSquadHexes = new Set();
+            for (const unit of squad) {
+                if (!attackingUnitIds.has(unit.id)) {
+                    occupiedSquadHexes.add(hexKey(unit.q, unit.r));
+                }
+            }
+
+            // STEP 2: Skirmish Highlights for Squad Attacks
+            const engagedTrogIds = new Set();
+            const deadUnitIds = new Set();
+            const pendingResults = [];
+
+            for (const [, zone] of combatZones.entries()) {
+                const { q, r, units, trogGroup } = zone;
+                engagedTrogIds.add(trogGroup.id);
+                units.sort((a, b) => (a.planOrder || 9999) - (b.planOrder || 9999));
+
+                const bears = units.filter(u => u.type === 'bear');
+                const wolves = units.filter(u => u.type === 'wolf');
+                const result = evaluateBattle(bears, wolves, trogGroup.count);
+
+                pendingResults.push({ q, r, units, trogGroup, result });
+                activeSkirmishes.push(createSkirmishEffect(q, r, result));
+            }
+
+            if (activeSkirmishes.length > 0) {
+                setTurnPhaseUI('Skirmish!', 'bg-rose-500/25 text-rose-300 border-rose-400/60');
+                await animateDuration(850, (t) => {
+                    for (const sk of activeSkirmishes) sk.progress = t;
+                });
+                activeSkirmishes = [];
+            }
+
+            // Resolve Combat & Slide Secondary Attackers to Adjacent Non-Water Cells
+            const slideAnimations = [];
+            for (const item of pendingResults) {
+                const { q, r, units, trogGroup, result } = item;
+                const oldCount = trogGroup.count;
+                trogGroup.count = result.remainingTrogs;
+
+                for (const dead of result.killedUnits) {
+                    deadUnitIds.add(dead.id);
+                    logEvent(`💀 ${formatUnitName(dead)} fell fighting ${oldCount} Trog(s) at (${q},${r})!`, 'text-rose-400 font-semibold');
+                    addVisualEffect(q, r, `${formatUnitName(dead)} KIA`, '#f43f5e');
+                }
+
+                if (result.trogsKilled > 0) {
+                    logEvent(`⚔️ Squad slew ${result.trogsKilled} Trog(s) at (${q},${r})!`, 'text-emerald-400 font-semibold');
+                    addVisualEffect(q, r, `VICTORY! -${result.trogsKilled} Trog`, '#10b981');
+                }
+
+                if (result.survivingUnits.length > 0) {
+                    const orderedSurvivors = units.filter(u => result.survivingUnits.includes(u));
+                    if (trogGroup.count === 0) {
+                        const firstUnit = orderedSurvivors[0];
+                        firstUnit.q = q;
+                        firstUnit.r = r;
+                        occupiedSquadHexes.add(hexKey(q, r));
+
+                        for (let i = 1; i < orderedSurvivors.length; i++) {
+                            const extraUnit = orderedSurvivors[i];
+                            const nearby = findNearestFreePassableHex(q, r, occupiedSquadHexes);
+                            const fromPx = hexToUnitPixel(q, r);
+                            const toPx = hexToUnitPixel(nearby.q, nearby.r);
+                            extraUnit.q = nearby.q;
+                            extraUnit.r = nearby.r;
+                            occupiedSquadHexes.add(hexKey(nearby.q, nearby.r));
+                            slideAnimations.push({ unit: extraUnit, fromPx, toPx });
+                        }
+                    } else {
+                        occupiedSquadHexes.add(hexKey(q, r));
+                        for (const surv of orderedSurvivors) {
+                            const nearby = findNearestFreePassableHex(q, r, occupiedSquadHexes);
+                            const fromPx = hexToUnitPixel(q, r);
+                            const toPx = hexToUnitPixel(nearby.q, nearby.r);
+                            surv.q = nearby.q;
+                            surv.r = nearby.r;
+                            occupiedSquadHexes.add(hexKey(nearby.q, nearby.r));
+                            slideAnimations.push({ unit: surv, fromPx, toPx });
+                        }
+                    }
+                }
+            }
+
+            for (const u of squad) u.planOrder = 0;
+            squad = squad.filter(u => !deadUnitIds.has(u.id));
+            trogGroups = trogGroups.filter(t => t.count > 0);
+
+            if (slideAnimations.length > 0) {
+                await animateDuration(320, (t) => {
+                    const eased = easeInOutQuad(t);
+                    for (const s of slideAnimations) {
+                        s.unit.animPos = {
+                            x: s.fromPx.x + (s.toPx.x - s.fromPx.x) * eased,
+                            y: s.fromPx.y + (s.toPx.y - s.fromPx.y) * eased
+                        };
+                    }
+                });
+                for (const s of slideAnimations) delete s.unit.animPos;
+            }
+
+            updateFogOfWar();
+
+            // STEP 3: Trog Movement (Wandering + Scaling Hunting AI)
+            setTurnPhaseUI('Trogs Moving...', 'bg-sky-500/20 text-sky-300 border-sky-400/50');
+
+            const movingTrogs = [];
+            for (const trog of trogGroups) {
+                if (engagedTrogIds.has(trog.id)) continue;
+                const neighbors = getNeighbors(trog.q, trog.r).filter(
+                    nb => mapGrid[idx(nb.q, nb.r)] !== TERRAIN.WATER
+                );
+                if (neighbors.length > 0) {
+                    const choice = chooseTrogNextHex(trog, neighbors);
+                    if (choice) {
+                        const fromPx = hexToUnitPixel(trog.q, trog.r);
+                        const toPx = hexToUnitPixel(choice.q, choice.r);
+                        trog.nextQ = choice.q;
+                        trog.nextR = choice.r;
+                        const visibleMove = isHexCurrentlyVisible(trog.q, trog.r) || isHexCurrentlyVisible(choice.q, choice.r);
+                        movingTrogs.push({ trog, fromPx, toPx, visibleMove });
+                    }
+                }
+            }
+
+            if (movingTrogs.some(m => m.visibleMove)) {
+                await animateDuration(480, (t) => {
+                    const eased = easeInOutQuad(t);
+                    for (const m of movingTrogs) {
+                        if (m.visibleMove) {
+                            m.trog.animPos = {
+                                x: m.fromPx.x + (m.toPx.x - m.fromPx.x) * eased,
+                                y: m.fromPx.y + (m.toPx.y - m.fromPx.y) * eased
+                            };
+                        }
+                    }
+                });
+            }
+
+            for (const m of movingTrogs) {
+                m.trog.q = m.trog.nextQ;
+                m.trog.r = m.trog.nextR;
+                delete m.trog.nextQ;
+                delete m.trog.nextR;
+                delete m.trog.animPos;
+            }
+
+            const newMerges = mergeAdjacentTrogs(true).filter(mp => isHexCurrentlyVisible(mp.q, mp.r));
+            if (newMerges.length > 0) {
+                activeMergePulses = newMerges;
+                for (const mp of newMerges) {
+                    logEvent(`⚠️ Trogs grouped into a hunting band of ${mp.count} at (${mp.q},${mp.r})!`, 'text-amber-300 font-semibold');
+                }
+                await animateDuration(340, (t) => {
+                    for (const mp of activeMergePulses) mp.progress = t;
+                });
+                activeMergePulses = [];
+            }
+
+            // STEP 4: Ambush Skirmishes if Trogs Stepped onto Squad
+            const ambushItems = [];
+            for (const trog of trogGroups) {
+                if (trog.count <= 0) continue;
+                const unitsOnHex = squad.filter(u => u.q === trog.q && u.r === trog.r);
+                if (unitsOnHex.length > 0) {
+                    const bears = unitsOnHex.filter(u => u.type === 'bear');
+                    const wolves = unitsOnHex.filter(u => u.type === 'wolf');
+                    const res = evaluateBattle(bears, wolves, trog.count);
+                    ambushItems.push({ trog, unitsOnHex, res });
+                    activeSkirmishes.push(createSkirmishEffect(trog.q, trog.r, res));
+                }
+            }
+
+            if (activeSkirmishes.length > 0) {
+                setTurnPhaseUI('Ambush!', 'bg-rose-500/25 text-rose-300 border-rose-400/60');
+                await animateDuration(800, (t) => {
+                    for (const sk of activeSkirmishes) sk.progress = t;
+                });
+                activeSkirmishes = [];
+            }
+
+            const postMoveDeadUnits = new Set();
+            for (const item of ambushItems) {
+                const { trog, unitsOnHex, res } = item;
+                const oldTrogCount = trog.count;
+                trog.count = res.remainingTrogs;
+
+                for (const dead of res.killedUnits) {
+                    postMoveDeadUnits.add(dead.id);
+                    logEvent(`💀 Ambush! ${formatUnitName(dead)} was killed by ${oldTrogCount} Trog(s) at (${trog.q},${trog.r})!`, 'text-rose-400 font-semibold');
+                    addVisualEffect(trog.q, trog.r, `${formatUnitName(dead)} KIA`, '#f43f5e');
+                }
+                if (res.trogsKilled > 0) {
+                    logEvent(`🛡️ ${formatUnitName(unitsOnHex[0])} fended off ${res.trogsKilled} Trog(s) at (${trog.q},${trog.r})!`, 'text-amber-300');
+                    addVisualEffect(trog.q, trog.r, `-${res.trogsKilled} Trog`, '#10b981');
+                }
+            }
+
+            squad = squad.filter(u => !postMoveDeadUnits.has(u.id));
+            trogGroups = trogGroups.filter(t => t.count > 0);
+
+            const finalOccupied = new Set();
+            for (const u of squad) {
+                const k = hexKey(u.q, u.r);
+                if (finalOccupied.has(k)) {
+                    const free = findNearestFreePassableHex(u.q, u.r, finalOccupied);
+                    u.q = free.q;
+                    u.r = free.r;
+                    finalOccupied.add(hexKey(u.q, u.r));
+                } else {
+                    finalOccupied.add(k);
+                }
+            }
+
+            isAnimatingTurn = false;
+            setTurnPhaseUI(null);
+            updateFogOfWar();
+
+            if (previousSelectedId && squad.some(u => u.id === previousSelectedId)) {
+                selectedUnitId = previousSelectedId;
+            } else {
+                selectedUnitId = squad.length > 0 ? squad[0].id : null;
+            }
+            if (selectedUnitId) {
+                computeReachableHexes(squad.find(u => u.id === selectedUnitId));
+            } else {
+                reachableMap.clear();
+            }
+
+            updateUI();
+            requestRender();
+        }
+
+        function formatUnitName(unit) {
+            return `${unit.type === 'bear' ? 'Bear' : 'Wolf'} #${unit.number}`;
+        }
+
+        function addVisualEffect(q, r, text, color) {
+            visualEffects.push({ q, r, text, color, createdAt: performance.now() });
+            animateEffects();
+        }
+
+        let effectsAnimFrame = null;
+        function animateEffects() {
+            if (effectsAnimFrame) return;
+            function step() {
+                const now = performance.now();
+                visualEffects = visualEffects.filter(e => now - e.createdAt < 1800);
+                requestRender();
+                if (visualEffects.length > 0) {
+                    effectsAnimFrame = requestAnimationFrame(step);
+                } else {
+                    effectsAnimFrame = null;
+                }
+            }
+            effectsAnimFrame = requestAnimationFrame(step);
+        }
+
+        /***********************************************************************
+         * 9. CAMERA, VIEWPORT CULLING & CANVAS RENDERER
+         ***********************************************************************/
+        function updateZoomLimits() {
+            const w = window.innerWidth || document.documentElement.clientWidth || 1024;
+            const h = window.innerHeight || document.documentElement.clientHeight || 768;
+            canvas.width = Math.max(320, w);
+            canvas.height = Math.max(320, h);
+
+            // Max zoom-out constrained so viewport shows ~25x50 cells (1,250 cells)
+            const screenArea = canvas.width * canvas.height;
+            const targetMaxVisibleCells = 25 * 50;
+            const calculatedMinR = Math.sqrt(screenArea / (targetMaxVisibleCells * 2.598));
+
+            camera.minRadius = Math.max(8, Math.min(28, calculatedMinR || 14));
+            if (!Number.isFinite(camera.hexRadius) || camera.hexRadius < camera.minRadius) {
+                camera.hexRadius = camera.minRadius;
+            }
+        }
+
+        function centerOnSquad() {
+            if (squad.length === 0) return;
+            let sumX = 0, sumY = 0;
+            for (const u of squad) {
+                const p = hexToUnitPixel(u.q, u.r);
+                sumX += p.x;
+                sumY += p.y;
+            }
+            camera.x = sumX / squad.length;
+            camera.y = sumY / squad.length;
+            camera.hexRadius = Math.max(camera.minRadius * 2.2, 36);
+            updateZoomIndicator();
+            updateUI();
+            requestRender();
+        }
+
+        function centerOnNearestTrog() {
+            const visibleTrogs = trogGroups.filter(t => isHexCurrentlyVisible(t.q, t.r));
+            const pool = visibleTrogs.length > 0 ? visibleTrogs : (!fogOfWarEnabled ? trogGroups : []);
+            if (pool.length === 0) {
+                logEvent('No Trogs currently in sight! Move Wolf scouts (vision 6) to explore.', 'text-amber-300');
+                return;
+            }
+            const refQ = squad.length > 0 ? squad[0].q : 256;
+            const refR = squad.length > 0 ? squad[0].r : 256;
+
+            let best = pool[0];
+            let bestDist = Infinity;
+            for (const t of pool) {
+                const d = hexDistance(refQ, refR, t.q, t.r);
+                if (d < bestDist) {
+                    bestDist = d;
+                    best = t;
+                }
+            }
+            const p = hexToUnitPixel(best.q, best.r);
+            camera.x = p.x;
+            camera.y = p.y;
+            requestRender();
+        }
+
+        function zoomCamera(factor, pivotScreenX = canvas.width / 2, pivotScreenY = canvas.height / 2) {
+            const oldR = camera.hexRadius;
+            const newR = Math.max(camera.minRadius, Math.min(camera.maxRadius, oldR * factor));
+            if (Math.abs(newR - oldR) < 0.01) return;
+
+            const worldXBefore = camera.x + (pivotScreenX - canvas.width / 2) / oldR;
+            const worldYBefore = camera.y + (pivotScreenY - canvas.height / 2) / oldR;
+
+            camera.hexRadius = newR;
+            camera.x = worldXBefore - (pivotScreenX - canvas.width / 2) / newR;
+            camera.y = worldYBefore - (pivotScreenY - canvas.height / 2) / newR;
+
+            clampCameraToMap();
+            updateZoomIndicator();
+            requestRender();
+        }
+
+        function clampCameraToMap() {
+            const maxUnitX = SQRT3 * GRID_WIDTH;
+            const maxUnitY = 1.5 * GRID_HEIGHT;
+            camera.x = Math.max(0, Math.min(maxUnitX, camera.x));
+            camera.y = Math.max(0, Math.min(maxUnitY, camera.y));
+        }
+
+        function updateZoomIndicator() {
+            const pct = Math.round((camera.hexRadius / 34) * 100);
+            document.getElementById('zoomLabel').textContent = `${pct}%`;
+        }
+
+        function unitPixelToScreen(ux, uy) {
+            const R = camera.hexRadius;
+            return {
+                x: (ux - camera.x) * R + canvas.width / 2,
+                y: (uy - camera.y) * R + canvas.height / 2
+            };
+        }
+
+        function screenToHex(sx, sy) {
+            const R = camera.hexRadius;
+            const ux = (sx - canvas.width / 2) / R + camera.x;
+            const uy = (sy - canvas.height / 2) / R + camera.y;
+            return unitPixelToHex(ux, uy);
+        }
+
+        function getPixelDistanceFromCamera(q, r) {
+            const p = hexToUnitPixel(q, r);
+            const sp = unitPixelToScreen(p.x, p.y);
+            return Math.hypot(sp.x - canvas.width / 2, sp.y - canvas.height / 2);
+        }
+
+        let renderRequested = false;
+        function requestRender() {
+            if (!renderRequested) {
+                renderRequested = true;
+                requestAnimationFrame(renderScene);
+            }
+        }
+
+        function traceHexPath(ctx, cx, cy, R) {
+            ctx.beginPath();
+            for (let i = 0; i < 6; i++) {
+                const angle = (Math.PI / 180) * (60 * i - 30);
+                const vx = cx + R * Math.cos(angle);
+                const vy = cy + R * Math.sin(angle);
+                if (i === 0) ctx.moveTo(vx, vy);
+                else ctx.lineTo(vx, vy);
+            }
+            ctx.closePath();
+        }
+
+        function renderScene() {
+            renderRequested = false;
+            ctx.fillStyle = '#0f172a';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            const R = camera.hexRadius;
+            const halfW = (canvas.width / 2) / R;
+            const halfH = (canvas.height / 2) / R;
+
+            const minR = Math.max(0, Math.floor((camera.y - halfH) / 1.5) - 2);
+            const maxR = Math.min(GRID_HEIGHT - 1, Math.ceil((camera.y + halfH) / 1.5) + 2);
+            const minQ = Math.max(0, Math.floor((camera.x - halfW) / SQRT3) - 2);
+            const maxQ = Math.min(GRID_WIDTH - 1, Math.ceil((camera.x + halfW) / SQRT3) + 2);
+
+            // 1. Draw Terrain Hexes with Fog of War
+            ctx.lineWidth = R > 18 ? 1.2 : 0.6;
+            for (let r = minR; r <= maxR; r++) {
+                const rowOffset = 0.5 * (r & 1);
+                const uy = 1.5 * r;
+                const sy = (uy - camera.y) * R + canvas.height / 2;
+
+                for (let q = minQ; q <= maxQ; q++) {
+                    const ux = SQRT3 * (q + rowOffset);
+                    const sx = (ux - camera.x) * R + canvas.width / 2;
+
+                    const cellIndex = idx(q, r);
+                    const visState = fogOfWarEnabled ? fogGrid[cellIndex] : 2;
+
+                    traceHexPath(ctx, sx, sy, R + 0.4);
+
+                    if (visState === 0) {
+                        // Unseen Fog
+                        ctx.fillStyle = '#111827';
+                        ctx.fill();
+                        ctx.strokeStyle = '#1e293b';
+                        ctx.stroke();
+                    } else if (visState === 1) {
+                        // Seen Previously by Scout or Bear -> Neutral Gray
+                        const tType = mapGrid[cellIndex];
+                        if (tType === TERRAIN.WATER) ctx.fillStyle = '#475569';
+                        else if (tType === TERRAIN.FOREST || tType === TERRAIN.ROCKS) ctx.fillStyle = '#64748b';
+                        else ctx.fillStyle = '#788596';
+
+                        ctx.fill();
+                        ctx.strokeStyle = '#475569';
+                        ctx.stroke();
+
+                        if (R >= 16) {
+                            drawTerrainDecoration(ctx, sx, sy, R, tType, tileDetailSeed[cellIndex], true);
+                        }
+                    } else {
+                        // Active Vision (or Fog OFF) -> Full Color
+                        const tType = mapGrid[cellIndex];
+                        const tInfo = TERRAIN_INFO[tType];
+                        ctx.fillStyle = tInfo.fill;
+                        ctx.fill();
+                        ctx.strokeStyle = tInfo.stroke;
+                        ctx.stroke();
+
+                        if (R >= 16) {
+                            drawTerrainDecoration(ctx, sx, sy, R, tType, tileDetailSeed[cellIndex], false);
+                        }
+                    }
+                }
+            }
+
+            // 2. Draw Reachable Hex Highlights for Selected Unit
+            if (selectedUnitId && reachableMap.size > 0) {
+                const selectedUnit = squad.find(u => u.id === selectedUnitId);
+                for (const [, node] of reachableMap.entries()) {
+                    if (node.q < minQ || node.q > maxQ || node.r < minR || node.r > maxR) continue;
+                    if (selectedUnit && node.q === selectedUnit.q && node.r === selectedUnit.r) continue;
+
+                    const up = hexToUnitPixel(node.q, node.r);
+                    const sp = unitPixelToScreen(up.x, up.y);
+                    const hasTrog = isHexCurrentlyVisible(node.q, node.r) && trogGroups.some(t => t.q === node.q && t.r === node.r);
+
+                    traceHexPath(ctx, sp.x, sp.y, R * 0.92);
+                    if (hasTrog) {
+                        ctx.fillStyle = 'rgba(244, 63, 94, 0.38)';
+                        ctx.strokeStyle = '#fb7185';
+                        ctx.lineWidth = 2.5;
+                    } else {
+                        ctx.fillStyle = 'rgba(251, 191, 36, 0.25)';
+                        ctx.strokeStyle = 'rgba(251, 191, 36, 0.85)';
+                        ctx.lineWidth = 2;
+                    }
+                    ctx.fill();
+                    ctx.stroke();
+
+                    if (R >= 24) {
+                        ctx.fillStyle = hasTrog ? '#ffe4e6' : '#fef3c7';
+                        ctx.font = `600 ${Math.round(R * 0.28)}px Inter, sans-serif`;
+                        ctx.textAlign = 'center';
+                        ctx.textBaseline = 'middle';
+                        ctx.fillText(hasTrog ? '⚔️' : `${node.cost}MP`, sp.x, sp.y + R * 0.52);
+                    }
+                }
+            }
+
+            // 3. Draw Hovered Hex Outline
+            if (inBounds(hoveredHex.q, hoveredHex.r)) {
+                const up = hexToUnitPixel(hoveredHex.q, hoveredHex.r);
+                const sp = unitPixelToScreen(up.x, up.y);
+                traceHexPath(ctx, sp.x, sp.y, R * 0.95);
+                ctx.strokeStyle = 'rgba(255, 255, 255, 0.65)';
+                ctx.lineWidth = 2;
+                ctx.stroke();
+            }
+
+            // 4. Draw Planned Movement Paths & Ghost Destinations
+            for (const unit of squad) {
+                if (!unit.plannedPath || unit.plannedPath.length <= 1) continue;
+
+                const isSelected = unit.id === selectedUnitId;
+                const isDimmed = (selectedUnitId !== null && !isSelected);
+                const pathColor = unit.type === 'bear' ? '#f59e0b' : '#38bdf8';
+
+                ctx.save();
+                ctx.globalAlpha = isDimmed ? 0.32 : 1.0;
+                ctx.beginPath();
+                for (let i = 0; i < unit.plannedPath.length; i++) {
+                    const step = unit.plannedPath[i];
+                    const up = hexToUnitPixel(step.q, step.r);
+                    const sp = unitPixelToScreen(up.x, up.y);
+                    if (i === 0) ctx.moveTo(sp.x, sp.y);
+                    else ctx.lineTo(sp.x, sp.y);
+                }
+                ctx.strokeStyle = isSelected ? '#ffffff' : pathColor;
+                ctx.lineWidth = Math.max(3, R * 0.14);
+                ctx.lineCap = 'round';
+                ctx.lineJoin = 'round';
+                ctx.setLineDash([R * 0.25, R * 0.16]);
+                ctx.stroke();
+                ctx.restore();
+
+                const dest = unit.plannedPath[unit.plannedPath.length - 1];
+                const upDest = hexToUnitPixel(dest.q, dest.r);
+                const spDest = unitPixelToScreen(upDest.x, upDest.y);
+
+                ctx.save();
+                ctx.globalAlpha = isDimmed ? 0.35 : 0.9;
+                ctx.beginPath();
+                ctx.arc(spDest.x, spDest.y, R * 0.44, 0, Math.PI * 2);
+                ctx.fillStyle = unit.type === 'bear' ? 'rgba(245, 158, 11, 0.35)' : 'rgba(56, 189, 248, 0.35)';
+                ctx.fill();
+                ctx.lineWidth = 2;
+                ctx.strokeStyle = pathColor;
+                ctx.stroke();
+
+                ctx.font = `${Math.max(10, Math.round(R * 0.42))}px sans-serif`;
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'middle';
+                ctx.fillText(unit.type === 'bear' ? '🐻' : '🐺', spDest.x, spDest.y);
+                ctx.restore();
+            }
+
+            // 5. Draw Trogs (Only if in active vision or Fog OFF)
+            for (const trog of trogGroups) {
+                if (!trog.animPos && (trog.q < minQ - 1 || trog.q > maxQ + 1 || trog.r < minR - 1 || trog.r > maxR + 1)) continue;
+
+                if (fogOfWarEnabled) {
+                    let visQ = trog.q;
+                    let visR = trog.r;
+                    if (trog.animPos) {
+                        const approx = unitPixelToHex(trog.animPos.x, trog.animPos.y);
+                        visQ = approx.q;
+                        visR = approx.r;
+                    }
+                    if (!isHexCurrentlyVisible(visQ, visR) && !isHexCurrentlyVisible(trog.q, trog.r)) continue;
+                }
+
+                const up = trog.animPos ? trog.animPos : hexToUnitPixel(trog.q, trog.r);
+                const sp = unitPixelToScreen(up.x, up.y);
+                drawTrogToken(ctx, sp.x, sp.y, R, trog);
+            }
+
+            // 5b. Draw Trog Grouping Merge Pulses
+            for (const mp of activeMergePulses) {
+                const up = hexToUnitPixel(mp.q, mp.r);
+                const sp = unitPixelToScreen(up.x, up.y);
+                ctx.save();
+                ctx.globalAlpha = 1 - mp.progress;
+                ctx.beginPath();
+                ctx.arc(sp.x, sp.y, R * (0.5 + mp.progress * 0.9), 0, Math.PI * 2);
+                ctx.strokeStyle = '#fb7185';
+                ctx.lineWidth = 3;
+                ctx.stroke();
+                ctx.restore();
+            }
+
+            // 6. Draw Squad Members (Dim unselected pack members when planning)
+            const sortedSquad = [...squad].sort((a, b) => {
+                if (a.id === selectedUnitId) return 1;
+                if (b.id === selectedUnitId) return -1;
+                return 0;
+            });
+
+            for (const unit of sortedSquad) {
+                if (!unit.animPos && (unit.q < minQ - 1 || unit.q > maxQ + 1 || unit.r < minR - 1 || unit.r > maxR + 1)) continue;
+                const up = unit.animPos ? unit.animPos : hexToUnitPixel(unit.q, unit.r);
+                const sp = unitPixelToScreen(up.x, up.y);
+                const isSelected = unit.id === selectedUnitId;
+                const isDimmed = (selectedUnitId !== null && !isSelected);
+                drawSquadUnitToken(ctx, sp.x, sp.y, R, unit, isSelected, isDimmed);
+            }
+
+            // 6b. Draw Active Skirmish Highlights
+            for (const sk of activeSkirmishes) {
+                const up = hexToUnitPixel(sk.q, sk.r);
+                const sp = unitPixelToScreen(up.x, up.y);
+                drawSkirmishHighlight(ctx, sp.x, sp.y, R, sk);
+            }
+
+            // 7. Draw Floating Combat Text Effects
+            const now = performance.now();
+            for (const eff of visualEffects) {
+                const age = now - eff.createdAt;
+                const progress = Math.min(1, age / 1800);
+                const up = hexToUnitPixel(eff.q, eff.r);
+                const sp = unitPixelToScreen(up.x, up.y);
+
+                ctx.save();
+                ctx.globalAlpha = 1 - Math.pow(progress, 2);
+                const floatY = sp.y - R * 0.6 - progress * (R * 1.1);
+
+                ctx.font = `800 ${Math.max(11, Math.round(R * 0.34))}px Inter, sans-serif`;
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'middle';
+
+                const textW = ctx.measureText(eff.text).width;
+                const padX = 8;
+                const boxH = Math.max(18, R * 0.52);
+                drawRoundedRect(ctx, sp.x - textW / 2 - padX, floatY - boxH / 2, textW + padX * 2, boxH, 6);
+                ctx.fillStyle = 'rgba(15, 23, 42, 0.88)';
+                ctx.fill();
+                ctx.lineWidth = 1.5;
+                ctx.strokeStyle = eff.color;
+                ctx.stroke();
+
+                ctx.fillStyle = eff.color;
+                ctx.fillText(eff.text, sp.x, floatY);
+                ctx.restore();
+            }
+        }
+
+        function drawRoundedRect(ctx, x, y, width, height, radius) {
+            const r = Math.min(radius, width / 2, height / 2);
+            ctx.beginPath();
+            ctx.moveTo(x + r, y);
+            ctx.lineTo(x + width - r, y);
+            ctx.quadraticCurveTo(x + width, y, x + width, y + r);
+            ctx.lineTo(x + width, y + height - r);
+            ctx.quadraticCurveTo(x + width, y + height, x + width - r, y + height);
+            ctx.lineTo(x + r, y + height);
+            ctx.quadraticCurveTo(x, y + height, x, y + height - r);
+            ctx.lineTo(x, y + r);
+            ctx.quadraticCurveTo(x, y, x + r, y);
+            ctx.closePath();
+        }
+
+        function drawTerrainDecoration(ctx, cx, cy, R, tType, seed, isGrayMemory = false) {
+            ctx.save();
+            if (isGrayMemory) ctx.globalAlpha = 0.42;
+
+            if (tType === TERRAIN.FOREST) {
+                ctx.fillStyle = isGrayMemory ? '#334155' : '#143318';
+                const offsets = [
+                    { dx: -0.22, dy: -0.15, s: 0.28 },
+                    { dx: 0.22, dy: -0.10, s: 0.25 },
+                    { dx: 0.0, dy: 0.20, s: 0.30 }
+                ];
+                for (const o of offsets) {
+                    const tx = cx + o.dx * R;
+                    const ty = cy + o.dy * R;
+                    const sz = o.s * R;
+                    ctx.beginPath();
+                    ctx.moveTo(tx, ty - sz);
+                    ctx.lineTo(tx - sz * 0.75, ty + sz * 0.65);
+                    ctx.lineTo(tx + sz * 0.75, ty + sz * 0.65);
+                    ctx.closePath();
+                    ctx.fill();
+                }
+            } else if (tType === TERRAIN.ROCKS) {
+                ctx.fillStyle = '#475569';
+                ctx.strokeStyle = isGrayMemory ? '#cbd5e1' : '#94a3b8';
+                ctx.lineWidth = 1;
+                const rx = cx + ((seed % 7) - 3) * R * 0.04;
+                const ry = cy + ((seed % 5) - 2) * R * 0.04;
+                const rw = R * 0.36;
+                const rh = R * 0.24;
+                ctx.beginPath();
+                ctx.moveTo(rx - rw, ry + rh);
+                ctx.lineTo(rx - rw * 0.5, ry - rh);
+                ctx.lineTo(rx + rw * 0.4, ry - rh * 0.8);
+                ctx.lineTo(rx + rw, ry + rh);
+                ctx.closePath();
+                ctx.fill();
+                ctx.stroke();
+            } else if (tType === TERRAIN.WATER && seed % 3 === 0) {
+                ctx.strokeStyle = isGrayMemory ? 'rgba(203, 213, 225, 0.35)' : 'rgba(147, 197, 253, 0.35)';
+                ctx.lineWidth = 1.2;
+                ctx.beginPath();
+                ctx.arc(cx - R * 0.15, cy, R * 0.22, -Math.PI * 0.8, -Math.PI * 0.2);
+                ctx.stroke();
+            } else if (tType === TERRAIN.FIELD && seed % 4 === 0 && R >= 22) {
+                ctx.strokeStyle = isGrayMemory ? '#475569' : '#65a30d';
+                ctx.lineWidth = 1.2;
+                ctx.beginPath();
+                ctx.moveTo(cx, cy + R * 0.15);
+                ctx.lineTo(cx - R * 0.1, cy - R * 0.05);
+                ctx.moveTo(cx, cy + R * 0.15);
+                ctx.lineTo(cx + R * 0.1, cy - R * 0.05);
+                ctx.stroke();
+            } else if (tType === TERRAIN.SAND && seed % 3 === 0 && R >= 22) {
+                ctx.fillStyle = isGrayMemory ? '#64748b' : '#b49246';
+                ctx.beginPath();
+                ctx.arc(cx - R * 0.18, cy + R * 0.1, 1.5, 0, Math.PI * 2);
+                ctx.arc(cx + R * 0.2, cy - R * 0.12, 1.5, 0, Math.PI * 2);
+                ctx.fill();
+            }
+            ctx.restore();
+        }
+
+        function drawSquadUnitToken(ctx, cx, cy, R, unit, isSelected, isDimmed = false) {
+            ctx.save();
+            ctx.globalAlpha = isDimmed ? 0.38 : 1.0;
+            const tokenR = R * 0.56;
+
+            if (isSelected) {
+                ctx.beginPath();
+                ctx.arc(cx, cy, tokenR * 1.28, 0, Math.PI * 2);
+                ctx.fillStyle = 'rgba(251, 191, 36, 0.38)';
+                ctx.fill();
+                ctx.lineWidth = 2.5;
+                ctx.strokeStyle = '#fbbf24';
+                ctx.stroke();
+            }
+
+            ctx.beginPath();
+            ctx.arc(cx, cy, tokenR, 0, Math.PI * 2);
+            ctx.fillStyle = unit.type === 'bear' ? '#78350f' : '#0c4a6e';
+            ctx.fill();
+            ctx.lineWidth = isSelected ? 3 : 2;
+            ctx.strokeStyle = isSelected ? '#fde047' : (unit.type === 'bear' ? '#f59e0b' : '#38bdf8');
+            ctx.stroke();
+
+            ctx.font = `${Math.max(10, Math.round(R * 0.58))}px sans-serif`;
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText(unit.type === 'bear' ? '🐻' : '🐺', cx, cy + R * 0.03);
+
+            const hasPlan = unit.plannedPath && unit.plannedPath.length > 1;
+            if (R >= 15) {
+                const badgeX = cx + tokenR * 0.72;
+                const badgeY = cy - tokenR * 0.72;
+                ctx.beginPath();
+                ctx.arc(badgeX, badgeY, Math.max(6, R * 0.22), 0, Math.PI * 2);
+                ctx.fillStyle = hasPlan ? '#10b981' : '#1e293b';
+                ctx.fill();
+                ctx.lineWidth = 1.5;
+                ctx.strokeStyle = '#ffffff';
+                ctx.stroke();
+
+                ctx.fillStyle = '#ffffff';
+                ctx.font = `bold ${Math.max(8, Math.round(R * 0.24))}px Inter, sans-serif`;
+                ctx.fillText(hasPlan ? '✓' : unit.number, badgeX, badgeY + 0.5);
+            }
+
+            ctx.restore();
+        }
+
+        function drawTrogToken(ctx, cx, cy, R, trog) {
+            ctx.save();
+            const tokenR = R * 0.52;
+
+            if (trog.count >= 3) {
+                ctx.beginPath();
+                ctx.arc(cx, cy, tokenR * 1.2, 0, Math.PI * 2);
+                ctx.fillStyle = 'rgba(225, 29, 72, 0.35)';
+                ctx.fill();
+            }
+
+            ctx.beginPath();
+            ctx.arc(cx, cy, tokenR, 0, Math.PI * 2);
+            ctx.fillStyle = trog.count >= 3 ? '#881337' : '#4c0519';
+            ctx.fill();
+            ctx.lineWidth = 2;
+            ctx.strokeStyle = trog.count >= 3 ? '#fb7185' : '#f43f5e';
+            ctx.stroke();
+
+            ctx.font = `${Math.max(10, Math.round(R * 0.54))}px sans-serif`;
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText('🧌', cx, cy + R * 0.03);
+
+            if (R >= 22) {
+                ctx.font = `${Math.max(8, Math.round(R * 0.32))}px sans-serif`;
+                ctx.fillText('🪵', cx - tokenR * 0.68, cy + tokenR * 0.58);
+            }
+
+            if (trog.count >= 1 && R >= 14) {
+                const badgeX = cx + tokenR * 0.75;
+                const badgeY = cy - tokenR * 0.72;
+                ctx.beginPath();
+                ctx.arc(badgeX, badgeY, Math.max(7, R * 0.25), 0, Math.PI * 2);
+                ctx.fillStyle = trog.count >= 3 ? '#e11d48' : (trog.count === 2 ? '#d97706' : '#334155');
+                ctx.fill();
+                ctx.lineWidth = 1.5;
+                ctx.strokeStyle = '#ffffff';
+                ctx.stroke();
+
+                ctx.fillStyle = '#ffffff';
+                ctx.font = `800 ${Math.max(9, Math.round(R * 0.26))}px Inter, sans-serif`;
+                ctx.fillText(`×${trog.count}`, badgeX, badgeY + 0.5);
+            }
+
+            // Hunting pack alert badge when grouped (count >= 2)
+            if (trog.count >= 2 && R >= 18) {
+                const huntX = cx - tokenR * 0.72;
+                const huntY = cy - tokenR * 0.72;
+                ctx.beginPath();
+                ctx.arc(huntX, huntY, Math.max(6, R * 0.21), 0, Math.PI * 2);
+                ctx.fillStyle = '#f59e0b';
+                ctx.fill();
+                ctx.lineWidth = 1.2;
+                ctx.strokeStyle = '#0f172a';
+                ctx.stroke();
+
+                ctx.fillStyle = '#0f172a';
+                ctx.font = `900 ${Math.max(8, Math.round(R * 0.22))}px Inter, sans-serif`;
+                ctx.fillText('!', huntX, huntY + 0.5);
+            }
+
+            ctx.restore();
+        }
+
+        function drawSkirmishHighlight(ctx, cx, cy, R, sk) {
+            const p = sk.progress;
+            ctx.save();
+
+            traceHexPath(ctx, cx, cy, R * (1.05 + 0.15 * Math.sin(p * Math.PI * 3)));
+            ctx.fillStyle = sk.isVictory ? 'rgba(245, 158, 11, 0.45)' : 'rgba(225, 29, 72, 0.55)';
+            ctx.fill();
+            ctx.lineWidth = 3;
+            ctx.strokeStyle = '#fde047';
+            ctx.stroke();
+
+            ctx.beginPath();
+            ctx.arc(cx, cy, R * (0.4 + p * 1.4), 0, Math.PI * 2);
+            ctx.strokeStyle = `rgba(254, 240, 138, ${1 - p})`;
+            ctx.lineWidth = Math.max(2, R * 0.12 * (1 - p));
+            ctx.stroke();
+
+            const spikes = 8;
+            const innerR = R * 0.35;
+            const outerR = R * (0.85 + 0.25 * Math.sin(p * Math.PI * 4));
+            ctx.beginPath();
+            for (let i = 0; i < spikes * 2; i++) {
+                const rad = i % 2 === 0 ? outerR : innerR;
+                const ang = (i * Math.PI) / spikes + p * 1.5;
+                const sx = cx + Math.cos(ang) * rad;
+                const sy = cy + Math.sin(ang) * rad;
+                if (i === 0) ctx.moveTo(sx, sy);
+                else ctx.lineTo(sx, sy);
+            }
+            ctx.closePath();
+            ctx.fillStyle = `rgba(251, 113, 133, ${0.85 * (1 - p * 0.5)})`;
+            ctx.fill();
+            ctx.lineWidth = 2;
+            ctx.strokeStyle = '#fef08a';
+            ctx.stroke();
+
+            for (const spk of sk.sparks) {
+                const dist = R * 1.35 * p * spk.speed;
+                const px = cx + Math.cos(spk.angle) * dist;
+                const py = cy + Math.sin(spk.angle) * dist;
+                ctx.beginPath();
+                ctx.arc(px, py, spk.size * (1 - p * 0.6), 0, Math.PI * 2);
+                ctx.fillStyle = '#fde047';
+                ctx.fill();
+            }
+
+            const scale = 1 + 0.25 * Math.sin(p * Math.PI * 2);
+            ctx.font = `${Math.max(14, Math.round(R * 0.65 * scale))}px sans-serif`;
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText('⚔️', cx, cy);
+
+            if (R >= 18) {
+                ctx.font = `900 ${Math.max(10, Math.round(R * 0.28))}px Inter, sans-serif`;
+                ctx.fillStyle = '#0f172a';
+                ctx.fillText('SKIRMISH!', cx + 1, cy - R * 0.85 + 1);
+                ctx.fillStyle = '#fde047';
+                ctx.fillText('SKIRMISH!', cx, cy - R * 0.85);
+            }
+
+            ctx.restore();
+        }
+
+        /***********************************************************************
+         * 10. UI UPDATES & HEX INSPECTOR
+         ***********************************************************************/
+        function logEvent(htmlText, colorClass = 'text-slate-300') {
+            const log = document.getElementById('eventLog');
+            const item = document.createElement('div');
+            item.className = colorClass;
+            item.innerHTML = `[T${turnNumber}] ${htmlText}`;
+            log.prepend(item);
+        }
+
+        function toggleModal(id) {
+            const el = document.getElementById(id);
+            if (el.classList.contains('hidden')) {
+                el.classList.remove('hidden');
+                el.classList.add('flex');
+            } else {
+                el.classList.add('hidden');
+                el.classList.remove('flex');
+            }
+        }
+
+        function updateUI() {
+            const bears = squad.filter(u => u.type === 'bear').length;
+            const wolves = squad.filter(u => u.type === 'wolf').length;
+            document.getElementById('bearCount').textContent = bears;
+            document.getElementById('wolfCount').textContent = wolves;
+
+            const totalTrogs = trogGroups.reduce((sum, g) => sum + g.count, 0);
+            const visibleTrogs = trogGroups
+                .filter(t => isHexCurrentlyVisible(t.q, t.r))
+                .reduce((sum, g) => sum + g.count, 0);
+
+            document.getElementById('trogCount').textContent = `${visibleTrogs} / ${totalTrogs}`;
+            document.getElementById('turnCount').textContent = turnNumber;
+
+            const plannedCount = squad.filter(u => u.plannedPath && u.plannedPath.length > 1).length;
+            document.getElementById('plannedText').textContent = `${plannedCount}/${squad.length} Planned`;
+
+            const dock = document.getElementById('squadDock');
+            dock.innerHTML = '';
+
+            squad.forEach(unit => {
+                const isSelected = unit.id === selectedUnitId;
+                const isDimmed = selectedUnitId !== null && !isSelected;
+                const hasPlan = unit.plannedPath && unit.plannedPath.length > 1;
+
+                const btn = document.createElement('button');
+                const opacityClass = isDimmed ? 'opacity-45 hover:opacity-80' : 'opacity-100';
+                const styleClasses = isSelected
+                    ? 'selected bg-slate-800 border-amber-400 z-10 shadow-lg shadow-amber-900/20'
+                    : `bg-slate-900 border-slate-700 hover:border-slate-500 ${opacityClass}`;
+
+                btn.className = `unit-card shrink-0 relative flex flex-col items-center justify-center w-12 h-14 sm:w-14 sm:h-16 rounded-xl border-2 transition-all duration-200 ${styleClasses}`;
+                btn.onclick = () => selectUnit(unit.id, true);
+
+                const icon = document.createElement('div');
+                icon.className = 'text-xl sm:text-2xl leading-none';
+                icon.textContent = unit.type === 'bear' ? '🐻' : '🐺';
+
+                const num = document.createElement('div');
+                num.className = `text-[10px] font-bold mt-1 ${isSelected ? 'text-amber-400' : 'text-slate-400'}`;
+                num.textContent = `#${unit.number}`;
+
+                if (hasPlan) {
+                    const badge = document.createElement('div');
+                    badge.className = 'absolute -top-1.5 -right-1.5 w-5 h-5 rounded-full bg-emerald-500 border-2 border-slate-900 flex items-center justify-center text-[10px] text-white font-bold shadow-md';
+                    badge.textContent = '✓';
+                    btn.appendChild(badge);
+                }
+
+                btn.appendChild(icon);
+                btn.appendChild(num);
+                dock.appendChild(btn);
+            });
+
+            const banner = document.getElementById('selectedUnitBanner');
+            const selUnit = squad.find(u => u.id === selectedUnitId);
+
+            if (selUnit) {
+                banner.classList.remove('hidden');
+                banner.classList.add('flex');
+                const visionRange = selUnit.visionRadius || (selUnit.type === 'wolf' ? 6 : 2);
+                document.getElementById('selectedUnitTitle').textContent = `${formatUnitName(selUnit)} (Move ${selUnit.maxMp}, Vision ${visionRange})`;
+
+                const cancelBtn = document.getElementById('cancelUnitPlanBtn');
+                if (selUnit.plannedPath && selUnit.plannedPath.length > 1) {
+                    const dest = getUnitPlannedDest(selUnit);
+                    document.getElementById('selectedUnitStatus').textContent = `Moving to (${dest.q}, ${dest.r})`;
+                    cancelBtn.classList.remove('hidden');
+                } else {
+                    document.getElementById('selectedUnitStatus').textContent = 'Tap highlighted hex to set destination';
+                    cancelBtn.classList.add('hidden');
+                }
+            } else {
+                banner.classList.add('hidden');
+                banner.classList.remove('flex');
+            }
+        }
+
+        function updateInspector(q, r) {
+            if (!inBounds(q, r)) return;
+
+            document.getElementById('inspectCoords').textContent = `Hex (${q}, ${r})`;
+            const cellIndex = idx(q, r);
+            const visState = fogOfWarEnabled ? fogGrid[cellIndex] : 2;
+            const elTerrain = document.getElementById('inspectTerrain');
+            const previewBox = document.getElementById('combatPreviewBox');
+
+            if (visState === 0) {
+                elTerrain.textContent = 'Unexplored Fog';
+                elTerrain.className = 'font-bold px-2 py-0.5 rounded text-[10px] border bg-slate-800 text-slate-400 border-slate-700';
+                document.getElementById('inspectDetail').textContent = 'Unseen territory. Move a Wolf Scout (vision 6) or Bear (vision 2) closer to reveal.';
+                previewBox.classList.add('hidden');
+                return;
+            }
+
+            const tType = mapGrid[cellIndex];
+            const tInfo = TERRAIN_INFO[tType];
+            const costText = tInfo.cost === Infinity ? 'Impassable' : `${tInfo.cost} MP`;
+            elTerrain.textContent = `${tInfo.name} (${costText})${visState === 1 ? ' • Seen' : ''}`;
+
+            if (visState === 1) {
+                elTerrain.className = 'font-bold px-2 py-0.5 rounded text-[10px] border bg-slate-700/60 text-slate-300 border-slate-500/50';
+            } else {
+                elTerrain.className = `font-bold px-2 py-0.5 rounded text-[10px] border ${
+                    tType === TERRAIN.WATER ? 'bg-blue-500/20 text-blue-300 border-blue-500/30' :
+                    tType === TERRAIN.FOREST ? 'bg-emerald-700/30 text-emerald-300 border-emerald-600/40' :
+                    tType === TERRAIN.ROCKS ? 'bg-slate-600/30 text-slate-300 border-slate-500/40' :
+                    tType === TERRAIN.SAND ? 'bg-amber-600/20 text-amber-300 border-amber-600/30' :
+                    'bg-emerald-500/20 text-emerald-300 border-emerald-500/30'
+                }`;
+            }
+
+            let detail = visState === 1 ? 'Previously explored (neutral gray memory).' : 'Clear terrain in active vision.';
+            const u = squad.find(s => s.q === q && s.r === r);
+            const t = (visState === 2) ? trogGroups.find(tg => tg.q === q && tg.r === r) : null;
+
+            if (u) {
+                const vRad = u.visionRadius || (u.type === 'wolf' ? 6 : 2);
+                detail = `${formatUnitName(u)} (${u.maxMp} MP, ${vRad}-hex vision).`;
+            }
+            if (t) {
+                const huntEfficiency = t.count === 1 ? 'Wandering randomly' : (t.count === 2 ? 'Hunting pack (56% tracking)' : (t.count === 3 ? 'Deadly hunting pack (76% tracking)' : 'Relentless warband (90%+ tracking)'));
+                detail = `Hostiles: ${t.count} Trog(s) with clubs • ${huntEfficiency}!`;
+            }
+
+            document.getElementById('inspectDetail').textContent = detail;
+
+            const selUnit = squad.find(su => su.id === selectedUnitId);
+            if (selUnit && t) {
+                previewBox.classList.remove('hidden');
+                const previewContent = document.getElementById('combatPreviewContent');
+
+                const attackers = squad.filter(s => {
+                    if (s.plannedPath && s.plannedPath.length > 1) {
+                        const dest = getUnitPlannedDest(s);
+                        return dest.q === q && dest.r === r;
+                    }
+                    return false;
+                });
+
+                if (!attackers.find(a => a.id === selUnit.id) && reachableMap.has(hexKey(q, r))) {
+                    attackers.push(selUnit);
+                }
+
+                if (attackers.length === 0) {
+                    previewContent.innerHTML = `<span class="text-slate-400">Target out of range for selected unit.</span>`;
+                } else {
+                    const bears = attackers.filter(a => a.type === 'bear');
+                    const wolves = attackers.filter(a => a.type === 'wolf');
+                    const result = evaluateBattle(bears, wolves, t.count);
+
+                    let html = `<div class="mb-1"><strong>Assault Force:</strong> ${bears.length} Bears, ${wolves.length} Wolves vs ${t.count} Trogs</div>`;
+                    if (result.killedUnits.length > 0) {
+                        html += `<div class="text-rose-400 font-semibold mt-1">⚠️ Warning: ${result.killedUnits.map(formatUnitName).join(', ')} will be killed!</div>`;
+                    } else if (result.remainingTrogs > 0) {
+                        html += `<div class="text-amber-400 font-semibold mt-1">⚠️ Not enough force: ${result.remainingTrogs} Trog(s) will survive.</div>`;
+                    } else {
+                        html += `<div class="text-emerald-400 font-semibold mt-1">✅ Clean Kill: All Trogs eliminated safely.</div>`;
+                    }
+                    previewContent.innerHTML = html;
+                }
+            } else {
+                previewBox.classList.add('hidden');
+            }
+        }
+
+        /***********************************************************************
+         * 11. INPUT HANDLING (MOUSE, TOUCH, PINCH-ZOOM & KEYBOARD)
+         ***********************************************************************/
+        let isDragging = false;
+        let dragStartScreen = { x: 0, y: 0 };
+        let dragStartCamera = { x: 0, y: 0 };
+        let pointerMovedDist = 0;
+        let activePointers = new Map();
+        let initialPinchDist = null;
+        let initialPinchRadius = null;
+
+        canvas.addEventListener('pointerdown', (e) => {
+            activePointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+
+            if (activePointers.size === 1) {
+                isDragging = true;
+                pointerMovedDist = 0;
+                dragStartScreen = { x: e.clientX, y: e.clientY };
+                dragStartCamera = { x: camera.x, y: camera.y };
+            } else if (activePointers.size === 2) {
+                const pts = Array.from(activePointers.values());
+                initialPinchDist = Math.hypot(pts[0].x - pts[1].x, pts[0].y - pts[1].y);
+                initialPinchRadius = camera.hexRadius;
+            }
+        });
+
+        window.addEventListener('pointermove', (e) => {
+            if (activePointers.has(e.pointerId)) {
+                activePointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+            }
+
+            if (activePointers.size === 2 && initialPinchDist) {
+                const pts = Array.from(activePointers.values());
+                const dist = Math.hypot(pts[0].x - pts[1].x, pts[0].y - pts[1].y);
+                const midX = (pts[0].x + pts[1].x) / 2;
+                const midY = (pts[0].y + pts[1].y) / 2;
+                const factor = (initialPinchRadius * (dist / initialPinchDist)) / camera.hexRadius;
+                zoomCamera(factor, midX, midY);
+                pointerMovedDist = 999;
+                return;
+            }
+
+            if (isDragging && activePointers.size === 1) {
+                const dx = e.clientX - dragStartScreen.x;
+                const dy = e.clientY - dragStartScreen.y;
+                pointerMovedDist = Math.hypot(dx, dy);
+
+                if (pointerMovedDist > 4) {
+                    camera.x = dragStartCamera.x - dx / camera.hexRadius;
+                    camera.y = dragStartCamera.y - dy / camera.hexRadius;
+                    clampCameraToMap();
+                    requestRender();
+                }
+            }
+
+            const hex = screenToHex(e.clientX, e.clientY);
+            if (inBounds(hex.q, hex.r) && (hex.q !== hoveredHex.q || hex.r !== hoveredHex.r)) {
+                hoveredHex = hex;
+                updateInspector(hex.q, hex.r);
+                requestRender();
+            }
+        });
+
+        window.addEventListener('pointerup', (e) => {
+            activePointers.delete(e.pointerId);
+            if (activePointers.size < 2) initialPinchDist = null;
+
+            if (isDragging && activePointers.size === 0) {
+                isDragging = false;
+                if (pointerMovedDist <= 7 && e.target === canvas) {
+                    const hex = screenToHex(e.clientX, e.clientY);
+                    hoveredHex = hex;
+                    updateInspector(hex.q, hex.r);
+                    handleHexTap(hex.q, hex.r);
+                }
+            }
+        });
+
+        canvas.addEventListener('wheel', (e) => {
+            e.preventDefault();
+            const factor = e.deltaY < 0 ? 1.12 : 0.89;
+            zoomCamera(factor, e.clientX, e.clientY);
+        }, { passive: false });
+
+        window.addEventListener('keydown', (e) => {
+            if (e.code === 'Space') {
+                e.preventDefault();
+                executeTurn();
+            } else if (e.code === 'Tab') {
+                e.preventDefault();
+                selectNextUnplannedUnit();
+            } else if (e.code === 'Escape') {
+                selectUnit(null);
+            }
+        });
+
+        window.addEventListener('resize', () => {
+            updateZoomLimits();
+            requestRender();
+        });
+
+        /***********************************************************************
+         * 12. BOOTSTRAP GAME ON LOAD
+         ***********************************************************************/
+        function bootstrapGame() {
+            generateMap();
+            initEntities();
+            updateZoomLimits();
+            centerOnSquad();
+
+            if (squad.length > 0) {
+                selectUnit(squad[0].id, false);
+                updateInspector(squad[0].q, squad[0].r);
+            }
+            renderScene();
+        }
+
+        if (document.readyState === 'loading') {
+            window.addEventListener('DOMContentLoaded', bootstrapGame);
+        } else {
+            bootstrapGame();
+        }
+    </script>
+</body>
+</html>

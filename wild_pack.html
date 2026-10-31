@@ -234,9 +234,10 @@
 
             <div class="space-y-3 text-xs sm:text-sm leading-relaxed">
                 <div>
-                    <h3 class="font-bold text-amber-400 uppercase tracking-wider text-xs mb-1">1. Pack Movement & Fog of War</h3>
+                    <h3 class="font-bold text-amber-400 uppercase tracking-wider text-xs mb-1">1. Pack Movement, Auto-Follow Bears & Fog of War</h3>
                     <p class="text-slate-300">Command <strong>2 Wolf Scouts</strong> (Move 3, <strong>Vision 6</strong>) and <strong>6 Bears</strong> (Move 2, <strong>Vision 2</strong>).</p>
                     <ul class="list-disc list-inside text-slate-400 mt-1 space-y-1 text-xs">
+                        <li><strong>Auto-Follow Bears:</strong> Any Bear without a manual move order is marked <span class="text-sky-300 font-bold">AUTO</span>. When you press <strong>Move</strong>, undirected Bears automatically plot a path toward the nearest Wolf Scout (preferring <strong>Field</strong> tiles, staying at least 1 hex away from nearby Trogs, and never entering Water or occupied cells).</li>
                         <li>When a unit is selected for movement planning, all other pack members dim slightly so your active unit and reachable hexes stand out.</li>
                         <li><strong>Fog of War (ON by default):</strong> Unseen tiles are dark; tiles previously seen by a Wolf or Bear turn <strong>neutral gray</strong>; active vision shows vibrant colors and spots Trogs. Toggle the <strong>Fog</strong> button in the top bar at any time to reveal the entire map.</li>
                     </ul>
@@ -640,12 +641,12 @@
         /***********************************************************************
          * 6. DIJKSTRA PATHFINDING & REACHABLE HEXES
          ***********************************************************************/
-        function computeReachableHexes(unit) {
-            reachableMap.clear();
-            if (!unit) return;
+        function getUnitReachableMap(unit) {
+            const map = new Map();
+            if (!unit) return map;
 
             const startKey = hexKey(unit.q, unit.r);
-            reachableMap.set(startKey, { q: unit.q, r: unit.r, cost: 0, parentKey: null });
+            map.set(startKey, { q: unit.q, r: unit.r, cost: 0, parentKey: null });
 
             const queue = [{ q: unit.q, r: unit.r, cost: 0 }];
 
@@ -654,7 +655,7 @@
                 const current = queue.shift();
                 const currKey = hexKey(current.q, current.r);
 
-                if (current.cost > reachableMap.get(currKey).cost) continue;
+                if (current.cost > map.get(currKey).cost) continue;
 
                 const neighbors = getNeighbors(current.q, current.r);
                 for (const nb of neighbors) {
@@ -666,9 +667,11 @@
 
                     if (newCost <= unit.maxMp) {
                         const nbKey = hexKey(nb.q, nb.r);
-                        const existing = reachableMap.get(nbKey);
-                        if (!existing || newCost < existing.cost) {
-                            reachableMap.set(nbKey, {
+                        const existing = map.get(nbKey);
+                        // Tie-break equal cost paths in favor of Field tiles
+                        const preferNewOnTie = existing && newCost === existing.cost && terrainType === TERRAIN.FIELD;
+                        if (!existing || newCost < existing.cost || preferNewOnTie) {
+                            map.set(nbKey, {
                                 q: nb.q,
                                 r: nb.r,
                                 cost: newCost,
@@ -679,20 +682,199 @@
                     }
                 }
             }
+            return map;
         }
 
-        function reconstructPath(targetQ, targetR) {
+        function computeReachableHexes(unit) {
+            reachableMap = getUnitReachableMap(unit);
+        }
+
+        function reconstructPathFromMap(map, targetQ, targetR) {
             const targetKey = hexKey(targetQ, targetR);
-            if (!reachableMap.has(targetKey)) return null;
+            if (!map.has(targetKey)) return null;
 
             const path = [];
             let currKey = targetKey;
             while (currKey) {
-                const node = reachableMap.get(currKey);
+                const node = map.get(currKey);
                 path.unshift({ q: node.q, r: node.r, cost: node.cost });
                 currKey = node.parentKey;
             }
             return path;
+        }
+
+        function reconstructPath(targetQ, targetR) {
+            return reconstructPathFromMap(reachableMap, targetQ, targetR);
+        }
+
+        /***********************************************************************
+         * 6b. AUTOMATIC PACK-FOLLOWING FOR UNDIRECTED BEARS
+         ***********************************************************************/
+        function getMinTrogDistance(q, r) {
+            let minDist = Infinity;
+            for (const trog of trogGroups) {
+                if (trog.count <= 0) continue;
+                const d = hexDistance(q, r, trog.q, trog.r);
+                if (d < minDist) minDist = d;
+            }
+            return minDist;
+        }
+
+        function planUndirectedBears() {
+            const wolves = squad.filter(u => u.type === 'wolf');
+            if (wolves.length === 0) return 0; // If no scouts remain, undirected bears stay put
+
+            // Determine where each scout will end up at the end of this turn
+            const scoutTargets = wolves.map(w => getUnitPlannedDest(w));
+
+            // Track reserved destination hexes so auto-moving bears never stack on another unit
+            const reservedHexes = new Set();
+            const undirectedBears = [];
+
+            for (const unit of squad) {
+                const hasManualPlan = unit.plannedPath && unit.plannedPath.length > 1;
+                if (unit.type === 'bear' && !hasManualPlan) {
+                    undirectedBears.push(unit);
+                } else {
+                    const dest = getUnitPlannedDest(unit);
+                    reservedHexes.add(hexKey(dest.q, dest.r));
+                }
+            }
+
+            if (undirectedBears.length === 0) return 0;
+
+            // Sort undirected bears by distance to their nearest scout so front bears claim slots first
+            undirectedBears.sort((b1, b2) => {
+                const d1 = Math.min(...scoutTargets.map(s => hexDistance(b1.q, b1.r, s.q, s.r)));
+                const d2 = Math.min(...scoutTargets.map(s => hexDistance(b2.q, b2.r, s.q, s.r)));
+                return d1 - d2;
+            });
+
+            let autoPlannedCount = 0;
+
+            for (const bear of undirectedBears) {
+                // Find the nearest scout (based on scout's planned destination)
+                let nearestScout = scoutTargets[0];
+                let currentDistToScout = hexDistance(bear.q, bear.r, nearestScout.q, nearestScout.r);
+                for (let i = 1; i < scoutTargets.length; i++) {
+                    const d = hexDistance(bear.q, bear.r, scoutTargets[i].q, scoutTargets[i].r);
+                    if (d < currentDistToScout) {
+                        currentDistToScout = d;
+                        nearestScout = scoutTargets[i];
+                    }
+                }
+
+                const bearReachable = getUnitReachableMap(bear);
+                const currentMinTrogDist = getMinTrogDistance(bear.q, bear.r);
+
+                let bestCandidate = null;
+                let bestScore = -Infinity;
+
+                for (const [, node] of bearReachable.entries()) {
+                    const candQ = node.q;
+                    const candR = node.r;
+                    const candKey = hexKey(candQ, candR);
+                    const isStay = (candQ === bear.q && candR === bear.r);
+
+                    // Destination cannot be water
+                    const destTerrain = mapGrid[idx(candQ, candR)];
+                    if (destTerrain === TERRAIN.WATER) continue;
+
+                    // Destination cannot be occupied by another unit's planned destination
+                    if (!isStay && reservedHexes.has(candKey)) continue;
+
+                    // Undirected bears never step onto a Trog
+                    const trogOnDest = trogGroups.some(t => t.count > 0 && t.q === candQ && t.r === candR);
+                    if (trogOnDest) continue;
+
+                    const candPath = reconstructPathFromMap(bearReachable, candQ, candR);
+                    if (!candPath) continue;
+
+                    // Ensure intermediate steps don't step onto a Trog or water
+                    let pathHitsHazard = false;
+                    let fieldStepsCount = 0;
+                    let pathMinTrogDist = Infinity;
+
+                    for (let s = 1; s < candPath.length; s++) {
+                        const step = candPath[s];
+                        if (mapGrid[idx(step.q, step.r)] === TERRAIN.WATER) {
+                            pathHitsHazard = true;
+                            break;
+                        }
+                        if (trogGroups.some(t => t.count > 0 && t.q === step.q && t.r === step.r)) {
+                            pathHitsHazard = true;
+                            break;
+                        }
+                        if (mapGrid[idx(step.q, step.r)] === TERRAIN.FIELD) {
+                            fieldStepsCount++;
+                        }
+                        const stepTrogDist = getMinTrogDistance(step.q, step.r);
+                        if (stepTrogDist < pathMinTrogDist) {
+                            pathMinTrogDist = stepTrogDist;
+                        }
+                    }
+                    if (pathHitsHazard) continue;
+
+                    const destMinTrogDist = getMinTrogDistance(candQ, candR);
+                    const newDistToScout = hexDistance(candQ, candR, nearestScout.q, nearestScout.r);
+
+                    // Score candidate:
+                    // 1. Trog Avoidance: Must try to stay at least 1 cell away from any Trog (dist >= 2)
+                    let score = 0;
+                    if (destMinTrogDist <= 1) {
+                        // Strongly penalize being adjacent to a Trog
+                        score -= 5000 + (2 - destMinTrogDist) * 1000;
+                    } else if (pathMinTrogDist <= 1) {
+                        // Penalize brushing right past an adjacent Trog if a clean route exists
+                        score -= 800;
+                    } else {
+                        // Safe buffer (>= 2 hexes away from all Trogs)
+                        score += Math.min(destMinTrogDist, 4) * 15;
+                    }
+
+                    // 2. Move towards the nearest Scout (ideal pack distance is 1..2 hexes from scout)
+                    const progressTowardScout = currentDistToScout - newDistToScout;
+                    score += progressTowardScout * 120;
+
+                    // If we are neither getting closer to the scout nor escaping an adjacent Trog, penalize pointless wandering
+                    const escapingTrog = (currentMinTrogDist <= 1 && destMinTrogDist > currentMinTrogDist);
+                    if (!isStay && progressTowardScout <= 0 && !escapingTrog) {
+                        score -= 300;
+                    }
+
+                    // 3. Preference for Field tiles
+                    if (destTerrain === TERRAIN.FIELD) {
+                        score += 35;
+                    } else if (destTerrain === TERRAIN.SAND) {
+                        score += 10;
+                    }
+                    score += fieldStepsCount * 12;
+
+                    // Slight preference for staying put if no meaningful improvement is achieved
+                    if (isStay) {
+                        score += 1;
+                    }
+
+                    if (score > bestScore) {
+                        bestScore = score;
+                        bestCandidate = { q: candQ, r: candR, path: candPath, isStay };
+                    }
+                }
+
+                if (bestCandidate && !bestCandidate.isStay && bestCandidate.path.length > 1) {
+                    bear.plannedPath = bestCandidate.path;
+                    bear.isAutoPlanned = true;
+                    bear.planOrder = nextPlanOrder++;
+                    reservedHexes.add(hexKey(bestCandidate.q, bestCandidate.r));
+                    autoPlannedCount++;
+                } else {
+                    bear.plannedPath = [];
+                    bear.isAutoPlanned = false;
+                    reservedHexes.add(hexKey(bear.q, bear.r));
+                }
+            }
+
+            return autoPlannedCount;
         }
 
         /***********************************************************************
@@ -733,6 +915,7 @@
             const unit = squad.find(u => u.id === selectedUnitId);
             if (unit) {
                 unit.plannedPath = [];
+                unit.isAutoPlanned = false;
                 unit.planOrder = 0;
                 updateUI();
                 requestRender();
@@ -743,10 +926,11 @@
             if (isAnimatingTurn) return;
             for (const unit of squad) {
                 unit.plannedPath = [];
+                unit.isAutoPlanned = false;
                 unit.planOrder = 0;
             }
             nextPlanOrder = 1;
-            logEvent('Cleared all planned squad paths.', 'text-slate-400');
+            logEvent('Cleared all manual paths. Undirected Bears will auto-follow Scouts.', 'text-slate-400');
             updateUI();
             requestRender();
         }
@@ -772,6 +956,7 @@
             if (selectedUnit && selectedUnit.q === q && selectedUnit.r === r) {
                 if (selectedUnit.plannedPath.length > 1) {
                     selectedUnit.plannedPath = [];
+                    selectedUnit.isAutoPlanned = false;
                     selectedUnit.planOrder = 0;
                     updateUI();
                     requestRender();
@@ -796,7 +981,7 @@
                     });
                     if (conflictingUnit) {
                         selectUnit(conflictingUnit.id);
-                        logEvent(`Switched to ${formatUnitName(conflictingUnit)} (already moving to (${q},${r})).`, 'text-amber-300');
+                        logEvent(`Switched to ${formatUnitName(conflictingUnit)} (already at/moving to (${q},${r})).`, 'text-amber-300');
                         return;
                     }
                 }
@@ -804,6 +989,7 @@
                 const path = reconstructPath(q, r);
                 if (path && path.length > 1) {
                     selectedUnit.plannedPath = path;
+                    selectedUnit.isAutoPlanned = false;
                     selectedUnit.planOrder = nextPlanOrder++;
                     updateUI();
                     updateInspector(q, r);
@@ -1032,7 +1218,16 @@
             const previousSelectedId = selectedUnitId;
             selectedUnitId = null;
             reachableMap.clear();
+
+            // STEP 0: Automatically plan movement for undirected Bears toward nearest Scout
+            const autoBearsCount = planUndirectedBears();
             updateUI();
+            requestRender();
+
+            if (autoBearsCount > 0) {
+                setTurnPhaseUI(`Auto-Plotting ${autoBearsCount} Bear(s)...`, 'bg-amber-500/20 text-amber-300 border-amber-400/50');
+                await animateDuration(260, () => {});
+            }
 
             turnNumber++;
 
@@ -1079,6 +1274,7 @@
                 unit.q = dest.q;
                 unit.r = dest.r;
                 unit.plannedPath = [];
+                unit.isAutoPlanned = false;
 
                 if (targetTrog) {
                     attackingUnitIds.add(unit.id);
@@ -1597,7 +1793,7 @@
 
                 const isSelected = unit.id === selectedUnitId;
                 const isDimmed = (selectedUnitId !== null && !isSelected);
-                const pathColor = unit.type === 'bear' ? '#f59e0b' : '#38bdf8';
+                const pathColor = unit.isAutoPlanned ? '#a3e635' : (unit.type === 'bear' ? '#f59e0b' : '#38bdf8');
 
                 ctx.save();
                 ctx.globalAlpha = isDimmed ? 0.32 : 1.0;
@@ -1834,12 +2030,13 @@
             ctx.fillText(unit.type === 'bear' ? '🐻' : '🐺', cx, cy + R * 0.03);
 
             const hasPlan = unit.plannedPath && unit.plannedPath.length > 1;
+            const isAutoFollowBear = unit.type === 'bear' && !hasPlan;
             if (R >= 15) {
                 const badgeX = cx + tokenR * 0.72;
                 const badgeY = cy - tokenR * 0.72;
                 ctx.beginPath();
                 ctx.arc(badgeX, badgeY, Math.max(6, R * 0.22), 0, Math.PI * 2);
-                ctx.fillStyle = hasPlan ? '#10b981' : '#1e293b';
+                ctx.fillStyle = hasPlan ? '#10b981' : (isAutoFollowBear ? '#0284c7' : '#1e293b');
                 ctx.fill();
                 ctx.lineWidth = 1.5;
                 ctx.strokeStyle = '#ffffff';
@@ -1847,7 +2044,7 @@
 
                 ctx.fillStyle = '#ffffff';
                 ctx.font = `bold ${Math.max(8, Math.round(R * 0.24))}px Inter, sans-serif`;
-                ctx.fillText(hasPlan ? '✓' : unit.number, badgeX, badgeY + 0.5);
+                ctx.fillText(hasPlan ? '✓' : (isAutoFollowBear ? 'A' : unit.number), badgeX, badgeY + 0.5);
             }
 
             ctx.restore();
@@ -2018,7 +2215,10 @@
             document.getElementById('turnCount').textContent = turnNumber;
 
             const plannedCount = squad.filter(u => u.plannedPath && u.plannedPath.length > 1).length;
-            document.getElementById('plannedText').textContent = `${plannedCount}/${squad.length} Planned`;
+            const autoBearCount = squad.filter(u => u.type === 'bear' && (!u.plannedPath || u.plannedPath.length <= 1)).length;
+            document.getElementById('plannedText').textContent = autoBearCount > 0
+                ? `${plannedCount} Manual • ${autoBearCount} Auto`
+                : `${plannedCount}/${squad.length} Planned`;
 
             const dock = document.getElementById('squadDock');
             dock.innerHTML = '';
@@ -2027,6 +2227,7 @@
                 const isSelected = unit.id === selectedUnitId;
                 const isDimmed = selectedUnitId !== null && !isSelected;
                 const hasPlan = unit.plannedPath && unit.plannedPath.length > 1;
+                const isAutoFollow = unit.type === 'bear' && !hasPlan;
 
                 const btn = document.createElement('button');
                 const opacityClass = isDimmed ? 'opacity-45 hover:opacity-80' : 'opacity-100';
@@ -2050,6 +2251,12 @@
                     badge.className = 'absolute -top-1.5 -right-1.5 w-5 h-5 rounded-full bg-emerald-500 border-2 border-slate-900 flex items-center justify-center text-[10px] text-white font-bold shadow-md';
                     badge.textContent = '✓';
                     btn.appendChild(badge);
+                } else if (isAutoFollow) {
+                    const badge = document.createElement('div');
+                    badge.className = 'absolute -top-1.5 -right-1.5 px-1 h-4 rounded-full bg-sky-600 border border-slate-900 flex items-center justify-center text-[8px] text-white font-extrabold shadow-md tracking-tighter';
+                    badge.title = 'Auto-follows nearest Wolf Scout (prefers Field tiles, avoids Trogs)';
+                    badge.textContent = 'AUTO';
+                    btn.appendChild(badge);
                 }
 
                 btn.appendChild(icon);
@@ -2071,6 +2278,9 @@
                     const dest = getUnitPlannedDest(selUnit);
                     document.getElementById('selectedUnitStatus').textContent = `Moving to (${dest.q}, ${dest.r})`;
                     cancelBtn.classList.remove('hidden');
+                } else if (selUnit.type === 'bear') {
+                    document.getElementById('selectedUnitStatus').textContent = 'Auto-Follows nearest Scout (or tap hex to override)';
+                    cancelBtn.classList.add('hidden');
                 } else {
                     document.getElementById('selectedUnitStatus').textContent = 'Tap highlighted hex to set destination';
                     cancelBtn.classList.add('hidden');

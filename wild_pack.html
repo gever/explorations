@@ -239,7 +239,7 @@
                     <h3 class="font-bold text-amber-400 uppercase tracking-wider text-xs mb-1">1. Pack Movement, Auto-Follow Bears & Fog of War</h3>
                     <p class="text-slate-300">Command <strong>2 Wolf Scouts</strong> (Move 3, <strong>Vision 6</strong>) and <strong>6 Bears</strong> (Move 2, <strong>Vision 2</strong>).</p>
                     <ul class="list-disc list-inside text-slate-400 mt-1 space-y-1 text-xs">
-                        <li><strong>Auto-Follow Bears:</strong> Any Bear without a manual move order is marked <span class="text-sky-300 font-bold">AUTO</span>. When you press <strong>Move</strong>, undirected Bears automatically plot a path toward the nearest Wolf Scout (preferring <strong>Field</strong> tiles, staying at least 1 hex away from nearby Trogs, and never entering Water or occupied cells).</li>
+                        <li><strong>Auto-Follow Bears:</strong> Any Bear without a manual move order is marked <span class="text-sky-300 font-bold">AUTO</span>. When you press <strong>Move</strong>, undirected Bears automatically plot a path toward the nearest Wolf Scout (preferring <strong>Field</strong> tiles and choosing <strong>Forest</strong> over <strong>Rocks</strong> when otherwise equal, staying at least 1 hex away from nearby Trogs, and never entering Water or occupied cells).</li>
                         <li>When a unit is selected for movement planning, all other pack members dim slightly so your active unit and reachable hexes stand out.</li>
                         <li><strong>Fog of War (ON by default):</strong> Unseen tiles are dark; tiles previously seen by a Wolf or Bear turn <strong>neutral gray</strong>; active vision shows vibrant colors and spots Trogs. Toggle the <strong>Fog</strong> button in the top bar at any time to reveal the entire map.</li>
                     </ul>
@@ -771,6 +771,7 @@
 
                 let bestCandidate = null;
                 let bestScore = -Infinity;
+                let bestTieBreak = -Infinity;
 
                 for (const [, node] of bearReachable.entries()) {
                     const candQ = node.q;
@@ -795,6 +796,7 @@
                     // Ensure intermediate steps don't step onto a Trog or water
                     let pathHitsHazard = false;
                     let fieldStepsCount = 0;
+                    let forestStepsCount = 0;
                     let pathMinTrogDist = Infinity;
 
                     for (let s = 1; s < candPath.length; s++) {
@@ -809,6 +811,8 @@
                         }
                         if (mapGrid[idx(step.q, step.r)] === TERRAIN.FIELD) {
                             fieldStepsCount++;
+                        } else if (mapGrid[idx(step.q, step.r)] === TERRAIN.FOREST) {
+                            forestStepsCount++;
                         }
                         const stepTrogDist = getMinTrogDistance(step.q, step.r);
                         if (stepTrogDist < pathMinTrogDist) {
@@ -857,8 +861,13 @@
                         score += 1;
                     }
 
-                    if (score > bestScore) {
+                    // 4. Tie-breaker: when two options score equally, prefer Forest over Rocks
+                    // (destination first, then the number of Forest tiles crossed on the way)
+                    const forestTieBreak = (destTerrain === TERRAIN.FOREST ? 1000 : 0) + forestStepsCount;
+
+                    if (score > bestScore || (score === bestScore && forestTieBreak > bestTieBreak)) {
                         bestScore = score;
+                        bestTieBreak = forestTieBreak;
                         bestCandidate = { q: candQ, r: candR, path: candPath, isStay };
                     }
                 }

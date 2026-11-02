@@ -17,8 +17,10 @@
         }
         canvas {
             display: block;
-            width: 100vw;
-            height: 100vh;
+            position: fixed;
+            inset: 0;
+            width: 100%;
+            height: 100%;
             touch-action: none;
             cursor: grab;
         }
@@ -1215,7 +1217,6 @@
             if (isAnimatingTurn || squad.length === 0) return;
             isAnimatingTurn = true;
 
-            const previousSelectedId = selectedUnitId;
             selectedUnitId = null;
             reachableMap.clear();
 
@@ -1506,16 +1507,9 @@
             setTurnPhaseUI(null);
             updateFogOfWar();
 
-            if (previousSelectedId && squad.some(u => u.id === previousSelectedId)) {
-                selectedUnitId = previousSelectedId;
-            } else {
-                selectedUnitId = squad.length > 0 ? squad[0].id : null;
-            }
-            if (selectedUnitId) {
-                computeReachableHexes(squad.find(u => u.id === selectedUnitId));
-            } else {
-                reachableMap.clear();
-            }
+            // After a move, nothing is selected (avoids confusing leftover highlights)
+            selectedUnitId = null;
+            reachableMap.clear();
 
             updateUI();
             requestRender();
@@ -1649,6 +1643,18 @@
             const ux = (sx - canvas.width / 2) / R + camera.x;
             const uy = (sy - canvas.height / 2) / R + camera.y;
             return unitPixelToHex(ux, uy);
+        }
+
+        // Convert pointer client coordinates into canvas backing-store pixels,
+        // compensating for any difference between the canvas CSS box and its bitmap size.
+        function clientToCanvas(clientX, clientY) {
+            const rect = canvas.getBoundingClientRect();
+            const scaleX = rect.width > 0 ? canvas.width / rect.width : 1;
+            const scaleY = rect.height > 0 ? canvas.height / rect.height : 1;
+            return {
+                x: (clientX - rect.left) * scaleX,
+                y: (clientY - rect.top) * scaleY
+            };
         }
 
         function getPixelDistanceFromCamera(q, r) {
@@ -2391,12 +2397,13 @@
         let initialPinchRadius = null;
 
         canvas.addEventListener('pointerdown', (e) => {
-            activePointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+            const p = clientToCanvas(e.clientX, e.clientY);
+            activePointers.set(e.pointerId, p);
 
             if (activePointers.size === 1) {
                 isDragging = true;
                 pointerMovedDist = 0;
-                dragStartScreen = { x: e.clientX, y: e.clientY };
+                dragStartScreen = { x: p.x, y: p.y };
                 dragStartCamera = { x: camera.x, y: camera.y };
             } else if (activePointers.size === 2) {
                 const pts = Array.from(activePointers.values());
@@ -2406,8 +2413,9 @@
         });
 
         window.addEventListener('pointermove', (e) => {
+            const p = clientToCanvas(e.clientX, e.clientY);
             if (activePointers.has(e.pointerId)) {
-                activePointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+                activePointers.set(e.pointerId, p);
             }
 
             if (activePointers.size === 2 && initialPinchDist) {
@@ -2422,8 +2430,8 @@
             }
 
             if (isDragging && activePointers.size === 1) {
-                const dx = e.clientX - dragStartScreen.x;
-                const dy = e.clientY - dragStartScreen.y;
+                const dx = p.x - dragStartScreen.x;
+                const dy = p.y - dragStartScreen.y;
                 pointerMovedDist = Math.hypot(dx, dy);
 
                 if (pointerMovedDist > 4) {
@@ -2434,7 +2442,7 @@
                 }
             }
 
-            const hex = screenToHex(e.clientX, e.clientY);
+            const hex = screenToHex(p.x, p.y);
             if (inBounds(hex.q, hex.r) && (hex.q !== hoveredHex.q || hex.r !== hoveredHex.r)) {
                 hoveredHex = hex;
                 updateInspector(hex.q, hex.r);
@@ -2449,7 +2457,8 @@
             if (isDragging && activePointers.size === 0) {
                 isDragging = false;
                 if (pointerMovedDist <= 7 && e.target === canvas) {
-                    const hex = screenToHex(e.clientX, e.clientY);
+                    const p = clientToCanvas(e.clientX, e.clientY);
+                    const hex = screenToHex(p.x, p.y);
                     hoveredHex = hex;
                     updateInspector(hex.q, hex.r);
                     handleHexTap(hex.q, hex.r);
@@ -2460,7 +2469,8 @@
         canvas.addEventListener('wheel', (e) => {
             e.preventDefault();
             const factor = e.deltaY < 0 ? 1.12 : 0.89;
-            zoomCamera(factor, e.clientX, e.clientY);
+            const p = clientToCanvas(e.clientX, e.clientY);
+            zoomCamera(factor, p.x, p.y);
         }, { passive: false });
 
         window.addEventListener('keydown', (e) => {

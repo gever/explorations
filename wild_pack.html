@@ -65,9 +65,9 @@
                     <div class="w-9 h-9 rounded-xl bg-amber-500/20 border border-amber-500/40 flex items-center justify-center text-amber-400 font-bold text-lg shadow-inner">
                         <i class="fa-solid fa-paw"></i>
                     </div>
-                    <div>
+                    <div class="hidden sm:block">
                         <h1 class="font-extrabold text-sm sm:text-base tracking-tight text-white leading-none">WILD PACK</h1>
-                        <span class="text-[10px] sm:text-xs text-slate-400 font-medium">512×512 Tactical Hex</span>
+                        <span class="text-[10px] sm:text-xs text-slate-400 font-medium">512×512</span>
                     </div>
                 </div>
 
@@ -144,8 +144,8 @@
         <!-- Hovered / Selected Hex Info -->
         <div id="hexInspector" class="bg-slate-900/90 backdrop-blur-md border border-slate-700/80 rounded-xl p-2.5 text-xs shadow-lg pointer-events-auto">
             <div class="flex items-center justify-between gap-3">
-                <span id="inspectCoords" class="font-mono text-slate-400">Hex (256, 256)</span>
-                <span id="inspectTerrain" class="font-bold px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">Field (1 MP)</span>
+                <span id="inspectCoords" class="font-mono text-slate-400">Hex —</span>
+                <span id="inspectTerrain" class="font-bold px-2 py-0.5 rounded text-[10px] border bg-slate-800 text-slate-400 border-slate-700">No hex selected</span>
             </div>
             <div id="inspectDetail" class="mt-1 text-slate-300 text-[11px] leading-snug">
                 Tap a Wolf or Bear to plan their movement path.
@@ -2547,10 +2547,8 @@
             updateZoomLimits();
             centerOnSquad();
 
-            if (squad.length > 0) {
-                selectUnit(squad[0].id, false);
-                updateInspector(squad[0].q, squad[0].r);
-            }
+            // Start with nothing selected so the map is fully visible to new players
+            selectUnit(null);
             renderScene();
         }
 

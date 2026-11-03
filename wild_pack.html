@@ -277,6 +277,7 @@
                     <ul class="list-disc list-inside text-slate-300 mt-1.5 space-y-1 text-xs">
                         <li><strong>Scaling Hunting Efficiency:</strong> The larger the Trog group, the more directly and efficiently they track toward your nearest squad member.</li>
                         <li><strong>1 Bear</strong> kills <strong>1–2 Trogs</strong>. <strong>3 Trogs</strong> together kill <strong>1 Bear</strong>.</li>
+                        <li><strong>Who strikes first depends on terrain:</strong> <strong>Forest &amp; Rocks</strong> – Bears strike first. <strong>Sand</strong> – Trogs strike first. <strong>Field</strong> – random.</li>
                         <li><strong>2 Wolves</strong> together kill <strong>1 Trog</strong> (a lone Wolf attacking a Trog dies).</li>
                         <li><strong>Coordinated Placement:</strong> When multiple squad members defeat a Trog, the first moved unit takes the hex and others slide into adjacent non-water cells.</li>
                     </ul>
@@ -1129,7 +1130,24 @@
             return { q: centerQ, r: centerR };
         }
 
-        function evaluateBattle(bears, wolves, trogCount) {
+        // Terrain-dependent initiative:
+        // - Forest / Rocks: Bears always strike first.
+        // - Sand: Trogs always strike first.
+        // - Field: Random (returns 'random'; callers roll once via rollInitiative).
+        function getTerrainInitiative(q, r) {
+            const t = mapGrid[idx(q, r)];
+            if (t === TERRAIN.FOREST || t === TERRAIN.ROCKS) return 'bears';
+            if (t === TERRAIN.FIELD) return 'random';
+            return 'trogs';
+        }
+
+        function rollInitiative(q, r) {
+            const mode = getTerrainInitiative(q, r);
+            if (mode === 'random') return Math.random() < 0.5 ? 'bears' : 'trogs';
+            return mode;
+        }
+
+        function evaluateBattle(bears, wolves, trogCount, initiative = 'trogs') {
             let survivingBears = [...bears];
             let survivingWolves = [...wolves];
             let remTrogs = trogCount;
@@ -1139,16 +1157,27 @@
             const killedByWolves = Math.min(remTrogs, wolfPairs);
             remTrogs -= killedByWolves;
 
-            // 3 Trogs kill 1 Bear
-            while (remTrogs >= 3 && survivingBears.length > 0) {
-                remTrogs -= 3;
-                survivingBears.pop();
-            }
+            // Each Bear kills up to 2 Trogs (uses the Bears alive at the moment it strikes)
+            const bearsStrike = () => {
+                if (survivingBears.length > 0 && remTrogs > 0) {
+                    remTrogs = Math.max(0, remTrogs - survivingBears.length * 2);
+                }
+            };
 
-            // Each surviving Bear kills up to 2 remaining Trogs
-            if (survivingBears.length > 0 && remTrogs > 0) {
-                const bearKillCapacity = survivingBears.length * 2;
-                remTrogs = Math.max(0, remTrogs - bearKillCapacity);
+            // 3 Trogs kill 1 Bear
+            const trogsStrike = () => {
+                while (remTrogs >= 3 && survivingBears.length > 0) {
+                    remTrogs -= 3;
+                    survivingBears.pop();
+                }
+            };
+
+            if (initiative === 'bears') {
+                bearsStrike();
+                trogsStrike();
+            } else {
+                trogsStrike();
+                bearsStrike();
             }
 
             // Any remaining Trogs kill unpaired Wolves
@@ -1164,7 +1193,8 @@
                     ...wolves.filter(w => !survivingWolves.includes(w))
                 ],
                 remainingTrogs: remTrogs,
-                trogsKilled: trogCount - remTrogs
+                trogsKilled: trogCount - remTrogs,
+                initiative
             };
         }
 
@@ -1317,7 +1347,7 @@
 
                 const bears = units.filter(u => u.type === 'bear');
                 const wolves = units.filter(u => u.type === 'wolf');
-                const result = evaluateBattle(bears, wolves, trogGroup.count);
+                const result = evaluateBattle(bears, wolves, trogGroup.count, rollInitiative(q, r));
 
                 pendingResults.push({ q, r, units, trogGroup, result });
                 activeSkirmishes.push(createSkirmishEffect(q, r, result));
@@ -1340,12 +1370,12 @@
 
                 for (const dead of result.killedUnits) {
                     deadUnitIds.add(dead.id);
-                    logEvent(`💀 ${formatUnitName(dead)} fell fighting ${oldCount} Trog(s) at (${q},${r})!`, 'text-rose-400 font-semibold');
+                    logEvent(`💀 ${formatUnitName(dead)} fell fighting ${oldCount} Trog(s) at (${q},${r})! (${result.initiative === 'bears' ? 'Bears' : 'Trogs'} struck first)`, 'text-rose-400 font-semibold');
                     addVisualEffect(q, r, `${formatUnitName(dead)} KIA`, '#f43f5e');
                 }
 
                 if (result.trogsKilled > 0) {
-                    logEvent(`⚔️ Squad slew ${result.trogsKilled} Trog(s) at (${q},${r})!`, 'text-emerald-400 font-semibold');
+                    logEvent(`⚔️ Squad slew ${result.trogsKilled} Trog(s) at (${q},${r})! (${result.initiative === 'bears' ? 'Bears' : 'Trogs'} struck first)`, 'text-emerald-400 font-semibold');
                     addVisualEffect(q, r, `VICTORY! -${result.trogsKilled} Trog`, '#10b981');
                 }
 
@@ -1465,7 +1495,7 @@
                 if (unitsOnHex.length > 0) {
                     const bears = unitsOnHex.filter(u => u.type === 'bear');
                     const wolves = unitsOnHex.filter(u => u.type === 'wolf');
-                    const res = evaluateBattle(bears, wolves, trog.count);
+                    const res = evaluateBattle(bears, wolves, trog.count, rollInitiative(trog.q, trog.r));
                     ambushItems.push({ trog, unitsOnHex, res });
                     activeSkirmishes.push(createSkirmishEffect(trog.q, trog.r, res));
                 }
@@ -1487,7 +1517,7 @@
 
                 for (const dead of res.killedUnits) {
                     postMoveDeadUnits.add(dead.id);
-                    logEvent(`💀 Ambush! ${formatUnitName(dead)} was killed by ${oldTrogCount} Trog(s) at (${trog.q},${trog.r})!`, 'text-rose-400 font-semibold');
+                    logEvent(`💀 Ambush! ${formatUnitName(dead)} was killed by ${oldTrogCount} Trog(s) at (${trog.q},${trog.r})! (${res.initiative === 'bears' ? 'Bears' : 'Trogs'} struck first)`, 'text-rose-400 font-semibold');
                     addVisualEffect(trog.q, trog.r, `${formatUnitName(dead)} KIA`, '#f43f5e');
                 }
                 if (res.trogsKilled > 0) {
@@ -2377,15 +2407,24 @@
                 } else {
                     const bears = attackers.filter(a => a.type === 'bear');
                     const wolves = attackers.filter(a => a.type === 'wolf');
-                    const result = evaluateBattle(bears, wolves, t.count);
+                    const mode = getTerrainInitiative(q, r);
+                    const describe = (result) => {
+                        if (result.killedUnits.length > 0) {
+                            return `<div class="text-rose-400 font-semibold mt-1">⚠️ Warning: ${result.killedUnits.map(formatUnitName).join(', ')} will be killed!</div>`;
+                        } else if (result.remainingTrogs > 0) {
+                            return `<div class="text-amber-400 font-semibold mt-1">⚠️ Not enough force: ${result.remainingTrogs} Trog(s) will survive.</div>`;
+                        }
+                        return `<div class="text-emerald-400 font-semibold mt-1">✅ Clean Kill: All Trogs eliminated safely.</div>`;
+                    };
 
                     let html = `<div class="mb-1"><strong>Assault Force:</strong> ${bears.length} Bears, ${wolves.length} Wolves vs ${t.count} Trogs</div>`;
-                    if (result.killedUnits.length > 0) {
-                        html += `<div class="text-rose-400 font-semibold mt-1">⚠️ Warning: ${result.killedUnits.map(formatUnitName).join(', ')} will be killed!</div>`;
-                    } else if (result.remainingTrogs > 0) {
-                        html += `<div class="text-amber-400 font-semibold mt-1">⚠️ Not enough force: ${result.remainingTrogs} Trog(s) will survive.</div>`;
+                    if (mode === 'random') {
+                        html += `<div class="text-sky-300 mt-1">🎲 Field: first strike is random.</div>`;
+                        html += `<div class="mt-1"><em>If Bears strike first:</em>${describe(evaluateBattle(bears, wolves, t.count, 'bears'))}</div>`;
+                        html += `<div class="mt-1"><em>If Trogs strike first:</em>${describe(evaluateBattle(bears, wolves, t.count, 'trogs'))}</div>`;
                     } else {
-                        html += `<div class="text-emerald-400 font-semibold mt-1">✅ Clean Kill: All Trogs eliminated safely.</div>`;
+                        html += `<div class="text-sky-300 mt-1">${mode === 'bears' ? '🐻 Bears strike first here.' : '🧌 Trogs strike first here.'}</div>`;
+                        html += describe(evaluateBattle(bears, wolves, t.count, mode));
                     }
                     previewContent.innerHTML = html;
                 }

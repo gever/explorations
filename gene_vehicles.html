@@ -319,9 +319,21 @@
       width: 190px;
     }
 
-    .net-header input[type="text"]:focus {
+    .net-header input[type="text"]:focus,
+    .net-header input[type="number"]:focus {
       outline: none;
       border-color: #66ccff;
+    }
+
+    .net-header input[type="number"] {
+      background: #2a2a2a;
+      color: #eee;
+      border: 1px solid #444;
+      border-radius: 6px;
+      padding: 4px 8px;
+      font-size: 13px;
+      font-family: monospace;
+      width: 64px;
     }
 
     .net-header button {
@@ -436,6 +448,10 @@
           <input type="checkbox" id="net-labels-chk" checked>
           Labels &amp; edge numbers
         </label>
+        <label title="Material thickness in mm used to compute bend allowance along the top strip">
+          Material thickness (mm):
+          <input type="number" id="net-thickness-input" value="3" min="0" step="0.5">
+        </label>
         <label>
           File name:
           <input type="text" id="net-filename-input" spellcheck="false" placeholder="car_name">
@@ -489,6 +505,8 @@
     const WHEEL_MOUNT_HOLE_DIAMETER = 4.7;
     const WHEEL_MOUNT_HOLE_RADIUS   = WHEEL_MOUNT_HOLE_DIAMETER / 2; // 2.35 mm
     const WHEEL_DISC_COUNT   = 8; // glued in pairs to create 4 wheels
+    const DEFAULT_MATERIAL_THICKNESS = 3; // default 3 mm material thickness
+    const K_FACTOR_RATIO     = 0.2; // hidden K-factor = 0.2 * thickness
 
     // --- global state ---
     let profilePointCount = 7;  // initial points count (3..12)
@@ -1291,6 +1309,7 @@
     const netLayoutSelect = document.getElementById('net-layout-select');
     const netTabsChk = document.getElementById('net-tabs-chk');
     const netLabelsChk = document.getElementById('net-labels-chk');
+    const netThicknessInput = document.getElementById('net-thickness-input');
     const netFilenameInput = document.getElementById('net-filename-input');
     const netDownloadBtn = document.getElementById('net-download-btn');
     const netCloseBtn = document.getElementById('net-close-btn');
@@ -1697,25 +1716,64 @@
     });
 
     // --- 2D Polygon Net Generator & Viewer ---
-    function buildCarNetSVG(genome, { layout = 'connected', includeTabs = true, includeLabels = true } = {}) {
+    function getMaterialThickness() {
+      const t = parseFloat(netThicknessInput.value);
+      return Number.isFinite(t) && t >= 0 ? t : 0;
+    }
+
+    function buildCarNetSVG(
+      genome,
+      {
+        layout = 'connected',
+        includeTabs = true,
+        includeLabels = true,
+        materialThickness = DEFAULT_MATERIAL_THICKNESS
+      } = {}
+    ) {
       const W = genome.width; // 80 mm
       const pts = genome.profile;
       const n = pts.length;
       const carName = getGenomeExportName(genome);
 
+      // Compute hidden K-factor (0.2 * thickness) and bend allowance ΔL = ±θ_rad × (0.2 × thickness) at each vertex
+      // Positive cross product (in CCW polygon winding) = convex bend (+kFactor); negative = concave bend (-kFactor)
+      const kFactor = K_FACTOR_RATIO * materialThickness;
+      const windingSign = Math.sign(polygonSignedArea(pts)) || 1;
+      const vertexBendDelta = new Array(n).fill(0);
+      for (let i = 0; i < n; i++) {
+        const prev = pts[(i - 1 + n) % n];
+        const curr = pts[i];
+        const next = pts[(i + 1) % n];
+        const ux = curr.x - prev.x;
+        const uy = curr.y - prev.y;
+        const vx = next.x - curr.x;
+        const vy = next.y - curr.y;
+        const cross = (ux * vy - uy * vx) * windingSign;
+        const dot = ux * vx + uy * vy;
+        const thetaRad = Math.atan2(Math.abs(cross), dot); // deflection angle in [0, π]
+        const isConvex = cross >= 0;
+        const signedKFactor = isConvex ? kFactor : -kFactor;
+        vertexBendDelta[i] = thetaRad * signedKFactor;
+      }
+
       // Compute edge lengths and cumulative X positions along the unfolded perimeter strip
       // Edge i connects pts[i] -> pts[(i + 1) % n]
-      // Note: Edge 0 connects pts[0] (-70, 0) -> pts[1] (70, 0), length = 140 mm
+      // Edge 0 (the 140 mm flat bottom base) stays fixed at 140 mm to match the attached side profiles;
+      // upper strip panels (edges 1..n-1) absorb half of the bend ΔL from each of their two endpoint vertices.
       const edges = [];
       let totalPerimeter = 0;
       for (let i = 0; i < n; i++) {
         const a = pts[i];
         const b = pts[(i + 1) % n];
-        const len = Math.hypot(b.x - a.x, b.y - a.y);
+        const rawLen = Math.hypot(b.x - a.x, b.y - a.y);
+        const bendDelta = i === 0 ? 0 : 0.5 * (vertexBendDelta[i] + vertexBendDelta[(i + 1) % n]);
+        const len = i === 0 ? rawLen : Math.max(1, rawLen + bendDelta);
         edges.push({
           index: i,
           a,
           b,
+          rawLength: rawLen,
+          bendDelta,
           length: len,
           x0: totalPerimeter,
           x1: totalPerimeter + len
@@ -1890,7 +1948,7 @@
             labelElements.push({
               x: midStripX,
               y: W / 2 + 1.5,
-              text: `${i} (${Math.round(e.length)}mm)`,
+              text: `${i} (${Number(e.length.toFixed(1))}mm)`,
               size: 4.2
             });
 
@@ -2027,7 +2085,7 @@
             labelElements.push({
               x: (e.x0 + e.x1) / 2,
               y: W / 2 + 5,
-              text: `${i} (${Math.round(e.length)}mm)`,
+              text: `${i} (${Number(e.length.toFixed(1))}mm)`,
               size: 4.2
             });
           }
@@ -2086,7 +2144,7 @@
         svg: svgLines.join('\n'),
         widthMm: Math.round(vw),
         heightMm: Math.round(vh),
-        perimeterMm: Math.round(totalPerimeter),
+        perimeterMm: Number(totalPerimeter.toFixed(1)),
         carName
       };
     }
@@ -2103,14 +2161,16 @@
       if (selectedIndex < 0 || !genomes[selectedIndex]) return;
       const g = genomes[selectedIndex];
       syncFilenameFromInput(g);
+      const materialThickness = getMaterialThickness();
       const result = buildCarNetSVG(g, {
         layout: netLayoutSelect.value,
         includeTabs: netTabsChk.checked,
-        includeLabels: netLabelsChk.checked
+        includeLabels: netLabelsChk.checked,
+        materialThickness
       });
       netViewport.innerHTML = result.svg;
       netDimensionsInfo.textContent =
-        `${result.carName}.svg · Sheet: ${result.widthMm} × ${result.heightMm} mm · Strip perimeter: ${result.perimeterMm} mm`;
+        `${result.carName}.svg · Sheet: ${result.widthMm} × ${result.heightMm} mm · Strip perimeter: ${result.perimeterMm} mm · Thickness: ${materialThickness} mm`;
     }
 
     netBtn.addEventListener('click', () => {
@@ -2124,6 +2184,8 @@
     netLayoutSelect.addEventListener('change', updateNetModalPreview);
     netTabsChk.addEventListener('change', updateNetModalPreview);
     netLabelsChk.addEventListener('change', updateNetModalPreview);
+    netThicknessInput.addEventListener('input', updateNetModalPreview);
+    netThicknessInput.addEventListener('change', updateNetModalPreview);
     netFilenameInput.addEventListener('input', updateNetModalPreview);
 
     netDownloadBtn.addEventListener('click', () => {
@@ -2131,10 +2193,12 @@
       const g = genomes[selectedIndex];
       const finalName = syncFilenameFromInput(g);
       netFilenameInput.value = finalName;
+      const materialThickness = getMaterialThickness();
       const result = buildCarNetSVG(g, {
         layout: netLayoutSelect.value,
         includeTabs: netTabsChk.checked,
-        includeLabels: netLabelsChk.checked
+        includeLabels: netLabelsChk.checked,
+        materialThickness
       });
       const blob = new Blob([result.svg], { type: 'image/svg+xml' });
       const url = URL.createObjectURL(blob);

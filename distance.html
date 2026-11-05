@@ -1,0 +1,341 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>Disc Golf Throw Tracker</title>
+  <style>
+    :root {
+      --bg: #121820;
+      --card-bg: #1e293b;
+      --primary: #10b981;
+      --accent: #3b82f6;
+      --purple: #8b5cf6;
+      --text: #f8fafc;
+      --subtext: #94a3b8;
+      --danger: #ef4444;
+    }
+
+    * {
+      box-sizing: border-box;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    }
+
+    body {
+      margin: 0;
+      padding: 16px;
+      background-color: var(--bg);
+      color: var(--text);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      min-height: 100vh;
+    }
+
+    .container {
+      width: 100%;
+      max-width: 420px;
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+    }
+
+    header {
+      text-align: center;
+      padding: 6px 0;
+    }
+
+    h1 {
+      margin: 0;
+      font-size: 1.5rem;
+      letter-spacing: -0.5px;
+    }
+
+    .card {
+      background-color: var(--card-bg);
+      border-radius: 12px;
+      padding: 16px;
+      box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.3);
+    }
+
+    .stat-label {
+      font-size: 0.8rem;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: var(--subtext);
+    }
+
+    .display-box {
+      text-align: center;
+      padding: 20px 12px;
+    }
+
+    .distance-main {
+      font-size: 3.5rem;
+      font-weight: 800;
+      color: var(--primary);
+      line-height: 1.1;
+    }
+
+    .distance-sub {
+      font-size: 1.25rem;
+      color: var(--subtext);
+      margin-top: 4px;
+    }
+
+    .status-row {
+      display: flex;
+      justify-content: space-between;
+      margin-top: 6px;
+      font-size: 0.85rem;
+      color: var(--subtext);
+    }
+
+    .btn {
+      width: 100%;
+      padding: 16px;
+      border: none;
+      border-radius: 8px;
+      font-size: 1.1rem;
+      font-weight: 600;
+      cursor: pointer;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      gap: 8px;
+      transition: opacity 0.2s ease, background-color 0.2s ease;
+    }
+
+    .btn:disabled {
+      opacity: 0.45;
+      cursor: not-allowed;
+    }
+
+    .btn:active:not(:disabled) {
+      opacity: 0.8;
+    }
+
+    .btn-set-a {
+      background-color: var(--accent);
+      color: #fff;
+    }
+
+    .btn-set-b {
+      background-color: var(--primary);
+      color: #fff;
+    }
+
+    .btn-reset {
+      background-color: #334155;
+      color: var(--subtext);
+    }
+
+    .coord-list {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      font-size: 0.85rem;
+    }
+
+    .coord-item {
+      display: flex;
+      justify-content: space-between;
+    }
+
+    .accuracy-indicator {
+      display: inline-block;
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      margin-right: 6px;
+      background: var(--subtext);
+    }
+
+    .good { background: var(--primary); }
+    .moderate { background: #f59e0b; }
+    .poor { background: var(--danger); }
+  </style>
+</head>
+<body>
+
+  <div class="container">
+    <header>
+      <h1>Disc Distance Tracker</h1>
+    </header>
+
+    <div class="card display-box">
+      <div class="stat-label" id="display-mode-label">Live Distance</div>
+      <div class="distance-main" id="dist-feet">0 <span style="font-size: 1.5rem">ft</span></div>
+      <div class="distance-sub" id="dist-meters">0.0 m</div>
+    </div>
+
+    <div class="card">
+      <div class="coord-list">
+        <div class="coord-item">
+          <span class="stat-label">GPS Status:</span>
+          <span>
+            <span id="acc-dot" class="accuracy-indicator"></span>
+            <span id="gps-status">Acquiring GPS...</span>
+          </span>
+        </div>
+        <div class="coord-item">
+          <span class="stat-label">Current Accuracy:</span>
+          <span id="current-accuracy">--</span>
+        </div>
+      </div>
+      <div class="status-row" style="margin-top: 10px;">
+        <span>Point A (Tee): <strong id="point-a-status" style="color: var(--text);">Not Set</strong></span>
+      </div>
+      <div class="status-row">
+        <span>Point B (Disc): <strong id="point-b-status" style="color: var(--text);">Not Set</strong></span>
+      </div>
+    </div>
+
+    <button id="btn-set-a" class="btn btn-set-a" disabled>
+      Set Point A (Tee)
+    </button>
+    <button id="btn-set-b" class="btn btn-set-b" disabled>
+      Mark Point B
+    </button>
+    <button id="btn-reset" class="btn btn-reset">
+      Reset Tracker
+    </button>
+  </div>
+
+  <script>
+    let pointA = null;
+    let pointB = null;
+    let currentCoords = null;
+    let watchId = null;
+
+    const setABtn = document.getElementById('btn-set-a');
+    const setBBtn = document.getElementById('btn-set-b');
+    const resetBtn = document.getElementById('btn-reset');
+    const distFeetEl = document.getElementById('dist-feet');
+    const distMetersEl = document.getElementById('dist-meters');
+    const displayModeLabel = document.getElementById('display-mode-label');
+    const gpsStatusEl = document.getElementById('gps-status');
+    const currentAccEl = document.getElementById('current-accuracy');
+    const accDot = document.getElementById('acc-dot');
+    const pointAStatusEl = document.getElementById('point-a-status');
+    const pointBStatusEl = document.getElementById('point-b-status');
+
+    function calculateDistance(lat1, lon1, lat2, lon2) {
+      const R = 6371000; // Earth radius in meters
+      const toRad = deg => (deg * Math.PI) / 180;
+      
+      const dLat = toRad(lat2 - lat1);
+      const dLon = toRad(lon2 - lon1);
+      
+      const a = Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+                Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) *
+                Math.sin(dLon / 2) * Math.sin(dLon / 2);
+      
+      const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+      return R * c;
+    }
+
+    function updateDisplay(distanceInMeters) {
+      const feet = Math.round(distanceInMeters * 3.28084);
+      distFeetEl.innerHTML = `${feet} <span style="font-size: 1.5rem">ft</span>`;
+      distMetersEl.textContent = `${distanceInMeters.toFixed(1)} m`;
+    }
+
+    function handleLocationUpdate(pos) {
+      currentCoords = {
+        lat: pos.coords.latitude,
+        lon: pos.coords.longitude,
+        accuracy: pos.coords.accuracy
+      };
+
+      if (!pointA) {
+        setABtn.disabled = false;
+      }
+      gpsStatusEl.textContent = "Live";
+
+      const accFt = Math.round(pos.coords.accuracy * 3.28084);
+      currentAccEl.textContent = `±${accFt} ft (${pos.coords.accuracy.toFixed(1)} m)`;
+
+      if (pos.coords.accuracy <= 5) {
+        accDot.className = "accuracy-indicator good";
+      } else if (pos.coords.accuracy <= 10) {
+        accDot.className = "accuracy-indicator moderate";
+      } else {
+        accDot.className = "accuracy-indicator poor";
+      }
+
+      // Live updates while walking toward the disc (before Point B is locked)
+      if (pointA && !pointB) {
+        const dist = calculateDistance(pointA.lat, pointA.lon, currentCoords.lat, currentCoords.lon);
+        updateDisplay(dist);
+      }
+    }
+
+    function handleLocationError(err) {
+      gpsStatusEl.textContent = "GPS Error";
+      accDot.className = "accuracy-indicator poor";
+    }
+
+    function startTracking() {
+      if (!("geolocation" in navigator)) {
+        alert("Geolocation is not supported by your browser.");
+        return;
+      }
+
+      const options = {
+        enableHighAccuracy: true,
+        maximumAge: 0,
+        timeout: 15000
+      };
+
+      watchId = navigator.geolocation.watchPosition(
+        handleLocationUpdate,
+        handleLocationError,
+        options
+      );
+    }
+
+    setABtn.addEventListener('click', () => {
+      if (!currentCoords) return;
+      pointA = { lat: currentCoords.lat, lon: currentCoords.lon };
+      pointB = null;
+      
+      pointAStatusEl.textContent = "Locked";
+      pointBStatusEl.textContent = "Pending Walk...";
+      displayModeLabel.textContent = "Live Distance (Walking)";
+      
+      setABtn.textContent = "Re-set Point A (Tee)";
+      setBBtn.disabled = false;
+      updateDisplay(0);
+    });
+
+    setBBtn.addEventListener('click', () => {
+      if (!currentCoords || !pointA) return;
+      pointB = { lat: currentCoords.lat, lon: currentCoords.lon };
+      
+      pointBStatusEl.textContent = "Locked";
+      displayModeLabel.textContent = "Final Throw Distance";
+      
+      const finalDist = calculateDistance(pointA.lat, pointA.lon, pointB.lat, pointB.lon);
+      updateDisplay(finalDist);
+      setBBtn.disabled = true;
+    });
+
+    resetBtn.addEventListener('click', () => {
+      pointA = null;
+      pointB = null;
+      
+      pointAStatusEl.textContent = "Not Set";
+      pointBStatusEl.textContent = "Not Set";
+      displayModeLabel.textContent = "Live Distance";
+      
+      setABtn.textContent = "Set Point A (Tee)";
+      setABtn.disabled = currentCoords === null;
+      setBBtn.disabled = true;
+      updateDisplay(0);
+    });
+
+    startTracking();
+  </script>
+</body>
+</html>

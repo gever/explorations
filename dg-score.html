@@ -1,0 +1,1265 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+<meta name="theme-color" content="#121820">
+<title>dg-score</title>
+<!--
+  dg-score.html - offline-first disc golf scorer prototype.
+  * Marks tee / shots / OB / hazard / holed on a flat map OR a 3D terrain view (same camera, same crosshair).
+  * Course data comes from a ".dgpack" file made by python/dg_course_pack.py (USGS 3DEP terrain, NAIP imagery,
+    OpenStreetMap vectors). Packs are stored in IndexedDB, so everything works with no signal after download.
+  * No external libraries: the 3D view is a small WebGL2 renderer. Open over https:// or http://localhost for
+    GPS + service-worker offline caching (dg-score-sw.js). From file:// everything but those two still works.
+  * Deep links: ?pack=packs/morley.dgpack  ?view=3d|flat  ?base=sat|map  ?hole=3  ?demo=1
+-->
+<style>
+  :root {
+    --bg:#121820; --card:#1e293b; --card2:#273449; --primary:#10b981; --accent:#3b82f6; --purple:#8b5cf6;
+    --text:#f8fafc; --sub:#94a3b8; --danger:#ef4444; --warn:#f59e0b; --line:#334155;
+    --safe-b: env(safe-area-inset-bottom, 0px);
+  }
+  * { box-sizing:border-box; font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif; -webkit-tap-highlight-color:transparent; }
+  html,body { margin:0; height:100%; background:var(--bg); color:var(--text); overflow:hidden; overscroll-behavior:none; }
+  #app { height:100dvh; display:flex; flex-direction:column; }
+  button { font:inherit; color:inherit; cursor:pointer; border:0; }
+  button:disabled { opacity:.4; cursor:default; }
+
+  /* top bar */
+  #top { display:flex; align-items:center; gap:6px; padding:6px 8px; padding-top:max(6px, env(safe-area-inset-top)); background:var(--card); }
+  .chip { background:var(--card2); border-radius:18px; padding:8px 12px; font-size:.85rem; min-height:38px; white-space:nowrap; }
+  #btnCourse { max-width:34vw; overflow:hidden; text-overflow:ellipsis; }
+  #holeNav { flex:1; display:flex; align-items:center; justify-content:center; gap:4px; min-width:0; }
+  #holeNav button { background:var(--card2); width:42px; height:42px; border-radius:50%; font-size:1.1rem; }
+  #holeLabel { text-align:center; min-width:96px; line-height:1.1; }
+  #holeLabel b { font-size:1.15rem; }
+  #holeLabel small { color:var(--sub); display:block; font-size:.75rem; }
+  #holeLabel button { all:unset; cursor:pointer; text-decoration:underline dotted; }
+
+  /* stage */
+  #stage { position:relative; flex:1; min-height:0; overflow:hidden; background:#1b2430; }
+  #stage.is3d { background:linear-gradient(#7fa9d4 0%, #cfe0ef 38%, #aab9a0 39%, #6f7e68 100%); }
+  #stage canvas { position:absolute; inset:0; width:100%; height:100%; }
+  #ov { touch-action:none; }
+  #gl { display:none; } #stage.is3d #gl { display:block; } #stage.is3d #flat { display:none; }
+  .ctl { position:absolute; z-index:5; display:flex; flex-direction:column; gap:6px; }
+  #ctlTop { top:8px; right:8px; align-items:flex-end; }
+  #ctlSide { top:50%; right:8px; transform:translateY(-50%); }
+  .seg { display:flex; background:rgba(18,24,32,.82); border-radius:10px; overflow:hidden; backdrop-filter:blur(4px); }
+  .seg button { background:transparent; padding:9px 12px; font-size:.82rem; min-height:38px; }
+  .seg button.on { background:var(--accent); }
+  .fab { width:42px; height:42px; border-radius:50%; background:rgba(18,24,32,.82); font-size:1.15rem; display:grid; place-items:center; backdrop-filter:blur(4px); }
+  .fab.on { background:var(--accent); }
+  #compass span { display:block; transition:none; }
+  #hud { position:absolute; z-index:4; left:8px; top:8px; background:rgba(18,24,32,.78); border-radius:10px; padding:6px 10px; font-size:.78rem; line-height:1.35; pointer-events:none; white-space:pre; }
+  #attrib { position:absolute; z-index:4; left:6px; bottom:4px; font-size:.62rem; color:rgba(255,255,255,.75); text-shadow:0 0 3px #000; pointer-events:none; max-width:70%; }
+  #toast { position:absolute; z-index:9; left:50%; bottom:12px; transform:translateX(-50%); background:rgba(15,23,42,.95); border:1px solid var(--line);
+           border-radius:12px; padding:10px 14px; font-size:.9rem; display:none; gap:12px; align-items:center; max-width:92%; }
+  #toast.show { display:flex; }
+  #toast button { background:var(--primary); border-radius:8px; padding:6px 10px; font-weight:600; }
+  #selbar { position:absolute; z-index:8; left:8px; right:8px; bottom:10px; background:rgba(15,23,42,.96); border:1px solid var(--accent); border-radius:14px; padding:10px; display:none; flex-direction:column; gap:8px; }
+  #selbar.show { display:flex; }
+  #selbar .row { display:flex; gap:6px; flex-wrap:wrap; }
+  #selbar button { flex:1; background:var(--card2); border-radius:10px; padding:10px 6px; font-size:.85rem; min-width:84px; }
+  #selbar button.del { background:#7f1d1d; }
+
+  /* dock */
+  #dock { background:var(--card); padding:6px 8px calc(8px + var(--safe-b)); display:flex; flex-direction:column; gap:6px; }
+  #players { display:flex; gap:6px; overflow-x:auto; scrollbar-width:none; }
+  #players .chip { display:flex; gap:6px; align-items:center; flex:none; }
+  #players .chip.on { background:var(--purple); }
+  #players .chip i { font-style:normal; font-weight:700; opacity:.9; }
+  #strip { display:flex; align-items:center; justify-content:space-between; gap:8px; font-size:.9rem; }
+  #stripInfo b { font-size:1.05rem; }
+  #stripInfo span { color:var(--sub); }
+  #throwList { margin:0; padding:0; list-style:none; max-height:24vh; overflow:auto; display:flex; flex-direction:column; gap:3px; }
+  #throwList[hidden] { display:none; }
+  #throwList li { display:flex; justify-content:space-between; gap:8px; background:var(--card2); border-radius:8px; padding:7px 10px; font-size:.85rem; cursor:pointer; }
+  #throwList li.sel { outline:2px solid var(--accent); }
+  #throwList li.ob b { color:#fca5a5; } #throwList li.hz b { color:#fcd34d; }
+  #row2 { display:flex; gap:6px; align-items:center; }
+  #gpsChip { margin-left:auto; font-size:.78rem; color:var(--sub); }
+  #actions { display:grid; grid-template-columns:1.5fr 1fr 1fr 1.2fr; gap:6px; }
+  .act { height:58px; border-radius:14px; font-weight:700; font-size:1.02rem; background:var(--card2); line-height:1.1; }
+  .act small { display:block; font-weight:500; font-size:.66rem; opacity:.85; margin-top:2px; }
+  .act.primary { background:var(--accent); } .act.ob { background:#b91c1c; } .act.haz { background:#b45309; } .act.hole { background:var(--primary); }
+  .act:active { filter:brightness(1.25); transform:scale(.98); }
+  #hint { font-size:.68rem; color:var(--sub); text-align:center; }
+
+  /* dialogs */
+  dialog { background:var(--card); color:var(--text); border:1px solid var(--line); border-radius:16px; padding:16px; width:min(94vw,520px); max-height:88dvh; overflow:auto; }
+  dialog::backdrop { background:rgba(0,0,0,.6); }
+  dialog h2 { margin:0 0 10px; font-size:1.1rem; }
+  dialog h3 { margin:14px 0 6px; font-size:.82rem; text-transform:uppercase; letter-spacing:.06em; color:var(--sub); }
+  dialog .row { display:flex; gap:8px; align-items:center; flex-wrap:wrap; margin:6px 0; }
+  dialog input[type=text], dialog input[type=number], dialog input[type=url] { flex:1; min-width:0; background:var(--bg); border:1px solid var(--line); color:var(--text); border-radius:8px; padding:9px; font-size:.95rem; }
+  dialog button.b { background:var(--card2); border-radius:10px; padding:9px 14px; }
+  dialog button.b.pri { background:var(--accent); } dialog button.b.dng { background:#7f1d1d; }
+  dialog .close { float:right; background:none; font-size:1.3rem; padding:0 6px; }
+  dialog small, dialog .muted { color:var(--sub); font-size:.8rem; }
+  #packList { list-style:none; padding:0; margin:0; display:flex; flex-direction:column; gap:6px; }
+  #packList li { display:flex; gap:8px; align-items:center; background:var(--card2); border-radius:10px; padding:8px 10px; }
+  #packList li span { flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  table { border-collapse:collapse; width:100%; font-size:.9rem; }
+  th,td { padding:6px 4px; text-align:center; border-bottom:1px solid var(--line); }
+  td:first-child, th:first-child { text-align:left; }
+  tr.cur td { background:rgba(59,130,246,.18); }
+  tbody tr { cursor:pointer; } tfoot td { font-weight:700; }
+  .under { color:#6ee7b7; } .over { color:#fca5a5; }
+  label.tog { display:flex; gap:8px; align-items:center; }
+</style>
+</head>
+<body>
+<div id="app">
+  <header id="top">
+    <button id="btnCourse" class="chip" title="Courses &amp; offline packs">Course ▾</button>
+    <div id="holeNav">
+      <button id="prevHole" aria-label="Previous hole">◀</button>
+      <div id="holeLabel"><b>Hole 1</b><small>Par <button id="parBtn" title="Tap to change par">3</button></small></div>
+      <button id="nextHole" aria-label="Next hole">▶</button>
+    </div>
+    <button id="btnCard" class="chip">Card</button>
+    <button id="btnSettings" class="chip" aria-label="Settings">⚙</button>
+  </header>
+
+  <main id="stage">
+    <canvas id="flat"></canvas>
+    <canvas id="gl"></canvas>
+    <canvas id="ov"></canvas>
+    <div id="hud"></div>
+    <div id="attrib"></div>
+    <div class="ctl" id="ctlTop">
+      <div class="seg" id="viewSeg"><button data-v="flat" class="on">Flat</button><button data-v="3d">3D</button></div>
+      <div class="seg" id="baseSeg"><button data-b="sat">Satellite</button><button data-b="map" class="on">Map</button></div>
+    </div>
+    <div class="ctl" id="ctlSide">
+      <button class="fab" id="btnFollow" title="Locate me / follow">⌖</button>
+      <button class="fab" id="compass" title="Reset north"><span>▲</span></button>
+      <button class="fab" id="zoomIn" aria-label="Zoom in">+</button>
+      <button class="fab" id="zoomOut" aria-label="Zoom out">−</button>
+    </div>
+    <div id="toast"><span id="toastMsg"></span><button id="toastBtn" hidden></button></div>
+    <div id="selbar">
+      <div id="selInfo"></div>
+      <div class="row">
+        <button id="selHere">Move to ✛</button><button id="selMe">Move to me</button>
+        <button id="selDel" class="del">Delete</button><button id="selClose">Done</button>
+      </div>
+    </div>
+  </main>
+
+  <section id="dock">
+    <div id="players"></div>
+    <div id="strip"><div id="stripInfo"></div><button class="chip" id="btnList">Throws ▾</button></div>
+    <ol id="throwList" hidden></ol>
+    <div id="row2">
+      <button class="chip" id="btnPlace">◎ At me</button>
+      <button class="chip" id="btnUndo">↶ Undo</button>
+      <span id="gpsChip"></span>
+    </div>
+    <div id="actions">
+      <button class="act primary" id="actMark">Tee<small>at</small></button>
+      <button class="act ob" id="actOB">OB<small>at ✛</small></button>
+      <button class="act haz" id="actHaz">Hazard<small>at ✛</small></button>
+      <button class="act hole" id="actHole">Holed ✓<small>at</small></button>
+    </div>
+    <div id="hint">Pan ✛ to where the disc went, then tap OB / Hazard. After OB, mark where you place the disc for your next shot.</div>
+  </section>
+</div>
+
+<!-- Courses / packs -->
+<dialog id="dlgCourse">
+  <button class="close" data-close aria-label="Close">×</button>
+  <h2>Courses</h2>
+  <h3>Downloaded for offline use</h3>
+  <ul id="packList"></ul>
+  <h3>Add a course pack</h3>
+  <div class="row"><input type="file" id="packFile" accept=".dgpack,application/octet-stream"></div>
+  <div class="row"><input type="url" id="packUrl" placeholder="packs/morley.dgpack or https://..." value="packs/morley.dgpack"><button class="b pri" id="packGo">Download</button></div>
+  <div class="row"><button class="b" id="packDemo">Load synthetic demo course</button></div>
+  <p class="muted">Make a pack on a computer with signal:<br><code>python3 python/dg_course_pack.py --center LAT,LON --size 1000 --name "My Course" --out packs/my.dgpack</code></p>
+</dialog>
+
+<!-- Scorecard -->
+<dialog id="dlgCard">
+  <button class="close" data-close aria-label="Close">×</button>
+  <h2>Scorecard</h2>
+  <div id="cardBody"></div>
+  <div class="row">
+    <button class="b pri" id="btnExport">Export round (JSON)</button>
+    <button class="b dng" id="btnNewRound">New round</button>
+  </div>
+</dialog>
+
+<!-- Settings -->
+<dialog id="dlgSettings">
+  <button class="close" data-close aria-label="Close">×</button>
+  <h2>Settings</h2>
+  <h3>Players</h3>
+  <div id="playerEdit"></div>
+  <div class="row"><input type="text" id="newPlayer" placeholder="Add player name" maxlength="20"><button class="b" id="addPlayer">Add</button></div>
+  <h3>Display</h3>
+  <div class="row"><label>Units&nbsp;<select id="setUnits"><option value="ft">feet</option><option value="m">metres</option></select></label></div>
+  <div class="row"><label>3D terrain exaggeration&nbsp;<input type="range" id="setExag" min="1" max="4" step="0.25"> <span id="exagVal"></span></label></div>
+  <div class="row"><label class="tog"><input type="checkbox" id="setTrees"> Show approximate trees in 3D on the Map base (from OSM woods)</label></div>
+  <h3>Course</h3>
+  <div class="row"><label>Holes&nbsp;<input type="number" id="setHoles" min="1" max="36" style="width:80px;flex:none"></label>
+    <button class="b" id="btnClearLayout">Forget learned tees/baskets</button></div>
+  <p class="muted" id="aboutPack"></p>
+</dialog>
+
+<script>
+(() => {
+'use strict';
+
+/* ============================================================ utils */
+const $ = s => document.querySelector(s);
+const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
+const rad = d => d * Math.PI / 180;
+const M_PER_DEG = Math.PI / 180 * 6371008.8;
+const FOV = rad(50);
+const uid = () => Math.random().toString(36).slice(2, 9);
+const el = (tag, props = {}, ...kids) => {
+  const e = Object.assign(document.createElement(tag), props);
+  for (const k of kids.flat()) e.append(k);
+  return e;
+};
+const slug = s => s.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'course';
+const ls = {
+  get: (k, d) => { try { const v = localStorage.getItem(k); return v == null ? d : JSON.parse(v); } catch { return d; } },
+  set: (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) { console.warn('localStorage full?', e); } },
+  del: k => { try { localStorage.removeItem(k); } catch {} },
+};
+
+/* ============================================================ settings */
+const S = Object.assign({
+  units: /^en-US/i.test(navigator.language || '') ? 'ft' : 'm',
+  exag: 1.5, trees: true, placement: 'gps', view: 'flat', base: 'sat',
+}, ls.get('dg.v1.settings', {}));
+const saveSettings = () => ls.set('dg.v1.settings', S);
+const q = new URLSearchParams(location.search);
+if (q.get('view')) S.view = q.get('view') === '3d' ? '3d' : 'flat';
+if (q.get('base')) S.base = q.get('base') === 'map' ? 'map' : 'sat';
+
+const fmtDist = m => S.units === 'ft' ? `${Math.round(m * 3.28084)} ft` : `${Math.round(m)} m`;
+const fmtElev = m => (m >= 0 ? '+' : '−') + (S.units === 'ft' ? `${Math.abs(m * 3.28084).toFixed(0)} ft` : `${Math.abs(m).toFixed(1)} m`);
+
+/* ============================================================ pack model */
+let P = null;         // currently open course pack (decoded)
+let course = null;    // {id, layout:{holes}, round}
+let holes = [];       // layout in memory: {ref, par, tee:{lon,lat,x,y}|null, basket:{...}|null}
+let round = null;
+
+const toLocal = (lon, lat) => [(lon - P.lon0) * P.kx, (lat - P.lat0) * P.ky];
+const toLL = (x, y) => [P.lon0 + x / P.kx, P.lat0 + y / P.ky];
+
+function elevAt(x, y) {
+  const fx = clamp(x / P.W, 0, 1) * (P.dw - 1), fy = clamp((P.H - y) / P.H, 0, 1) * (P.dh - 1);
+  const i = Math.min(P.dw - 2, fx | 0), j = Math.min(P.dh - 2, fy | 0), tx = fx - i, ty = fy - j;
+  const e = P.elev, o = j * P.dw + i;
+  return (e[o] * (1 - tx) + e[o + 1] * tx) * (1 - ty) + (e[o + P.dw] * (1 - tx) + e[o + P.dw + 1] * tx) * ty;
+}
+
+async function decodePng(bytes) {
+  return createImageBitmap(new Blob([bytes], { type: 'image/png' }), { colorSpaceConversion: 'none' });
+}
+
+async function parsePack(buf) {
+  const dv = new DataView(buf);
+  if (String.fromCharCode(dv.getUint8(0), dv.getUint8(1), dv.getUint8(2), dv.getUint8(3)) !== 'DGPK') throw new Error('Not a .dgpack file');
+  const hlen = dv.getUint32(5, true);
+  const header = JSON.parse(new TextDecoder().decode(new Uint8Array(buf, 9, hlen)));
+  const base = 9 + hlen;
+  const blob = name => { const L = header.layers[name]; return L ? new Uint8Array(buf, base + L.offset, L.length) : null; };
+
+  // terrain: Terrarium PNG -> Float32 metres
+  const dmeta = header.layers.dem;
+  const bmp = await decodePng(blob('dem'));
+  const c = el('canvas', { width: bmp.width, height: bmp.height });
+  const g = c.getContext('2d', { willReadFrequently: true });
+  g.drawImage(bmp, 0, 0);
+  const d = g.getImageData(0, 0, c.width, c.height).data;
+  const elev = new Float32Array(c.width * c.height);
+  for (let i = 0; i < elev.length; i++) elev[i] = d[i * 4] * 256 + d[i * 4 + 1] + d[i * 4 + 2] / 256 - 32768;
+
+  let img = null;
+  if (header.layers.imagery) img = await createImageBitmap(new Blob([blob('imagery')], { type: 'image/jpeg' }));
+  const feats = header.layers.osm ? JSON.parse(new TextDecoder().decode(blob('osm'))) : [];
+  return buildPack(header, { elev, w: c.width, h: c.height }, img, feats);
+}
+
+function buildPack(header, dem, img, feats) {
+  const [w, s, e, n] = header.bbox;
+  const p = { header, name: header.name, id: header.id || (slug(header.name) + '-' + String(header.created || '').replace(/\D/g, '').slice(0, 12)),
+    lon0: w, lat0: s, ky: M_PER_DEG, kx: M_PER_DEG * Math.cos(rad((s + n) / 2)), img, feats: [], elev: dem.elev, dw: dem.w, dh: dem.h };
+  p.W = (e - w) * p.kx; p.H = (n - s) * p.ky;
+  let zmin = Infinity, zmax = -Infinity;
+  for (const v of dem.elev) { if (v < zmin) zmin = v; if (v > zmax) zmax = v; }
+  p.zmin = zmin; p.zmax = zmax;
+  const loc = pt => [(pt[0] - w) * p.kx, (pt[1] - s) * p.ky];
+  for (const f of feats) {
+    const o = { k: f.k, t: f.t, p: f.p || {} };
+    if (f.t === 'n') o.pt = loc(f.c); else if (f.t === 'l') o.pts = f.c.map(loc); else o.rings = f.c.map(r => r.map(loc));
+    p.feats.push(o);
+  }
+  p.layout = header.layout || { holes: [] };
+  return p;
+}
+
+/* ---------- synthetic demo course (so the app is testable with no pack) */
+function makeDemoPack() {
+  const lat0 = 37.0, lon0 = -122.0, W = 720, H = 520, ky = M_PER_DEG, kx = M_PER_DEG * Math.cos(rad(lat0 + H / ky / 2));
+  const ll = (x, y) => [lon0 + x / kx, lat0 + y / ky];
+  const dw = 361, dh = 261, elev = new Float32Array(dw * dh);
+  const gauss = (x, y, cx, cy, r) => Math.exp(-((x - cx) ** 2 + (y - cy) ** 2) / (2 * r * r));
+  const hash = (i, j) => { const s = Math.sin(i * 127.1 + j * 311.7) * 43758.5453; return s - Math.floor(s); };
+  const vnoise = (x, y) => { const i = Math.floor(x), j = Math.floor(y), fx = x - i, fy = y - j, u = fx * fx * (3 - 2 * fx), v = fy * fy * (3 - 2 * fy);
+    return (hash(i, j) * (1 - u) + hash(i + 1, j) * u) * (1 - v) + (hash(i, j + 1) * (1 - u) + hash(i + 1, j + 1) * u) * v; };
+  for (let j = 0; j < dh; j++) for (let i = 0; i < dw; i++) {
+    const x = i / (dw - 1) * W, y = H - j / (dh - 1) * H;
+    elev[j * dw + i] = 100 + 0.02 * x + 14 * Math.sin(x / 140) * Math.cos(y / 110) + 22 * gauss(x, y, 200, 380, 120) + 15 * gauss(x, y, 520, 330, 90)
+      - 16 * gauss(x, y, 430, 150, 70) + 3 * vnoise(x / 25, y / 25);
+  }
+  const blob = (cx, cy, r, seed) => { const pts = []; for (let k = 0; k < 18; k++) { const a = k / 18 * 2 * Math.PI, rr = r * (0.75 + 0.5 * hash(seed, k)); pts.push([cx + rr * Math.cos(a), cy + rr * Math.sin(a)]); } pts.push(pts[0]); return pts; };
+  const A = (k, ...rings) => ({ k, t: 'a', c: rings.map(r => r.map(p => ll(...p))), p: {} });
+  const L = (k, pts, p = {}) => ({ k, t: 'l', c: pts.map(p => ll(...p)), p });
+  const feats = [
+    A('open', [[0, 0], [W, 0], [W, H], [0, H], [0, 0]]),
+    A('course', [[20, 30], [W - 20, 30], [W - 20, H - 20], [20, H - 20], [20, 30]]),
+    ...[[150, 330, 70, 1], [300, 430, 90, 2], [60, 200, 50, 3], [600, 70, 60, 4], [660, 450, 70, 5], [500, 250, 40, 6], [280, 200, 35, 7]].map(b => A('wood', blob(...b))),
+    A('water', blob(430, 150, 42, 9).map(([x, y]) => [430 + (x - 430) * 1.15, 150 + (y - 150) * 0.8])),
+    A('ob', blob(430, 150, 52, 9).map(([x, y]) => [430 + (x - 430) * 1.15, 150 + (y - 150) * 0.8])),
+    L('waterway', [[430, 120], [380, 90], [330, 40], [300, 0]]),
+    L('road', [[0, 14], [250, 18], [500, 10], [720, 16]], { highway: 'residential' }),
+    L('path', [[40, 60], [200, 100], [250, 200], [330, 300], [450, 380], [600, 300], [640, 220], [560, 120], [420, 60], [250, 70], [40, 60]], { highway: 'footway' }),
+    A('building', [[300, 38], [326, 38], [326, 56], [300, 56], [300, 38]]),
+  ];
+  const holeDefs = [[60, 70, 220, 110, 3], [240, 130, 330, 300, 4], [350, 310, 520, 380, 4], [540, 380, 640, 230, 3], [620, 200, 400, 95, 4], [380, 80, 120, 230, 4]];
+  const header = { format: 'dgpack', version: 1, name: 'Demo Park (synthetic)', created: 'demo', id: 'demo',
+    bbox: [lon0, lat0, lon0 + W / kx, lat0 + H / ky], attribution: ['Synthetic demo terrain - not a real place'],
+    layout: { holes: holeDefs.map((h, i) => ({ ref: String(i + 1), par: h[4], tee: ll(h[0], h[1]), basket: ll(h[2], h[3]) })) } };
+  return buildPack(header, { elev, w: dw, h: dh }, null, feats);
+}
+
+/* ============================================================ persistence */
+const dbp = new Promise((res, rej) => {
+  const r = indexedDB.open('dg-score', 1);
+  r.onupgradeneeded = () => r.result.createObjectStore('packs', { keyPath: 'id' });
+  r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error);
+});
+async function idb(mode, fn) {
+  const db = await dbp;
+  return new Promise((res, rej) => {
+    const tx = db.transaction('packs', mode), rq = fn(tx.objectStore('packs'));
+    tx.oncomplete = () => res(rq && rq.result); tx.onerror = () => rej(tx.error);
+  });
+}
+const packIndex = () => ls.get('dg.v1.packs', []);
+async function storePack(id, name, buf) {
+  await idb('readwrite', s => s.put({ id, buffer: buf }));
+  const idx = packIndex().filter(p => p.id !== id);
+  idx.unshift({ id, name, size: buf.byteLength, added: Date.now() });
+  ls.set('dg.v1.packs', idx);
+}
+async function deletePack(id) {
+  await idb('readwrite', s => s.delete(id));
+  ls.set('dg.v1.packs', packIndex().filter(p => p.id !== id));
+  ls.del('dg.v1.course.' + id);
+}
+
+function newRound() {
+  const players = (round && round.players && round.players.length) ? round.players.map(p => ({ id: p.id, name: p.name })) : [{ id: uid(), name: 'Me' }];
+  return { players, active: players[0].id, hole: 0, marks: {}, created: Date.now() };
+}
+function loadCourseState() {
+  const st = ls.get('dg.v1.course.' + P.id, null);
+  const src = (st && st.layout && st.layout.holes && st.layout.holes.length) ? st.layout.holes : (P.layout.holes || []);
+  holes = src.map((h, i) => ({ ref: h.ref || String(i + 1), par: h.par || 3, tee: h.tee ? mkPt(h.tee) : null, basket: h.basket ? mkPt(h.basket) : null }));
+  if (!holes.length) for (let i = 0; i < 18; i++) holes.push({ ref: String(i + 1), par: 3, tee: null, basket: null });
+  round = st && st.round ? st.round : null;
+  round = round || newRound();
+  for (const k in round.marks) for (const m of round.marks[k]) [m.x, m.y] = toLocal(m.lon, m.lat);
+  round.hole = clamp(round.hole || 0, 0, holes.length - 1);
+}
+const mkPt = ll => { const [x, y] = toLocal(ll[0], ll[1]); return { lon: ll[0], lat: ll[1], x, y }; };
+let saveT = 0;
+function save() {
+  clearTimeout(saveT);
+  saveT = setTimeout(() => {
+    if (!P) return;
+    ls.set('dg.v1.course.' + P.id, {
+      layout: { holes: holes.map(h => ({ ref: h.ref, par: h.par, tee: h.tee ? [h.tee.lon, h.tee.lat] : null, basket: h.basket ? [h.basket.lon, h.basket.lat] : null })) },
+      round: JSON.parse(JSON.stringify(round, (k, v) => (k === 'x' || k === 'y') ? undefined : v)),
+    });
+    ls.set('dg.v1.last', P.id);
+  }, 150);
+}
+
+/* ============================================================ round logic */
+const key = (h, pid) => h + '|' + pid;
+const marksOf = (h, pid) => round.marks[key(h, pid)] || (round.marks[key(h, pid)] = []);
+const curMarks = () => marksOf(round.hole, round.active);
+const isThrowFrom = m => m.type === 'tee' || m.type === 'shot';
+const isPenalty = m => m.type === 'ob' || m.type === 'hazard';
+function holeStats(h, pid) {
+  const ms = round.marks[key(h, pid)] || [];
+  const throws = ms.filter(isThrowFrom).length, pen = ms.filter(isPenalty).length;
+  return { throws, pen, strokes: throws + pen, holed: ms.some(m => m.type === 'basket'), started: ms.length > 0 };
+}
+const playerById = id => round.players.find(p => p.id === id);
+const activePlayer = () => playerById(round.active) || round.players[0];
+
+function dist2(a, b) { return Math.hypot(a.x - b.x, a.y - b.y); }
+
+/* ============================================================ GPS */
+const gps = { watch: null, fix: null, err: null };
+let wakeLock = null;
+async function acquireWake() { try { if ('wakeLock' in navigator && document.visibilityState === 'visible') wakeLock = await navigator.wakeLock.request('screen'); } catch {} }
+document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible' && gps.watch != null) acquireWake(); });
+function startGps() {
+  if (gps.watch != null) return true;
+  if (!('geolocation' in navigator)) { gps.err = 'GPS unavailable'; updateGpsChip(); return false; }
+  gps.watch = navigator.geolocation.watchPosition(p => {
+    const [x, y] = P ? toLocal(p.coords.longitude, p.coords.latitude) : [0, 0];
+    gps.fix = { lon: p.coords.longitude, lat: p.coords.latitude, acc: p.coords.accuracy, t: p.timestamp || Date.now(), x, y };
+    gps.err = null;
+    if (cam.follow && P) { cam.x = x; cam.y = y; }
+    updateGpsChip(); dirty = true;
+  }, e => { gps.err = e.code === 1 ? 'GPS permission denied' : 'No GPS signal'; updateGpsChip(); },
+  { enableHighAccuracy: true, maximumAge: 1000, timeout: 30000 });
+  acquireWake();
+  return true;
+}
+const fixFresh = () => gps.fix && Date.now() - gps.fix.t < 20000 && gps.fix.acc <= 50;
+const fixOutside = () => !!(gps.fix && P && Math.max(0, -gps.fix.x, gps.fix.x - P.W, -gps.fix.y, gps.fix.y - P.H) > 100);
+function updateGpsChip() {
+  const c = $('#gpsChip');
+  if (gps.err) c.textContent = gps.err;
+  else if (!gps.fix) c.textContent = gps.watch == null ? 'GPS off' : 'GPS searching…';
+  else {
+    let t = `GPS ±${fmtDist(gps.fix.acc)}`;
+    if (P) { const o = Math.max(0, -gps.fix.x, gps.fix.x - P.W, -gps.fix.y, gps.fix.y - P.H); if (o > 50) t += ` · ${fmtDist(o)} outside map`; }
+    c.textContent = t;
+  }
+  $('#btnFollow').classList.toggle('on', cam.follow);
+}
+if (navigator.permissions && navigator.permissions.query)
+  navigator.permissions.query({ name: 'geolocation' }).then(r => { if (r.state === 'granted') startGps(); }).catch(() => {});
+
+/* ============================================================ camera / projection */
+const cam = { x: 0, y: 0, span: 300, yaw: { flat: 0, '3d': 0 }, tilt: 55, follow: false };
+let view = '3d', cw = 1, ch = 1, dpr = 1, dirty = true, vp = null, cam3 = null;
+const stage = $('#stage'), flatCv = $('#flat'), glCv = $('#gl'), ov = $('#ov');
+const fctx = flatCv.getContext('2d'), octx = ov.getContext('2d');
+
+function persp(f, a, n, fa) { const t = 1 / Math.tan(f / 2); return [t / a, 0, 0, 0, 0, t, 0, 0, 0, 0, (fa + n) / (n - fa), -1, 0, 0, 2 * fa * n / (n - fa), 0]; }
+function sub3(a, b) { return [a[0] - b[0], a[1] - b[1], a[2] - b[2]]; }
+function cross3(a, b) { return [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]]; }
+function norm3(a) { const l = Math.hypot(...a) || 1; return [a[0] / l, a[1] / l, a[2] / l]; }
+function dot3(a, b) { return a[0] * b[0] + a[1] * b[1] + a[2] * b[2]; }
+function lookAt(e, c, u) {
+  const z = norm3(sub3(e, c)), x = norm3(cross3(u, z)), y = cross3(z, x);
+  return { m: [x[0], y[0], z[0], 0, x[1], y[1], z[1], 0, x[2], y[2], z[2], 0, -dot3(x, e), -dot3(y, e), -dot3(z, e), 1], x, y, z };
+}
+function mul4(a, b) { const o = new Array(16); for (let c = 0; c < 4; c++) for (let r = 0; r < 4; r++) { let s = 0; for (let k = 0; k < 4; k++) s += a[k * 4 + r] * b[c * 4 + k]; o[c * 4 + r] = s; } return o; }
+
+function updateCamera() {
+  cam.span = clamp(cam.span, 20, Math.max(P.W, P.H) * 1.6);
+  cam.x = clamp(cam.x, 0, P.W); cam.y = clamp(cam.y, 0, P.H);
+  if (view !== '3d') return;
+  const yaw = rad(cam.yaw['3d']), tilt = rad(clamp(cam.tilt, 5, 80)), dist = cam.span / (2 * Math.tan(FOV / 2));
+  const tz = (elevAt(cam.x, cam.y) - P.zmin) * S.exag;
+  const ex = cam.x - Math.sin(tilt) * Math.sin(yaw) * dist, ey = cam.y - Math.sin(tilt) * Math.cos(yaw) * dist;
+  const ez = Math.max(tz + Math.cos(tilt) * dist, (elevAt(ex, ey) - P.zmin) * S.exag + 3);
+  const eye = [ex, ey, ez], tgt = [cam.x, cam.y, tz];
+  const la = lookAt(eye, tgt, [0, 0, 1]);
+  cam3 = { eye, right: la.x, up: la.y, fwd: [-la.z[0], -la.z[1], -la.z[2]], dist };
+  vp = mul4(persp(FOV, cw / ch, Math.max(0.5, dist * 0.04), dist * 30 + 2000), la.m);
+}
+
+/** world (local metres + elevation) -> CSS pixel, or null if behind camera */
+function proj(x, y, elev, off = 0) {
+  if (view === 'flat') {
+    const yaw = rad(cam.yaw.flat), c = Math.cos(yaw), s = Math.sin(yaw), dx = x - cam.x, dy = y - cam.y, ppm = ch / cam.span;
+    return [cw / 2 + ppm * (dx * c - dy * s), ch / 2 - ppm * (dx * s + dy * c)];
+  }
+  const z = (elev - P.zmin) * S.exag + off, m = vp;
+  const X = m[0] * x + m[4] * y + m[8] * z + m[12], Y = m[1] * x + m[5] * y + m[9] * z + m[13], W = m[3] * x + m[7] * y + m[11] * z + m[15];
+  if (W <= 0.05) return null;
+  return [(X / W * 0.5 + 0.5) * cw, (1 - (Y / W * 0.5 + 0.5)) * ch];
+}
+const projG = (x, y, off = 0) => proj(x, y, view === 'flat' ? 0 : elevAt(x, y), off);
+
+/** CSS pixel -> ground point [x,y] in local metres */
+function pickGround(sx, sy) {
+  if (view === '3d' && !cam3) updateCamera();
+  if (view === 'flat') {
+    const yaw = rad(cam.yaw.flat), ppm = ch / cam.span, u = (sx - cw / 2) / ppm, v = -(sy - ch / 2) / ppm;
+    const c = Math.cos(yaw), s = Math.sin(yaw);
+    return [cam.x + u * c + v * s, cam.y - u * s + v * c];
+  }
+  const nx = sx / cw * 2 - 1, ny = 1 - sy / ch * 2, th = Math.tan(FOV / 2), a = cw / ch, { eye, right, up, fwd, dist } = cam3;
+  const dir = norm3([fwd[0] + right[0] * nx * th * a + up[0] * ny * th, fwd[1] + right[1] * nx * th * a + up[1] * ny * th, fwd[2] + right[2] * nx * th * a + up[2] * ny * th]);
+  const ground = t => { const px = eye[0] + dir[0] * t, py = eye[1] + dir[1] * t; return eye[2] + dir[2] * t - (elevAt(px, py) - P.zmin) * S.exag; };
+  let t0 = dist * 0.1, step = Math.max(0.5, dist / 200), t1 = null;
+  for (let t = t0; t < dist * 8; t += step) { if (ground(t) < 0) { t1 = t; break; } t0 = t; }
+  if (t1 == null) return [cam.x, cam.y];
+  for (let i = 0; i < 18; i++) { const m = (t0 + t1) / 2; if (ground(m) < 0) t1 = m; else t0 = m; }
+  return [clamp(eye[0] + dir[0] * t1, 0, P.W), clamp(eye[1] + dir[1] * t1, 0, P.H)];
+}
+
+/* ============================================================ base map (vector + hillshade + contours) */
+const PAL = { land: '#dfe6cf', open: '#d6e6b8', park: '#cfe3b5', wood: '#8fb97c', scrub: '#b4cd93', water: '#86b9de', wetland: '#a6d0c0', developed: '#e4ded4', building: '#bfb4a6', course: '#7c3aed' };
+
+function renderMapBase() {
+  const ppm = Math.min(2.5, 3072 / Math.max(P.W, P.H)), bw = Math.round(P.W * ppm), bh = Math.round(P.H * ppm);
+  const cv = el('canvas', { width: bw, height: bh }), g = cv.getContext('2d');
+  g.fillStyle = PAL.land; g.fillRect(0, 0, bw, bh);
+  g.setTransform(ppm, 0, 0, -ppm, 0, P.H * ppm);        // world metres, y up
+  const ringsPath = rings => { g.beginPath(); for (const r of rings) { r.forEach((p, i) => i ? g.lineTo(p[0], p[1]) : g.moveTo(p[0], p[1])); g.closePath(); } };
+  const lineOf = pts => { g.beginPath(); pts.forEach((p, i) => i ? g.lineTo(p[0], p[1]) : g.moveTo(p[0], p[1])); };
+  const areas = k => P.feats.filter(f => f.k === k && f.t === 'a');
+  const lines = k => P.feats.filter(f => f.k === k && f.t === 'l');
+  for (const k of ['park', 'open', 'developed', 'scrub', 'wetland', 'wood', 'water']) {
+    g.fillStyle = PAL[k];
+    for (const f of areas(k)) { ringsPath(f.rings); g.fill('evenodd'); }
+    if (k === 'wood') { g.strokeStyle = 'rgba(60,100,55,.55)'; g.lineWidth = 0.8; for (const f of areas(k)) { ringsPath(f.rings); g.stroke(); } }
+    if (k === 'water') { g.strokeStyle = '#5b95c2'; g.lineWidth = 0.8; for (const f of areas(k)) { ringsPath(f.rings); g.stroke(); } }
+  }
+  // hillshade (multiply)
+  g.save(); g.setTransform(1, 0, 0, 1, 0, 0); g.globalCompositeOperation = 'multiply'; g.imageSmoothingQuality = 'high';
+  g.drawImage(hillshadeCanvas(), 0, 0, bw, bh); g.restore();
+  g.lineCap = 'round'; g.lineJoin = 'round';
+  // contours
+  drawContours(g, ppm, bw, bh);
+  g.setTransform(ppm, 0, 0, -ppm, 0, P.H * ppm);
+  g.strokeStyle = '#4a90c2'; g.lineWidth = 1.4; for (const f of lines('waterway')) { lineOf(f.pts); g.stroke(); }
+  g.fillStyle = PAL.building; g.strokeStyle = '#8c8173'; g.lineWidth = 0.4; for (const f of areas('building')) { ringsPath(f.rings); g.fill('evenodd'); g.stroke(); }
+  for (const f of lines('road')) { lineOf(f.pts); g.strokeStyle = '#8f8f8f'; g.lineWidth = 7; g.stroke(); g.strokeStyle = '#fff'; g.lineWidth = 5.4; g.stroke(); }
+  g.strokeStyle = '#a0642d'; g.lineWidth = 1.5; g.setLineDash([4, 2.5]); for (const f of lines('path')) { lineOf(f.pts); g.stroke(); } g.setLineDash([]);
+  g.strokeStyle = '#6b6b6b'; g.lineWidth = 0.5; g.setLineDash([2, 1.5]); for (const f of lines('fence')) { lineOf(f.pts); g.stroke(); } g.setLineDash([]);
+  g.strokeStyle = PAL.course; g.lineWidth = 1.2; g.setLineDash([8, 5]); for (const f of areas('course')) { ringsPath(f.rings); g.stroke(); } g.setLineDash([]);
+  P.mapCanvas = cv;
+}
+
+function hillshadeCanvas() {
+  const { dw, dh, elev } = P, cx = P.W / (dw - 1), cy = P.H / (dh - 1);
+  const c = el('canvas', { width: dw, height: dh }), g = c.getContext('2d'), im = g.createImageData(dw, dh), d = im.data;
+  const az = rad(315), alt = rad(42), Z = 2.0, sinA = Math.sin(alt), cosA = Math.cos(alt);
+  for (let j = 0; j < dh; j++) for (let i = 0; i < dw; i++) {
+    const i0 = Math.max(0, i - 1), i1 = Math.min(dw - 1, i + 1), j0 = Math.max(0, j - 1), j1 = Math.min(dh - 1, j + 1);
+    const dzdx = (elev[j * dw + i1] - elev[j * dw + i0]) / ((i1 - i0) * cx);
+    const dzdy = (elev[j0 * dw + i] - elev[j1 * dw + i]) / ((j1 - j0) * cy);
+    const nx = -Z * dzdx, ny = -Z * dzdy, nl = Math.hypot(nx, ny, 1);
+    const sh = (nx * Math.sin(az) * cosA + ny * Math.cos(az) * cosA + sinA) / nl;      // n . L, light from NW
+    const v = clamp(0.5 + 0.5 * (sh / sinA), 0.55, 1) * 255, o = (j * dw + i) * 4;
+    d[o] = d[o + 1] = d[o + 2] = v; d[o + 3] = 255;
+  }
+  g.putImageData(im, 0, 0);
+  return c;
+}
+
+function drawContours(g, ppm, bw, bh) {
+  const { dw, dh, elev } = P, step = Math.max(1, Math.round(Math.max(dw, dh) / 700));
+  const nx = Math.floor((dw - 1) / step) + 1, ny = Math.floor((dh - 1) / step) + 1;
+  let Z = new Float32Array(nx * ny);
+  for (let j = 0; j < ny; j++) for (let i = 0; i < nx; i++) Z[j * nx + i] = elev[Math.min(dh - 1, j * step) * dw + Math.min(dw - 1, i * step)];
+  for (let pass = 0; pass < 2; pass++) {                       // light smoothing: lidar noise makes ugly contours
+    const Z2 = new Float32Array(Z.length);
+    for (let j = 0; j < ny; j++) for (let i = 0; i < nx; i++) {
+      let s = 0, n = 0;
+      for (let b = -1; b <= 1; b++) for (let a = -1; a <= 1; a++) { const ii = i + a, jj = j + b; if (ii >= 0 && jj >= 0 && ii < nx && jj < ny) { s += Z[jj * nx + ii]; n++; } }
+      Z2[j * nx + i] = s / n;
+    }
+    Z = Z2;
+  }
+  const range = P.zmax - P.zmin, minor = range > 80 ? 5 : range > 30 ? 2 : range > 10 ? 1 : 0.5, major = minor * 5;
+  const sx = bw / (nx - 1), sy = bh / (ny - 1);
+  g.setTransform(1, 0, 0, 1, 0, 0);
+  for (let L = Math.ceil(P.zmin / minor) * minor; L < P.zmax; L += minor) {
+    const isMajor = Math.abs(L / major - Math.round(L / major)) < 1e-6;
+    g.strokeStyle = isMajor ? 'rgba(120,80,40,.55)' : 'rgba(120,80,40,.25)'; g.lineWidth = isMajor ? 1.1 : 0.6;
+    g.beginPath();
+    for (let j = 0; j < ny - 1; j++) for (let i = 0; i < nx - 1; i++) {
+      const tl = Z[j * nx + i], tr = Z[j * nx + i + 1], br = Z[(j + 1) * nx + i + 1], bl = Z[(j + 1) * nx + i];
+      const idx = (tl > L ? 8 : 0) | (tr > L ? 4 : 0) | (br > L ? 2 : 0) | (bl > L ? 1 : 0);
+      if (idx === 0 || idx === 15) continue;
+      const T = () => [(i + (L - tl) / (tr - tl)) * sx, j * sy], R = () => [(i + 1) * sx, (j + (L - tr) / (br - tr)) * sy];
+      const B = () => [(i + (L - bl) / (br - bl)) * sx, (j + 1) * sy], Lf = () => [i * sx, (j + (L - tl) / (bl - tl)) * sy];
+      const seg = (a, b) => { const p = a(), r = b(); g.moveTo(p[0], p[1]); g.lineTo(r[0], r[1]); };
+      switch (idx) {
+        case 1: case 14: seg(Lf, B); break; case 2: case 13: seg(B, R); break; case 3: case 12: seg(Lf, R); break;
+        case 4: case 11: seg(T, R); break; case 5: seg(T, Lf); seg(B, R); break; case 6: case 9: seg(T, B); break;
+        case 7: case 8: seg(T, Lf); break; case 10: seg(T, R); seg(Lf, B); break;
+      }
+    }
+    g.stroke();
+  }
+}
+
+/* ============================================================ WebGL2 terrain */
+let gl = null, gprog = null, tprog = null, mesh = null, texCache = {}, treeMesh = null;
+const VS = `#version 300 es
+in vec3 aPos; in vec2 aUV; in vec2 aSlope;
+uniform mat4 uVP; uniform float uExag;
+out vec2 vUV; out vec3 vN;
+void main(){ vUV=aUV; vN=normalize(vec3(-aSlope.x*uExag,-aSlope.y*uExag,1.0)); gl_Position=uVP*vec4(aPos.xy,aPos.z*uExag,1.0); }`;
+const FS = `#version 300 es
+precision highp float; uniform sampler2D uTex; uniform float uShade; in vec2 vUV; in vec3 vN; out vec4 o;
+void main(){ vec3 L=normalize(vec3(-0.5,0.6,0.7)); float d=max(dot(normalize(vN),L),0.0); float lit=0.42+0.8*d;
+  o=vec4(texture(uTex,vUV).rgb*mix(1.0,lit,uShade),1.0); }`;
+const TVS = `#version 300 es
+in vec3 aBase; in vec3 aOff; in vec3 aCol; uniform mat4 uVP; uniform float uExag; out vec3 vC;
+void main(){ vC=aCol; gl_Position=uVP*vec4(aBase.xy+aOff.xy,aBase.z*uExag+aOff.z,1.0); }`;
+const TFS = `#version 300 es
+precision mediump float; in vec3 vC; out vec4 o; void main(){ o=vec4(vC,1.0); }`;
+
+function compile(vs, fs) {
+  const mk = (t, s) => { const h = gl.createShader(t); gl.shaderSource(h, s); gl.compileShader(h); if (!gl.getShaderParameter(h, gl.COMPILE_STATUS)) throw new Error(gl.getShaderInfoLog(h)); return h; };
+  const p = gl.createProgram(); gl.attachShader(p, mk(gl.VERTEX_SHADER, vs)); gl.attachShader(p, mk(gl.FRAGMENT_SHADER, fs)); gl.linkProgram(p);
+  if (!gl.getProgramParameter(p, gl.LINK_STATUS)) throw new Error(gl.getProgramInfoLog(p));
+  return p;
+}
+function initGL() {
+  try {
+    gl = glCv.getContext('webgl2', { antialias: true, alpha: true, premultipliedAlpha: true });
+    if (!gl) throw new Error('WebGL2 unavailable');
+    gprog = compile(VS, FS); tprog = compile(TVS, TFS);
+  } catch (e) {
+    console.warn('3D disabled:', e); gl = null;
+    const b = $('#viewSeg [data-v="3d"]'); b.disabled = true; b.title = '3D needs WebGL2';
+    if (view === '3d') setView('flat');
+  }
+}
+function buildMesh() {
+  if (!gl || !P) return;
+  const { dw, dh, elev } = P, step = Math.max(1, Math.ceil(Math.max(dw, dh) / 512));
+  const xs = [], ys = [];
+  for (let i = 0; i < dw - 1; i += step) xs.push(i); xs.push(dw - 1);
+  for (let j = 0; j < dh - 1; j += step) ys.push(j); ys.push(dh - 1);
+  const nx = xs.length, ny = ys.length, V = new Float32Array(nx * ny * 7), cx = P.W / (dw - 1), cy = P.H / (dh - 1), s2 = Math.max(1, step);
+  let o = 0;
+  for (let b = 0; b < ny; b++) for (let a = 0; a < nx; a++) {
+    const i = xs[a], j = ys[b];
+    const i0 = Math.max(0, i - s2), i1 = Math.min(dw - 1, i + s2), j0 = Math.max(0, j - s2), j1 = Math.min(dh - 1, j + s2);
+    V[o++] = i * cx; V[o++] = P.H - j * cy; V[o++] = elev[j * dw + i] - P.zmin;
+    V[o++] = i / (dw - 1); V[o++] = j / (dh - 1);
+    V[o++] = (elev[j * dw + i1] - elev[j * dw + i0]) / ((i1 - i0) * cx);
+    V[o++] = (elev[j0 * dw + i] - elev[j1 * dw + i]) / ((j1 - j0) * cy);
+  }
+  const I = new Uint32Array((nx - 1) * (ny - 1) * 6); let k = 0;
+  for (let b = 0; b < ny - 1; b++) for (let a = 0; a < nx - 1; a++) {
+    const p = b * nx + a; I[k++] = p; I[k++] = p + 1; I[k++] = p + nx; I[k++] = p + 1; I[k++] = p + nx + 1; I[k++] = p + nx;
+  }
+  const vao = gl.createVertexArray(); gl.bindVertexArray(vao);
+  const vb = gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER, vb); gl.bufferData(gl.ARRAY_BUFFER, V, gl.STATIC_DRAW);
+  const ib = gl.createBuffer(); gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, ib); gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, I, gl.STATIC_DRAW);
+  for (const [name, size, offset] of [['aPos', 3, 0], ['aUV', 2, 12], ['aSlope', 2, 20]]) {
+    const loc = gl.getAttribLocation(gprog, name); gl.enableVertexAttribArray(loc); gl.vertexAttribPointer(loc, size, gl.FLOAT, false, 28, offset);
+  }
+  gl.bindVertexArray(null);
+  mesh = { vao, count: I.length };
+  texCache = {}; treeMesh = null;
+}
+function getTex(kind) {
+  if (texCache[kind]) return texCache[kind];
+  let src = kind === 'sat' && P.img ? P.img : P.mapCanvas;
+  const max = gl.getParameter(gl.MAX_TEXTURE_SIZE);
+  if (src.width > max || src.height > max) {
+    const f = max / Math.max(src.width, src.height), c = el('canvas', { width: Math.floor(src.width * f), height: Math.floor(src.height * f) });
+    c.getContext('2d').drawImage(src, 0, 0, c.width, c.height); src = c;
+  }
+  const t = gl.createTexture(); gl.bindTexture(gl.TEXTURE_2D, t);
+  gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, false); gl.pixelStorei(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL, false);
+  gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, src);
+  gl.generateMipmap(gl.TEXTURE_2D);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR_MIPMAP_LINEAR); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+  const ext = gl.getExtension('EXT_texture_filter_anisotropic');
+  if (ext) gl.texParameterf(gl.TEXTURE_2D, ext.TEXTURE_MAX_ANISOTROPY_EXT, Math.min(8, gl.getParameter(ext.MAX_TEXTURE_MAX_ANISOTROPY_EXT)));
+  return texCache[kind] = t;
+}
+
+/* approximate trees: OSM tree nodes + a jittered grid inside OSM wood polygons (stylised, NOT surveyed) */
+function inRings(x, y, rings) {
+  let inside = false;
+  for (const r of rings) for (let i = 0, j = r.length - 1; i < r.length; j = i++) {
+    const a = r[i], b = r[j];
+    if ((a[1] > y) !== (b[1] > y) && x < (b[0] - a[0]) * (y - a[1]) / (b[1] - a[1]) + a[0]) inside = !inside;
+  }
+  return inside;
+}
+function genTrees() {
+  let seed = 12345; const rnd = () => { seed |= 0; seed = seed + 0x6D2B79F5 | 0; let t = Math.imul(seed ^ seed >>> 15, 1 | seed); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; };
+  const trees = [];
+  for (const f of P.feats) if (f.k === 'tree' && f.t === 'n') trees.push([f.pt[0], f.pt[1], 9 + rnd() * 6]);
+  const woods = P.feats.filter(f => f.k === 'wood' && f.t === 'a');
+  let area = 0;
+  for (const f of woods) { const r = f.rings[0]; let a = 0; for (let i = 0; i < r.length - 1; i++) a += r[i][0] * r[i + 1][1] - r[i + 1][0] * r[i][1]; area += Math.abs(a) / 2; }
+  const sp = Math.max(8, Math.sqrt(area / 6000));
+  for (const f of woods) {
+    let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+    for (const p of f.rings[0]) { x0 = Math.min(x0, p[0]); x1 = Math.max(x1, p[0]); y0 = Math.min(y0, p[1]); y1 = Math.max(y1, p[1]); }
+    for (let x = Math.max(0, x0); x < Math.min(P.W, x1); x += sp) for (let y = Math.max(0, y0); y < Math.min(P.H, y1); y += sp) {
+      const px = x + (rnd() - 0.5) * sp * 0.8, py = y + (rnd() - 0.5) * sp * 0.8;
+      if (px > 0 && py > 0 && px < P.W && py < P.H && inRings(px, py, f.rings)) trees.push([px, py, 8 + rnd() * 9]);
+    }
+  }
+  const SIDES = 6, N = trees.length, A = new Float32Array(N * SIDES * 3 * 9); let o = 0;
+  const LIGHT = Math.atan2(-0.5, 0.6);
+  for (const [x, y, h] of trees) {
+    const r = h * 0.28, z = elevAt(x, y) - P.zmin, tone = 0.85 + rnd() * 0.3;
+    for (let s = 0; s < SIDES; s++) {
+      const a0 = s / SIDES * 2 * Math.PI, a1 = (s + 1) / SIDES * 2 * Math.PI, shade = (0.62 + 0.38 * (Math.cos((a0 + a1) / 2 - LIGHT) + 1) / 2) * tone;
+      const col = [0.16 * shade, 0.40 * shade + 0.04, 0.17 * shade];
+      for (const [ox, oy, oz, k] of [[r * Math.cos(a0), r * Math.sin(a0), h * 0.15, 0.85], [r * Math.cos(a1), r * Math.sin(a1), h * 0.15, 0.85], [0, 0, h, 1.1]]) {
+        A[o++] = x; A[o++] = y; A[o++] = z; A[o++] = ox; A[o++] = oy; A[o++] = oz; A[o++] = col[0] * k; A[o++] = col[1] * k; A[o++] = col[2] * k;
+      }
+    }
+  }
+  const vao = gl.createVertexArray(); gl.bindVertexArray(vao);
+  const vb = gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER, vb); gl.bufferData(gl.ARRAY_BUFFER, A, gl.STATIC_DRAW);
+  for (const [name, off] of [['aBase', 0], ['aOff', 12], ['aCol', 24]]) {
+    const loc = gl.getAttribLocation(tprog, name); gl.enableVertexAttribArray(loc); gl.vertexAttribPointer(loc, 3, gl.FLOAT, false, 36, off);
+  }
+  gl.bindVertexArray(null);
+  treeMesh = { vao, count: N * SIDES * 3, n: N };
+}
+
+function drawGL() {
+  if (!gl || !mesh) return;
+  gl.viewport(0, 0, glCv.width, glCv.height);
+  gl.clearColor(0, 0, 0, 0); gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT); gl.enable(gl.DEPTH_TEST);
+  const kind = (S.base === 'sat' && P.img) ? 'sat' : 'map', vpf = new Float32Array(vp);
+  gl.useProgram(gprog);
+  gl.uniformMatrix4fv(gl.getUniformLocation(gprog, 'uVP'), false, vpf); gl.uniform1f(gl.getUniformLocation(gprog, 'uExag'), S.exag);
+  gl.uniform1f(gl.getUniformLocation(gprog, 'uShade'), kind === 'sat' ? 0.35 : 0.3);
+  gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, getTex(kind)); gl.uniform1i(gl.getUniformLocation(gprog, 'uTex'), 0);
+  gl.bindVertexArray(mesh.vao); gl.drawElements(gl.TRIANGLES, mesh.count, gl.UNSIGNED_INT, 0);
+  if (S.trees && kind === 'map') {          // on aerial imagery the real trees are already visible
+    if (!treeMesh) genTrees();
+    if (treeMesh.n) {
+      gl.useProgram(tprog);
+      gl.uniformMatrix4fv(gl.getUniformLocation(tprog, 'uVP'), false, vpf); gl.uniform1f(gl.getUniformLocation(tprog, 'uExag'), S.exag);
+      gl.bindVertexArray(treeMesh.vao); gl.drawArrays(gl.TRIANGLES, 0, treeMesh.count);
+    }
+  }
+  gl.bindVertexArray(null);
+}
+
+/* ============================================================ flat drawing */
+function baseSource() { return (S.base === 'sat' && P.img) ? P.img : P.mapCanvas; }
+function drawFlat() {
+  const g = fctx; g.setTransform(1, 0, 0, 1, 0, 0); g.fillStyle = '#1b2430'; g.fillRect(0, 0, flatCv.width, flatCv.height);
+  const ppm = ch / cam.span;
+  g.setTransform(dpr, 0, 0, dpr, 0, 0); g.translate(cw / 2, ch / 2); g.rotate(-rad(cam.yaw.flat)); g.scale(ppm, ppm); g.translate(-cam.x, cam.y);
+  g.imageSmoothingEnabled = true; g.imageSmoothingQuality = 'high';
+  g.drawImage(baseSource(), 0, -P.H, P.W, P.H);
+}
+
+/* ============================================================ overlay (layout, marks, GPS, crosshair) */
+const hits = [];
+const COLORS = { tee: '#10b981', shot: '#3b82f6', ob: '#ef4444', hazard: '#f59e0b', basket: '#f8fafc' };
+let selected = null;   // mark id
+
+function pathOf(g, pts, closed) {
+  let started = false;
+  const dense = view === '3d';
+  for (let i = 0; i < pts.length; i++) {
+    const a = pts[i], pa = projG(a[0], a[1]);
+    if (i && dense) {                                     // follow the terrain between vertices
+      const b = pts[i - 1], n = Math.min(60, Math.ceil(Math.hypot(a[0] - b[0], a[1] - b[1]) / 4));
+      for (let s = 1; s < n; s++) { const p = projG(b[0] + (a[0] - b[0]) * s / n, b[1] + (a[1] - b[1]) * s / n); if (p) { if (started) g.lineTo(p[0], p[1]); else { g.moveTo(p[0], p[1]); started = true; } } }
+    }
+    if (pa) { if (started) g.lineTo(pa[0], pa[1]); else { g.moveTo(pa[0], pa[1]); started = true; } }
+  }
+  if (closed) g.closePath();
+}
+function drawBadge(g, p, r, color, text, ring) {
+  g.beginPath(); g.arc(p[0], p[1], r, 0, 7); g.fillStyle = color; g.fill();
+  g.lineWidth = ring ? 4 : 2; g.strokeStyle = ring ? '#fde047' : '#fff'; g.stroke();
+  g.fillStyle = color === '#f8fafc' ? '#0f172a' : '#fff'; g.font = `700 ${text.length > 2 ? 10 : 13}px sans-serif`; g.textAlign = 'center'; g.textBaseline = 'middle';
+  g.fillText(text, p[0], p[1] + 0.5);
+}
+function label(g, text, x, y) {
+  g.font = '600 12px sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle'; g.lineWidth = 3.5; g.strokeStyle = 'rgba(0,0,0,.75)'; g.strokeText(text, x, y); g.fillStyle = '#fff'; g.fillText(text, x, y);
+}
+
+function drawOverlay() {
+  const g = octx; g.setTransform(dpr, 0, 0, dpr, 0, 0); g.clearRect(0, 0, cw, ch); hits.length = 0;
+  g.lineCap = 'round'; g.lineJoin = 'round';
+
+  // OB areas from OSM (red) + water outline on aerial photo
+  for (const f of P.feats) {
+    if (f.t !== 'a' || !(f.k === 'ob' || (f.k === 'water' && S.base === 'sat'))) continue;
+    g.beginPath(); for (const r of f.rings) pathOf(g, r, true);
+    if (f.k === 'ob') { g.fillStyle = 'rgba(239,68,68,.22)'; g.fill('evenodd'); g.setLineDash([8, 5]); g.strokeStyle = '#ef4444'; g.lineWidth = 2; }
+    else { g.setLineDash([]); g.strokeStyle = 'rgba(56,189,248,.9)'; g.lineWidth = 1.5; }
+    g.stroke(); g.setLineDash([]);
+  }
+
+  const h = holes[round.hole];
+  // layout: all holes' tees/baskets faint, current hole bright
+  holes.forEach((hh, i) => {
+    if (i === round.hole) return;
+    for (const [pt, shape] of [[hh.tee, 's'], [hh.basket, 'c']]) {
+      if (!pt) continue; const p = projG(pt.x, pt.y); if (!p) continue;
+      g.globalAlpha = 0.55; g.fillStyle = shape === 's' ? '#6ee7b7' : '#e2e8f0'; g.strokeStyle = '#000'; g.lineWidth = 1;
+      g.beginPath(); if (shape === 's') g.rect(p[0] - 4, p[1] - 4, 8, 8); else g.arc(p[0], p[1], 4.5, 0, 7); g.fill(); g.stroke(); g.globalAlpha = 1;
+      if (shape === 'c') label(g, hh.ref, p[0], p[1] - 11);
+    }
+  });
+  if (h.tee && h.basket) {
+    g.beginPath(); pathOf(g, [[h.tee.x, h.tee.y], [h.basket.x, h.basket.y]], false);
+    g.setLineDash([2, 6]); g.strokeStyle = 'rgba(255,255,255,.9)'; g.lineWidth = 2.5; g.stroke(); g.setLineDash([]);
+  }
+  if (h.tee) { const p = projG(h.tee.x, h.tee.y); if (p) { g.fillStyle = '#10b981'; g.strokeStyle = '#fff'; g.lineWidth = 2; g.beginPath(); g.rect(p[0] - 7, p[1] - 7, 14, 14); g.fill(); g.stroke(); } }
+  if (h.basket) {
+    const p = projG(h.basket.x, h.basket.y), top = projG(h.basket.x, h.basket.y, 1.4);
+    if (p) { if (top && view === '3d') { g.beginPath(); g.moveTo(p[0], p[1]); g.lineTo(top[0], top[1]); g.strokeStyle = '#111'; g.lineWidth = 3; g.stroke(); }
+      const q = (view === '3d' && top) ? top : p; drawBadge(g, q, 11, '#f8fafc', '●'); label(g, h.ref, q[0], q[1] - 20); }
+  }
+
+  // my marks
+  const ms = curMarks(), me = activePlayer();
+  const pos = ms.map(m => ({ m, g: projG(m.x, m.y), head: view === '3d' ? projG(m.x, m.y, 3) : projG(m.x, m.y) }));
+  // flight lines: throw-from -> next throw-from / basket, solid; to OB/hazard, dashed; OB -> placed lie, dotted
+  g.lineWidth = 3;
+  let prev = null, prevWasOb = false;
+  for (const m of ms) {
+    if (isThrowFrom(m) || m.type === 'basket') {
+      if (prevWasOb && prev) {
+        g.beginPath(); pathOf(g, [[prev.m.x, prev.m.y], [m.x, m.y]], false); g.setLineDash([2, 5]); g.strokeStyle = 'rgba(248,113,113,.75)'; g.stroke(); g.setLineDash([]);
+      } else if (prev && !(m.auto && prev.m.x === m.x && prev.m.y === m.y)) {
+        g.beginPath(); pathOf(g, [[prev.m.x, prev.m.y], [m.x, m.y]], false); g.setLineDash([]); g.strokeStyle = 'rgba(96,165,250,.95)'; g.stroke();
+      }
+      prev = { m }; prevWasOb = false;
+    } else if (isPenalty(m) && prev) {
+      g.beginPath(); pathOf(g, [[prev.m.x, prev.m.y], [m.x, m.y]], false); g.setLineDash([6, 5]); g.strokeStyle = m.type === 'ob' ? '#f87171' : '#fbbf24'; g.stroke(); g.setLineDash([]);
+      if (m.type === 'ob') { prev = { m }; prevWasOb = true; }
+    }
+  }
+  let throwNo = 0;
+  for (const it of pos) {
+    const m = it.m; if (isThrowFrom(m)) throwNo++;
+    const head = it.head || it.g; if (!head) continue;
+    if (view === '3d' && it.g) { g.beginPath(); g.moveTo(it.g[0], it.g[1]); g.lineTo(head[0], head[1]); g.strokeStyle = '#fff'; g.lineWidth = 1.5; g.stroke(); }
+    const txt = m.type === 'tee' ? 'T' : m.type === 'shot' ? String(throwNo) : m.type === 'ob' ? 'OB' : m.type === 'hazard' ? 'H' : '✓';
+    drawBadge(g, head, m.id === selected ? 17 : 13, COLORS[m.type], txt, m.id === selected);
+    hits.push({ id: m.id, x: head[0], y: head[1] });
+  }
+
+  // GPS dot
+  if (gps.fix && gps.fix.x != null) {
+    const f = gps.fix, p = projG(f.x, f.y), e = projG(f.x + f.acc, f.y);
+    if (p) {
+      if (e) { const r = Math.hypot(e[0] - p[0], e[1] - p[1]); g.beginPath(); g.arc(p[0], p[1], Math.max(r, 6), 0, 7); g.fillStyle = 'rgba(59,130,246,.15)'; g.fill(); g.strokeStyle = 'rgba(59,130,246,.5)'; g.lineWidth = 1; g.stroke(); }
+      g.beginPath(); g.arc(p[0], p[1], 7, 0, 7); g.fillStyle = '#2563eb'; g.fill(); g.lineWidth = 3; g.strokeStyle = '#fff'; g.stroke();
+    }
+  }
+
+  // crosshair at screen centre = camera target = where OB/Hazard (and optionally shots) are placed
+  const cx = cw / 2, cy = ch / 2;
+  g.strokeStyle = '#fff'; g.lineWidth = 3; g.shadowColor = 'rgba(0,0,0,.9)'; g.shadowBlur = 3;
+  g.beginPath(); g.moveTo(cx - 16, cy); g.lineTo(cx - 5, cy); g.moveTo(cx + 5, cy); g.lineTo(cx + 16, cy); g.moveTo(cx, cy - 16); g.lineTo(cx, cy - 5); g.moveTo(cx, cy + 5); g.lineTo(cx, cy + 16); g.stroke();
+  g.shadowBlur = 0; g.beginPath(); g.arc(cx, cy, 2, 0, 7); g.fillStyle = '#facc15'; g.fill();
+}
+
+function updateHud() {
+  const z = elevAt(cam.x, cam.y), lines = [`✛ elev ${S.units === 'ft' ? Math.round(z * 3.28084) + ' ft' : z.toFixed(1) + ' m'}`];
+  const ms = curMarks(), lastMark = ms[ms.length - 1], last = [...ms].reverse().find(isThrowFrom), h = holes[round.hole];
+  if (lastMark && lastMark.type === 'ob') lines.push(`${fmtDist(Math.hypot(cam.x - lastMark.x, cam.y - lastMark.y))} from OB ${fmtElev(z - lastMark.ele)}`);
+  else if (last) lines.push(`${fmtDist(Math.hypot(cam.x - last.x, cam.y - last.y))} from lie ${fmtElev(z - last.ele)}`);
+  if (h.basket) lines.push(`${fmtDist(Math.hypot(cam.x - h.basket.x, cam.y - h.basket.y))} to basket`);
+  $('#hud').textContent = lines.join('\n');
+}
+
+function frame() {
+  requestAnimationFrame(frame);
+  if (!dirty || !P) return; dirty = false;
+  updateCamera();
+  if (view === '3d' && gl) drawGL(); else if (view === 'flat') drawFlat();
+  drawOverlay(); updateHud();
+  $('#compass span').style.transform = `rotate(${-cam.yaw[view]}deg)`;
+}
+
+function resize() {
+  dpr = Math.min(2, window.devicePixelRatio || 1);
+  const r = stage.getBoundingClientRect(); cw = Math.max(1, r.width); ch = Math.max(1, r.height);
+  for (const c of [flatCv, glCv, ov]) { c.width = Math.round(cw * dpr); c.height = Math.round(ch * dpr); }
+  dirty = true;
+}
+new ResizeObserver(resize).observe(stage);
+
+/* ============================================================ view / base switching */
+function setView(v) {
+  if (v === '3d' && !gl) { toast('3D view needs WebGL2'); return; }
+  view = v; S.view = v; saveSettings();
+  stage.classList.toggle('is3d', v === '3d');
+  $('#viewSeg').querySelectorAll('button').forEach(b => b.classList.toggle('on', b.dataset.v === v));
+  dirty = true;
+}
+function setBase(b) {
+  if (b === 'sat' && (!P || !P.img)) { toast('No aerial imagery in this pack — showing the map'); b = 'map'; }
+  S.base = b; saveSettings();
+  $('#baseSeg').querySelectorAll('button').forEach(x => x.classList.toggle('on', x.dataset.b === b));
+  dirty = true;
+}
+$('#viewSeg').addEventListener('click', e => { const b = e.target.closest('button'); if (b && !b.disabled) setView(b.dataset.v); });
+$('#baseSeg').addEventListener('click', e => { const b = e.target.closest('button'); if (b) setBase(b.dataset.b); });
+
+function bearingDeg(a, b) { return (Math.atan2(b.x - a.x, b.y - a.y) * 180 / Math.PI + 360) % 360; }
+function fitHole(animate) {
+  const h = holes[round.hole]; cam.follow = false;
+  if (h.tee && h.basket) {
+    cam.x = (h.tee.x + h.basket.x) / 2; cam.y = (h.tee.y + h.basket.y) / 2;
+    const d = dist2(h.tee, h.basket); cam.span = Math.max(90, d * 1.55); cam.yaw['3d'] = bearingDeg(h.tee, h.basket); cam.yaw.flat = 0; cam.tilt = 58;
+  } else if (h.tee || h.basket) { const p = h.tee || h.basket; cam.x = p.x; cam.y = p.y; cam.span = 160; }
+  dirty = true; updateGpsChip();
+}
+function fitPack() { cam.x = P.W / 2; cam.y = P.H / 2; cam.span = Math.max(P.W, P.H) * 1.05; cam.yaw.flat = 0; cam.yaw['3d'] = 0; cam.tilt = 50; dirty = true; }
+
+/* ============================================================ gestures */
+const ptrs = new Map(); let pinch = null;
+function panBy(dx, dy) {
+  const mpp = cam.span / ch, yaw = rad(cam.yaw[view]);
+  const fy = view === '3d' ? dy / Math.max(0.3, Math.cos(rad(cam.tilt))) : dy;
+  cam.x += (-dx * Math.cos(yaw) + fy * Math.sin(yaw)) * mpp; cam.y += (dx * Math.sin(yaw) + fy * Math.cos(yaw)) * mpp;
+  cam.follow = false; updateGpsChip(); dirty = true;
+}
+ov.addEventListener('pointerdown', e => {
+  ov.setPointerCapture(e.pointerId);
+  ptrs.set(e.pointerId, { x: e.clientX, y: e.clientY, x0: e.clientX, y0: e.clientY, t0: performance.now(), btn: e.button, moved: false });
+  if (ptrs.size === 2) { const [a, b] = [...ptrs.values()]; pinch = { d: Math.hypot(a.x - b.x, a.y - b.y), a: Math.atan2(b.y - a.y, b.x - a.x), my: (a.y + b.y) / 2 }; for (const p of ptrs.values()) p.moved = true; }
+});
+ov.addEventListener('pointermove', e => {
+  const p = ptrs.get(e.pointerId); if (!p) return;
+  const dx = e.clientX - p.x, dy = e.clientY - p.y; p.x = e.clientX; p.y = e.clientY;
+  if (Math.hypot(p.x - p.x0, p.y - p.y0) > 6) p.moved = true;
+  if (ptrs.size === 1) {
+    if (p.btn === 2 || e.shiftKey) { cam.yaw[view] -= dx * 0.4; if (view === '3d') cam.tilt = clamp(cam.tilt + dy * 0.3, 5, 80); dirty = true; }
+    else if (p.moved) panBy(dx, dy);
+  } else if (ptrs.size === 2 && pinch) {
+    const [a, b] = [...ptrs.values()], d = Math.hypot(a.x - b.x, a.y - b.y), ang = Math.atan2(b.y - a.y, b.x - a.x), my = (a.y + b.y) / 2;
+    cam.span *= pinch.d / Math.max(10, d);
+    let da = ang - pinch.a; if (da > Math.PI) da -= 2 * Math.PI; if (da < -Math.PI) da += 2 * Math.PI;
+    cam.yaw[view] -= da * 180 / Math.PI;
+    if (view === '3d') cam.tilt = clamp(cam.tilt - (my - pinch.my) * 0.25, 5, 80);
+    pinch = { d, a: ang, my }; dirty = true;
+  }
+});
+function endPtr(e, cancel) {
+  const p = ptrs.get(e.pointerId); if (!p) return;
+  ptrs.delete(e.pointerId); if (ptrs.size < 2) pinch = null;
+  if (!cancel && !p.moved && performance.now() - p.t0 < 450 && p.btn !== 2) tap(p.x - ov.getBoundingClientRect().left, p.y - ov.getBoundingClientRect().top);
+}
+ov.addEventListener('pointerup', e => endPtr(e, false));
+ov.addEventListener('pointercancel', e => endPtr(e, true));
+ov.addEventListener('contextmenu', e => e.preventDefault());
+ov.addEventListener('wheel', e => { e.preventDefault(); cam.span *= Math.exp(e.deltaY * 0.0015); dirty = true; }, { passive: false });
+
+function tap(x, y) {
+  let best = null, bd = 28;
+  for (const h of hits) { const d = Math.hypot(h.x - x, h.y - y); if (d < bd) { bd = d; best = h; } }
+  if (best) { selectMark(best.id); return; }
+  selectMark(null);
+  const g = pickGround(x, y); cam.x = g[0]; cam.y = g[1]; cam.follow = false; updateGpsChip(); dirty = true;
+}
+$('#zoomIn').onclick = () => { cam.span /= 1.5; dirty = true; };
+$('#zoomOut').onclick = () => { cam.span *= 1.5; dirty = true; };
+$('#compass').onclick = () => { cam.yaw[view] = 0; dirty = true; };
+$('#btnFollow').onclick = () => {
+  if (!startGps()) { toast('GPS unavailable here (needs HTTPS or localhost)'); return; }
+  if (gps.fix) { cam.follow = !cam.follow; if (cam.follow) { cam.x = gps.fix.x; cam.y = gps.fix.y; } }
+  else { cam.follow = true; toast('Waiting for GPS fix…'); }
+  updateGpsChip(); dirty = true;
+};
+
+/* ============================================================ toast / selection bar */
+let toastT = 0;
+function toast(msg, btnLabel, btnFn, ms = 3500) {
+  $('#toastMsg').textContent = msg; const b = $('#toastBtn');
+  b.hidden = !btnLabel; b.textContent = btnLabel || ''; b.onclick = () => { $('#toast').classList.remove('show'); btnFn && btnFn(); };
+  $('#toast').classList.add('show'); clearTimeout(toastT); toastT = setTimeout(() => $('#toast').classList.remove('show'), btnLabel ? 7000 : ms);
+}
+function selectMark(id) {
+  selected = id; const bar = $('#selbar');
+  const m = id && curMarks().find(x => x.id === id);
+  if (!m) { selected = null; bar.classList.remove('show'); renderDock(); dirty = true; return; }
+  const idx = curMarks().indexOf(m), nm = { tee: 'Tee', shot: m.drop ? 'Placed disc (next lie)' : 'Shot', ob: 'Out of bounds', hazard: 'Hazard', basket: 'Holed' }[m.type];
+  $('#selInfo').textContent = `${nm}${m.auto ? ' (auto re-throw spot)' : ''} · #${idx + 1} · ${m.src === 'gps' ? `GPS ±${fmtDist(m.acc || 0)}` : 'placed by ✛'} · elev ${S.units === 'ft' ? Math.round(m.ele * 3.28084) + ' ft' : m.ele.toFixed(1) + ' m'}`;
+  bar.classList.add('show'); renderDock(); dirty = true;
+}
+function setMarkPos(m, x, y, src, acc) { m.x = x; m.y = y; [m.lon, m.lat] = toLL(x, y); m.ele = elevAt(x, y); m.src = src; m.acc = acc; }
+$('#selHere').onclick = () => { const m = curMarks().find(x => x.id === selected); if (m) { setMarkPos(m, cam.x, cam.y, 'crosshair'); save(); selectMark(m.id); } };
+$('#selMe').onclick = () => { const m = curMarks().find(x => x.id === selected); if (!m) return; if (!fixFresh()) { toast('No good GPS fix yet'); return; } setMarkPos(m, gps.fix.x, gps.fix.y, 'gps', gps.fix.acc); save(); selectMark(m.id); };
+$('#selDel').onclick = () => { const a = curMarks(), i = a.findIndex(x => x.id === selected); if (i >= 0) { a.splice(i, 1); save(); } selectMark(null); };
+$('#selClose').onclick = () => selectMark(null);
+
+/* ============================================================ marking */
+function resolvePos(type) {
+  const wantGps = (type === 'tee' || type === 'shot' || type === 'basket') && S.placement === 'gps';
+  if (wantGps) {
+    if (fixFresh() && !fixOutside()) return { x: gps.fix.x, y: gps.fix.y, src: 'gps', acc: gps.fix.acc };
+    startGps(); toast(fixOutside() ? 'You are outside this course map — placed at ✛' : gps.watch == null ? 'GPS unavailable — placed at ✛' : 'No good GPS fix yet — placed at ✛');
+  }
+  return { x: cam.x, y: cam.y, src: 'crosshair', acc: 0 };
+}
+function mkMark(type, pos, extra = {}) {
+  const [lon, lat] = toLL(pos.x, pos.y);
+  return { id: uid(), type, x: pos.x, y: pos.y, lon, lat, ele: elevAt(pos.x, pos.y), acc: pos.acc || 0, src: pos.src, t: Date.now(), ...extra };
+}
+function addMark(type) {
+  const ms = curMarks(), pos = resolvePos(type), h = holes[round.hole];
+  if (ms.some(m => m.type === 'basket')) { toast('Hole already finished for this player — use Undo or the next hole'); return; }
+  const lastMark = ms[ms.length - 1], afterOb = !!(lastMark && lastMark.type === 'ob');
+  if (afterOb && type !== 'shot') { toast('First mark where you are placing the disc for your next shot'); return; }
+  const prevFrom = [...ms].reverse().find(isThrowFrom);
+  if ((type === 'ob' || type === 'hazard') && !prevFrom) { toast('Mark the tee first'); return; }
+  const m = mkMark(type, pos, afterOb ? { drop: true } : {}); ms.push(m);
+  if (type === 'tee' && !h.tee) { h.tee = { lon: m.lon, lat: m.lat, x: m.x, y: m.y }; }
+  if (type === 'basket') { if (!h.basket) h.basket = { lon: m.lon, lat: m.lat, x: m.x, y: m.y }; }
+  // after hazard you throw again from the previous lie; after OB the next mark explicitly places the disc for the next shot
+  if (type === 'hazard') ms.push(mkMark('shot', { x: prevFrom.x, y: prevFrom.y, src: prevFrom.src, acc: prevFrom.acc }, { auto: true }));
+  if (navigator.vibrate) navigator.vibrate(type === 'basket' ? [30, 40, 30] : 25);
+  save(); selectMark(type === 'hazard' ? m.id : null);
+  if (type === 'basket') afterHoled();
+  if (type === 'ob') toast('OB +1 penalty · now mark where you are placing the disc for your next shot');
+  else if (afterOb) toast('Disc placed · ready for next shot');
+  else if (type === 'hazard') toast('Hazard +1 penalty · next throw from previous lie (move it if you drop elsewhere)');
+  refreshUI();
+}
+function undo() {
+  const ms = curMarks(); if (!ms.length) return;
+  let m = ms.pop(); while (m.auto && ms.length) m = ms.pop();
+  selected = null; $('#selbar').classList.remove('show'); save(); refreshUI(); toast('Removed last mark');
+}
+function afterHoled() {
+  const pending = round.players.filter(p => !holeStats(round.hole, p.id).holed);
+  const me = activePlayer(), st = holeStats(round.hole, me.id), h = holes[round.hole], diff = st.strokes - h.par;
+  const res = st.strokes === 1 ? 'Ace!' : diff === 0 ? 'Par' : diff === -1 ? 'Birdie' : diff < -1 ? 'Eagle or better' : diff === 1 ? 'Bogey' : `+${diff}`;
+  if (pending.length) {
+    const order = round.players.map(p => p.id), i = order.indexOf(me.id);
+    const next = [...order.slice(i + 1), ...order.slice(0, i)].map(playerById).find(p => pending.includes(p));
+    round.active = next.id; toast(`${me.name}: ${st.strokes} (${res}) · ${next.name} is up`);
+  } else if (round.hole < holes.length - 1) toast(`${me.name}: ${st.strokes} (${res}) · hole complete`, 'Next hole ▶', () => gotoHole(round.hole + 1));
+  else toast(`${me.name}: ${st.strokes} (${res}) · round complete!`, 'Scorecard', () => openCard());
+}
+function gotoHole(i) {
+  round.hole = clamp(i, 0, holes.length - 1); round.active = round.players[0].id; selectMark(null); fitHole(); save(); refreshUI();
+}
+$('#actMark').onclick = () => addMark(curMarks().some(isThrowFrom) ? 'shot' : 'tee');
+$('#actOB').onclick = () => addMark('ob');
+$('#actHaz').onclick = () => addMark('hazard');
+$('#actHole').onclick = () => addMark('basket');
+$('#btnUndo').onclick = undo;
+$('#prevHole').onclick = () => gotoHole(round.hole - 1);
+$('#nextHole').onclick = () => gotoHole(round.hole + 1);
+$('#parBtn').onclick = () => { const h = holes[round.hole]; h.par = h.par >= 6 ? 2 : h.par + 1; save(); refreshUI(); };
+$('#btnPlace').onclick = () => {
+  S.placement = S.placement === 'gps' ? 'crosshair' : 'gps'; saveSettings();
+  if (S.placement === 'gps') { if (!startGps()) { S.placement = 'crosshair'; toast('GPS unavailable here (needs HTTPS or localhost)'); } }
+  refreshUI();
+};
+$('#btnList').onclick = () => { const l = $('#throwList'); l.hidden = !l.hidden; $('#btnList').textContent = l.hidden ? 'Throws ▾' : 'Throws ▴'; };
+
+/* ============================================================ UI refresh */
+function refreshUI() {
+  const h = holes[round.hole], me = activePlayer(), st = holeStats(round.hole, me.id);
+  $('#holeLabel b').textContent = `Hole ${h.ref}`; $('#parBtn').textContent = h.par;
+  $('#prevHole').disabled = round.hole === 0; $('#nextHole').disabled = round.hole === holes.length - 1;
+  $('#btnCourse').textContent = P.name + ' ▾';
+  $('#btnPlace').textContent = S.placement === 'gps' ? '◎ Shots at me' : '✛ Shots at crosshair';
+  const ms = curMarks(), has = ms.some(isThrowFrom), done = ms.some(m => m.type === 'basket');
+  const awaitingDrop = ms.length > 0 && ms[ms.length - 1].type === 'ob';
+  $('#actMark').firstChild.textContent = awaitingDrop ? 'Place disc' : has ? 'Shot' : 'Tee';
+  const where = S.placement === 'gps' ? 'at me' : 'at ✛';
+  $('#actMark').querySelector('small').textContent = where; $('#actHole').querySelector('small').textContent = where;
+  $('#actMark').disabled = done;
+  $('#actHole').disabled = done || awaitingDrop;
+  $('#actOB').disabled = !has || done || awaitingDrop; $('#actHaz').disabled = !has || done || awaitingDrop;
+  $('#btnUndo').disabled = !ms.length;
+  const last = [...ms].reverse().find(isThrowFrom);
+  let info;
+  if (done) info = `<b>${st.strokes}</b> <span>strokes${st.pen ? ` (${st.pen} penalty)` : ''} · holed ✓</span>`;
+  else if (!has) info = `<span>${me.name}: mark the tee to start</span>`;
+  else if (awaitingDrop) info = `<b>OB +1</b> <span>· mark where you place the disc for Shot ${st.throws + 1}</span>`;
+  else info = `<b>Throw ${st.throws}</b> <span>· ${st.pen ? st.pen + ' penalty · ' : ''}${h.basket && last ? fmtDist(dist2(last, h.basket)) + ' to basket' : 'basket not mapped yet'}</span>`;
+  $('#stripInfo').innerHTML = info;
+  renderPlayers(); renderDock(); updateGpsChip(); dirty = true; save();
+  $('#attrib').textContent = (P.header.attribution || []).join(' · ');
+}
+function renderPlayers() {
+  const box = $('#players'); box.replaceChildren();
+  for (const p of round.players) {
+    const total = roundTotals(p.id);
+    const c = el('button', { className: 'chip' + (p.id === round.active ? ' on' : '') }, p.name, el('i', {}, total.holes ? `${total.strokes} (${fmtDiff(total.diff)})` : ''));
+    c.onclick = () => { round.active = p.id; selectMark(null); save(); refreshUI(); };
+    box.append(c);
+  }
+  const add = el('button', { className: 'chip', title: 'Players' }, '＋ / ✎'); add.onclick = () => openSettings(); box.append(add);
+}
+function renderDock() {
+  const list = $('#throwList'); list.replaceChildren();
+  const ms = curMarks(); let n = 0, prev = null, prevWasOb = false;
+  ms.forEach(m => {
+    let txt, cls = '', right = '';
+    const isDrop = m.drop || (prevWasOb && isThrowFrom(m));
+    if (isThrowFrom(m)) {
+      n++;
+      txt = el('span', {}, el('b', {}, m.type === 'tee' ? 'Tee' : `Shot ${n}`), isDrop ? ' (placed after OB)' : m.auto ? ' (re-throw spot)' : '');
+      if (prev && !isDrop && !(m.auto && m.x === prev.x && m.y === prev.y)) right = `${fmtDist(dist2(prev, m))}  ${fmtElev(m.ele - prev.ele)}`;
+      prev = m; prevWasOb = false;
+    } else if (m.type === 'basket') {
+      txt = el('span', {}, el('b', {}, 'Holed ✓'));
+      if (prev) right = `${fmtDist(dist2(prev, m))}  ${fmtElev(m.ele - prev.ele)}`;
+      prev = m; prevWasOb = false;
+    } else {
+      cls = m.type === 'ob' ? 'ob' : 'hz';
+      txt = el('span', {}, el('b', {}, m.type === 'ob' ? 'OB +1' : 'Hazard +1'));
+      if (prev && m.type === 'ob') right = `${fmtDist(dist2(prev, m))}  ${fmtElev(m.ele - prev.ele)}`;
+      if (m.type === 'ob') prevWasOb = true;
+    }
+    const li = el('li', { className: cls + (m.id === selected ? ' sel' : '') }, txt, el('span', {}, right));
+    li.onclick = () => { selectMark(m.id); cam.x = m.x; cam.y = m.y; cam.follow = false; dirty = true; };
+    list.append(li);
+  });
+  if (!ms.length) list.append(el('li', {}, 'No marks yet for this hole'));
+}
+const fmtDiff = d => d === 0 ? 'E' : d > 0 ? '+' + d : String(d);
+function roundTotals(pid) {
+  let strokes = 0, par = 0, hc = 0;
+  holes.forEach((h, i) => { const st = holeStats(i, pid); if (st.holed) { strokes += st.strokes; par += h.par; hc++; } });
+  return { strokes, par, holes: hc, diff: strokes - par };
+}
+
+/* ============================================================ dialogs */
+document.querySelectorAll('dialog [data-close]').forEach(b => b.onclick = () => b.closest('dialog').close());
+function openCard() {
+  const tbl = el('table'), head = el('tr', {}, el('th', {}, 'Hole'), el('th', {}, 'Par'), ...round.players.map(p => el('th', {}, p.name)));
+  tbl.append(el('thead', {}, head));
+  const body = el('tbody');
+  holes.forEach((h, i) => {
+    const tr = el('tr', { className: i === round.hole ? 'cur' : '' }, el('td', {}, h.ref), el('td', {}, String(h.par)),
+      ...round.players.map(p => { const st = holeStats(i, p.id); const d = st.strokes - h.par;
+        return el('td', { className: st.holed ? (d < 0 ? 'under' : d > 0 ? 'over' : '') : '' }, st.holed ? String(st.strokes) : st.started ? '…' : '·'); }));
+    tr.onclick = () => { $('#dlgCard').close(); gotoHole(i); }; body.append(tr);
+  });
+  tbl.append(body);
+  const tot = el('tr', {}, el('td', {}, 'Total'), el('td', {}, String(roundTotals(round.players[0].id).par)),
+    ...round.players.map(p => { const t = roundTotals(p.id); return el('td', { className: t.diff < 0 ? 'under' : t.diff > 0 ? 'over' : '' }, `${t.strokes} (${fmtDiff(t.diff)})`); }));
+  tbl.append(el('tfoot', {}, tot));
+  $('#cardBody').replaceChildren(tbl); $('#dlgCard').showModal();
+}
+$('#btnCard').onclick = openCard;
+$('#btnExport').onclick = () => {
+  const out = { app: 'dg-score', version: 1, exported: new Date().toISOString(), course: { id: P.id, name: P.name, bbox: P.header.bbox }, units: S.units,
+    holes: holes.map(h => ({ ref: h.ref, par: h.par, tee: h.tee && [h.tee.lon, h.tee.lat], basket: h.basket && [h.basket.lon, h.basket.lat] })),
+    players: round.players.map(p => ({ id: p.id, name: p.name, totals: roundTotals(p.id),
+      holes: holes.map((h, i) => ({ hole: h.ref, ...holeStats(i, p.id), marks: (round.marks[key(i, p.id)] || []).map(m => ({ type: m.type, lon: +m.lon.toFixed(7), lat: +m.lat.toFixed(7), ele_m: +m.ele.toFixed(2), acc_m: +(m.acc || 0).toFixed(1), src: m.src, drop: !!m.drop, auto: !!m.auto, t: new Date(m.t).toISOString() })) })) })) };
+  const a = el('a', { href: URL.createObjectURL(new Blob([JSON.stringify(out, null, 2)], { type: 'application/json' })), download: `dg-round-${slug(P.name)}-${new Date().toISOString().slice(0, 10)}.json` });
+  document.body.append(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+};
+$('#btnNewRound').onclick = () => {
+  if (!confirm('Start a new round? Marks for the current round will be cleared (export first if you want to keep them).')) return;
+  round = newRound(); selectMark(null); $('#dlgCard').close(); gotoHole(0);
+};
+
+function openSettings() {
+  $('#setUnits').value = S.units; $('#setExag').value = S.exag; $('#exagVal').textContent = S.exag + '×'; $('#setTrees').checked = S.trees; $('#setHoles').value = holes.length;
+  renderPlayerEdit();
+  $('#aboutPack').textContent = `${P.name}: ${Math.round(P.W)} × ${Math.round(P.H)} m, terrain ${P.dw}×${P.dh}, ${P.img ? 'aerial imagery, ' : 'no imagery, '}${P.feats.length} map features. ` +
+    ((P.header.sources || []).join('; ') || '');
+  $('#dlgSettings').showModal();
+}
+function renderPlayerEdit() {
+  const box = $('#playerEdit'); box.replaceChildren();
+  for (const p of round.players) {
+    const inp = el('input', { type: 'text', value: p.name, maxLength: 20 });
+    inp.onchange = () => { p.name = inp.value.trim() || p.name; save(); refreshUI(); };
+    const del = el('button', { className: 'b dng', textContent: '✕', disabled: round.players.length < 2 });
+    del.onclick = () => { if (!confirm(`Remove ${p.name} and their marks?`)) return; round.players = round.players.filter(x => x !== p); for (const k of Object.keys(round.marks)) if (k.endsWith('|' + p.id)) delete round.marks[k]; if (round.active === p.id) round.active = round.players[0].id; save(); refreshUI(); renderPlayerEdit(); };
+    box.append(el('div', { className: 'row' }, inp, del));
+  }
+}
+$('#addPlayer').onclick = () => { const v = $('#newPlayer').value.trim(); if (!v) return; const p = { id: uid(), name: v }; round.players.push(p); $('#newPlayer').value = ''; save(); refreshUI(); renderPlayerEdit(); };
+$('#btnSettings').onclick = openSettings;
+$('#setUnits').onchange = e => { S.units = e.target.value; saveSettings(); refreshUI(); };
+$('#setExag').oninput = e => { S.exag = +e.target.value; $('#exagVal').textContent = S.exag + '×'; saveSettings(); dirty = true; };
+$('#setTrees').onchange = e => { S.trees = e.target.checked; saveSettings(); dirty = true; };
+$('#setHoles').onchange = e => {
+  const n = clamp(parseInt(e.target.value, 10) || holes.length, 1, 36);
+  while (holes.length < n) holes.push({ ref: String(holes.length + 1), par: 3, tee: null, basket: null });
+  holes.length = n; round.hole = Math.min(round.hole, n - 1); save(); refreshUI();
+};
+$('#btnClearLayout').onclick = () => {
+  if (!confirm('Forget learned tee/basket positions and pars for this course?')) return;
+  const st = ls.get('dg.v1.course.' + P.id, {}); delete st.layout; ls.set('dg.v1.course.' + P.id, st);
+  const keep = round; loadCourseState(); round = keep; save(); refreshUI(); toast('Layout reset');
+};
+
+/* ---------- course/pack dialog */
+async function renderPackList() {
+  const ul = $('#packList'); ul.replaceChildren();
+  for (const p of packIndex()) {
+    const open = el('button', { className: 'b pri', textContent: P && P.id === p.id ? 'Open ✓' : 'Open' });
+    open.onclick = async () => { const rec = await idb('readonly', s => s.get(p.id)); if (rec) { await openBuffer(rec.buffer, false); $('#dlgCourse').close(); } else toast('Pack data missing'); };
+    const del = el('button', { className: 'b dng', textContent: '✕' });
+    del.onclick = async () => { if (confirm(`Delete "${p.name}" and its round data from this device?`)) { await deletePack(p.id); renderPackList(); } };
+    ul.append(el('li', {}, el('span', {}, `${p.name} · ${(p.size / 1048576).toFixed(1)} MB`), open, del));
+  }
+  if (!ul.children.length) ul.append(el('li', {}, el('span', {}, 'Nothing downloaded yet')));
+}
+$('#btnCourse').onclick = () => { renderPackList(); $('#dlgCourse').showModal(); };
+$('#packFile').onchange = async e => { const f = e.target.files[0]; if (!f) return; try { await openBuffer(await f.arrayBuffer(), true); $('#dlgCourse').close(); } catch (err) { toast('Could not open pack: ' + err.message); } e.target.value = ''; };
+$('#packGo').onclick = async () => {
+  const url = $('#packUrl').value.trim(); if (!url) return;
+  try { toast('Downloading…', null, null, 60000); const r = await fetch(url); if (!r.ok) throw new Error('HTTP ' + r.status); await openBuffer(await r.arrayBuffer(), true); $('#dlgCourse').close(); toast('Saved for offline use'); }
+  catch (err) { toast('Download failed: ' + err.message); }
+};
+$('#packDemo').onclick = () => { openPack(makeDemoPack()); $('#dlgCourse').close(); };
+
+async function openBuffer(buf, persist) {
+  toast('Opening course…', null, null, 60000);
+  const pack = await parsePack(buf);
+  if (persist) { try { await storePack(pack.id, pack.name, buf); } catch (e) { console.warn(e); toast('Opened, but could not store offline: ' + e.message); } }
+  openPack(pack);
+}
+function openPack(pack) {
+  P = pack; texCache = {}; treeMesh = null; selected = null;
+  if (gps.fix) [gps.fix.x, gps.fix.y] = toLocal(gps.fix.lon, gps.fix.lat);   // GPS may have fixed before the pack loaded $('#selbar').classList.remove('show');
+  renderMapBase(); loadCourseState(); buildMesh();
+  setBase(P.img ? S.base : 'map');
+  if (!(holes[round.hole].tee || holes[round.hole].basket)) fitPack(); else fitHole();
+  const bb = $('#baseSeg [data-b="sat"]'); bb.disabled = !P.img;
+  ls.set('dg.v1.last', P.id); resize(); refreshUI(); updateGpsChip();
+  $('#toast').classList.remove('show'); dirty = true;
+}
+
+/* ============================================================ boot */
+async function boot() {
+  initGL();
+  setView(S.view === '3d' && gl ? '3d' : 'flat');
+  resize();
+  let opened = false;
+  const url = q.get('pack');
+  try {
+    if (url) { const r = await fetch(url); if (!r.ok) throw new Error('HTTP ' + r.status); await openBuffer(await r.arrayBuffer(), true); opened = true; }
+  } catch (e) { toast('Could not load ' + url + ': ' + e.message); }
+  if (!opened && !q.get('demo')) {
+    const last = ls.get('dg.v1.last', null);
+    try { const rec = last && await idb('readonly', s => s.get(last)); if (rec) { await openBuffer(rec.buffer, false); opened = true; } } catch (e) { console.warn(e); }
+  }
+  if (!opened) { openPack(makeDemoPack()); if (!q.get('demo')) toast('Showing a synthetic demo course — tap the course name (top left) to load a real pack'); }
+  if (q.get('hole')) gotoHole(parseInt(q.get('hole'), 10) - 1);
+  if (navigator.storage && navigator.storage.persist) navigator.storage.persist().catch(() => {});
+  if ('serviceWorker' in navigator && /^https?:$/.test(location.protocol)) navigator.serviceWorker.register('dg-score-sw.js').catch(e => console.warn('SW:', e));
+  requestAnimationFrame(frame);
+}
+window.__dg = { get P() { return P; }, cam, S, get round() { return round; }, get holes() { return holes; }, addMark, setView, setBase, proj, pickGround, gotoHole, gps, get view() { return view; } };
+boot();
+})();
+</script>
+</body>
+</html>

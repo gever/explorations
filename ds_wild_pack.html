@@ -123,6 +123,10 @@ const TCOST = [Infinity, 1, 2, 2, 1];     // movement cost to ENTER a tile
 const MIN_SIZE = 7;                       // max zoom-out  (~100 x 60 cells visible)
 const MAX_SIZE = 52;                      // max zoom-in
 
+/* hex neighbour offsets (odd-r offset coordinates) */
+const NB_EVEN = [-1,-1,  0,-1, -1,0,  1,0, -1,1,  0,1];
+const NB_ODD  = [ 1,-1,  0,-1, -1,0,  1,0,  0,1,  1,1];
+
 /* =========================================================================
    STATE
    ========================================================================= */
@@ -190,7 +194,7 @@ function fbm(x, y, seed, oct) {
   return v / tot;
 }
 
-/* find the value below which `frac` of the samples fall, using a histogram */
+/* value below which `frac` of the samples fall, using a histogram */
 function percentileOf(arr, frac) {
   const BINS = 512;
   const hist = new Int32Array(BINS);
@@ -204,61 +208,249 @@ function percentileOf(arr, frac) {
   return mx;
 }
 
-/* same, but only counting cells whose elevation is inside (lo, hi) */
-function percentileOverLand(moist, elev, lo, hi, frac) {
-  const BINS = 512;
-  const hist = new Int32Array(BINS);
-  let mn = Infinity, mx = -Infinity, count = 0;
-  for (let i = 0; i < moist.length; i++) {
-    const e = elev[i]; if (e <= lo || e >= hi) continue;
-    const v = moist[i]; if (v < mn) mn = v; if (v > mx) mx = v; count++;
+/* -------------------------------------------------------------------------
+   Terrain patches:
+     · water      -> large, low-frequency noise bodies
+     · everything -> jittered point grid + nearest point (Voronoi) so every
+                     patch is a compact cluster of roughly 3–25 hexes.
+   A greedy type assignment (with a penalty for matching neighbours) keeps
+   same-type patches from fusing into huge blobs, and a cleanup pass merges
+   the 1–2 cell specks and splits anything bigger than 25 cells.
+   ------------------------------------------------------------------------- */
+function cleanupTerrain(out) {
+  const total = N * N;
+  const visited = new Uint8Array(total);
+  const comp = [];
+  const stack = [];
+
+  for (let pass = 0; pass < 4; pass++) {
+    visited.fill(0);
+    let changed = false;
+
+    for (let start = 0; start < total; start++) {
+      if (visited[start] || out[start] === WATER) continue;
+      const type = out[start];
+
+      comp.length = 0;
+      stack.length = 0;
+      stack.push(start);
+      visited[start] = 1;
+
+      while (stack.length) {
+        const j = stack.pop();
+        comp.push(j);
+        const r = (j / N) | 0;
+        const c = j - r * N;
+        const off = (r & 1) ? NB_ODD : NB_EVEN;
+        for (let k = 0; k < 12; k += 2) {
+          const nc = c + off[k], nr = r + off[k + 1];
+          if (nc < 0 || nr < 0 || nc >= N || nr >= N) continue;
+          const ni = nr * N + nc;
+          if (visited[ni] || out[ni] !== type) continue;
+          visited[ni] = 1;
+          stack.push(ni);
+        }
+      }
+
+      if (comp.length < 3) {
+        /* speck -> repaint as the most common neighbouring terrain */
+        const cnt = [0, 0, 0, 0, 0];
+        for (let ci = 0; ci < comp.length; ci++) {
+          const j = comp[ci];
+          const r = (j / N) | 0;
+          const c = j - r * N;
+          const off = (r & 1) ? NB_ODD : NB_EVEN;
+          for (let k = 0; k < 12; k += 2) {
+            const nc = c + off[k], nr = r + off[k + 1];
+            if (nc < 0 || nr < 0 || nc >= N || nr >= N) continue;
+            const t = out[nr * N + nc];
+            if (t !== type) cnt[t]++;
+          }
+        }
+        let bestT = -1, bestC = 0;
+        for (let t = 0; t < 5; t++) if (cnt[t] > bestC) { bestC = cnt[t]; bestT = t; }
+        if (bestT < 0) bestT = WATER;
+        for (let ci = 0; ci < comp.length; ci++) out[comp[ci]] = bestT;
+        changed = true;
+
+      } else if (comp.length > 25) {
+        /* oversized (merged) patch -> cut it in half, one half becomes
+           a different terrain, so it breaks into separate small patches */
+        splitComponent(out, comp, type);
+        changed = true;
+      }
+    }
+    if (!changed) break;
   }
-  if (count === 0) return 0.5;
-  const scale = (BINS - 1) / ((mx - mn) || 1);
-  for (let i = 0; i < moist.length; i++) {
-    const e = elev[i]; if (e <= lo || e >= hi) continue;
-    hist[Math.min(BINS - 1, ((moist[i] - mn) * scale) | 0)]++;
+}
+
+function splitComponent(out, comp, type) {
+  const n = comp.length;
+  let cx = 0, cy = 0;
+  for (let i = 0; i < n; i++) {
+    const j = comp[i];
+    const r = (j / N) | 0;
+    const c = j - r * N;
+    cx += c; cy += r;
   }
-  const target = count * frac;
-  let acc = 0;
-  for (let b = 0; b < BINS; b++) { acc += hist[b]; if (acc >= target) return mn + (b + 1) / scale; }
-  return mx;
+  cx /= n; cy /= n;
+
+  const ang = Math.random() * Math.PI * 2;
+  const ca = Math.cos(ang), sa = Math.sin(ang);
+
+  /* pick a different terrain for the cut-off half, weighted like the map */
+  const landTypes = [FIELD, FOREST, ROCK, SAND];
+  const weights   = [40, 20, 15, 10];
+  let nt;
+  do {
+    let rr = Math.random() * 85, k = 0;
+    while (k < 3 && rr > weights[k]) { rr -= weights[k]; k++; }
+    nt = landTypes[k];
+  } while (nt === type);
+
+  const proj = new Float32Array(n);
+  const idx  = new Int32Array(n);
+  for (let i = 0; i < n; i++) {
+    const j = comp[i];
+    const r = (j / N) | 0;
+    const c = j - r * N;
+    /* a little noise keeps the cut from being a perfect straight line */
+    proj[i] = (c - cx) * ca + (r - cy) * sa + (hash2(c, r, 909) - 0.5) * 4;
+    idx[i] = i;
+  }
+
+  const order = Array.from(idx).sort((a, b) => proj[a] - proj[b]);
+  const half = n >> 1;
+  for (let i = 0; i < half; i++) out[comp[order[i]]] = nt;
 }
 
 function generateWorld(seed) {
   const total = N * N;
-  const elev  = new Float32Array(total);
-  const moist = new Float32Array(total);
+  const out = new Uint8Array(total);
+
+  /* ---------- 1. water : low frequency -> large seas / lakes ---------- */
+  const wn = new Float32Array(total);
+  for (let r = 0; r < N; r++) {
+    const yr = r * 0.02;
+    const base = r * N;
+    for (let c = 0; c < N; c++) wn[base + c] = fbm(c * 0.02, yr, seed + 11, 3);
+  }
+  const waterT = percentileOf(wn, 0.15);
+
+  /* ---------- 2. jittered point grid in hex-world space ---------- */
+  const GW     = 5.0;                      // ~10 hexes per Voronoi cell
+  const maxWX  = SQ3 * (N - 0.5);
+  const maxWY  = 1.5 * (N - 1);
+  const PX     = Math.ceil(maxWX / GW) + 2;
+  const PY     = Math.ceil(maxWY / GW) + 2;
+  const P      = PX * PY;
+
+  const pxs = new Float32Array(P);
+  const pys = new Float32Array(P);
+  const ptype = new Uint8Array(P);
+  const assigned = new Uint8Array(P);
+
+  const landTypes = [FIELD, FOREST, ROCK, SAND];
+  const baseProb  = [40 / 85, 20 / 85, 15 / 85, 10 / 85];
+  const PENALTY   = 0.12;                  // discourages same-type neighbours
+
+  for (let gy = 0; gy < PY; gy++) {
+    for (let gx = 0; gx < PX; gx++) {
+      const i = gy * PX + gx;
+      pxs[i] = (gx + 0.05 + 0.9 * hash2(gx, gy, seed + 101)) * GW;
+      pys[i] = (gy + 0.05 + 0.9 * hash2(gx, gy, seed + 202)) * GW;
+    }
+  }
+
+  /* random order for the greedy assignment */
+  const order = new Int32Array(P);
+  for (let i = 0; i < P; i++) order[i] = i;
+  for (let i = P - 1; i > 0; i--) {
+    const j = (Math.random() * (i + 1)) | 0;
+    const t = order[i]; order[i] = order[j]; order[j] = t;
+  }
+
+  const w   = new Float64Array(4);
+  const has = new Uint8Array(4);
+
+  function pickType(gx, gy, ignoreSelf) {
+    has[0] = has[1] = has[2] = has[3] = 0;
+    for (let dy = -1; dy <= 1; dy++) {
+      const ny = gy + dy; if (ny < 0 || ny >= PY) continue;
+      for (let dx = -1; dx <= 1; dx++) {
+        if (!dx && !dy) continue;
+        const nx = gx + dx; if (nx < 0 || nx >= PX) continue;
+        const j = ny * PX + nx;
+        if (ignoreSelf || assigned[j]) has[ptype[j]] = 1;
+      }
+    }
+    let sum = 0;
+    for (let t = 0; t < 4; t++) {
+      w[t] = baseProb[t] * (has[t] ? PENALTY : 1);
+      sum += w[t];
+    }
+    let r = Math.random() * sum, k = 0;
+    while (k < 3 && r > w[k]) { r -= w[k]; k++; }
+    return k;
+  }
+
+  for (let oi = 0; oi < P; oi++) {
+    const i = order[oi];
+    const gx = i % PX, gy = (i / PX) | 0;
+    ptype[i] = pickType(gx, gy, false);
+    assigned[i] = 1;
+  }
+
+  /* refinement passes: soften remaining same-type clusters */
+  for (let pass = 0; pass < 2; pass++) {
+    let changed = 0;
+    for (let oi = 0; oi < P; oi++) {
+      const i = order[oi];
+      const gx = i % PX, gy = (i / PX) | 0;
+      const k = pickType(gx, gy, true);
+      if (k !== ptype[i]) { ptype[i] = k; changed++; }
+    }
+    if (changed < P * 0.01) break;
+  }
+
+  /* ---------- 3. nearest point -> terrain type per hex ---------- */
+  const wxEven = new Float32Array(N);
+  const wxOdd  = new Float32Array(N);
+  for (let c = 0; c < N; c++) { wxEven[c] = SQ3 * c; wxOdd[c] = SQ3 * (c + 0.5); }
 
   for (let r = 0; r < N; r++) {
-    const yr = r * 0.018;
+    const wy = 1.5 * r;
+    let gy = (wy / GW) | 0;
+    if (gy < 0) gy = 0; else if (gy >= PY) gy = PY - 1;
+    const wxArr = (r & 1) ? wxOdd : wxEven;
     const base = r * N;
+
     for (let c = 0; c < N; c++) {
-      elev[base + c]  = fbm(c * 0.018, yr, seed, 3);
-      moist[base + c] = fbm(c * 0.035, r * 0.035, seed + 7777, 2);
+      const i = base + c;
+      if (wn[i] <= waterT) { out[i] = WATER; continue; }
+
+      const wx = wxArr[c];
+      let gx = (wx / GW) | 0;
+      if (gx < 0) gx = 0; else if (gx >= PX) gx = PX - 1;
+
+      let best = Infinity, bk = 0;
+      for (let dy = -1; dy <= 1; dy++) {
+        const ny = gy + dy; if (ny < 0 || ny >= PY) continue;
+        const rowOff = ny * PX;
+        for (let dx = -1; dx <= 1; dx++) {
+          const nx = gx + dx; if (nx < 0 || nx >= PX) continue;
+          const pi = rowOff + nx;
+          const ddx = pxs[pi] - wx, ddy = pys[pi] - wy;
+          const d = ddx * ddx + ddy * ddy;
+          if (d < best) { best = d; bk = pi; }
+        }
+      }
+      out[i] = landTypes[ptype[bk]];
     }
   }
 
-  // 15% water (lowest elevation), 15% rock (highest elevation) -> 70% land
-  const waterT = percentileOf(elev, 0.15);
-  const rockT  = percentileOf(elev, 0.85);
-
-  // among land: 10% sand, 40% field, 20% forest  ->  14.3% / 57.1% / 28.6%
-  const sandT   = percentileOverLand(moist, elev, waterT, rockT, 0.143);
-  const forestT = percentileOverLand(moist, elev, waterT, rockT, 0.714);
-
-  const out = new Uint8Array(total);
-  for (let i = 0; i < total; i++) {
-    const e = elev[i];
-    if (e <= waterT)      out[i] = WATER;
-    else if (e >= rockT)  out[i] = ROCK;
-    else {
-      const m = moist[i];
-      if (m <= sandT)        out[i] = SAND;
-      else if (m <= forestT) out[i] = FIELD;
-      else                   out[i] = FOREST;
-    }
-  }
+  /* ---------- 4. enforce patch sizes (3..25 hexes) ---------- */
+  cleanupTerrain(out);
   return out;
 }
 

@@ -1,0 +1,1008 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<title>Hex Squad — Prototype</title>
+<style>
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0; height: 100%; overflow: hidden; background: #07090b;
+    font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    -webkit-user-select: none; user-select: none;
+  }
+  canvas { display: block; width: 100vw; height: 100vh; touch-action: none; cursor: grab; }
+  canvas:active { cursor: grabbing; }
+
+  #hud {
+    position: fixed; top: 0; left: 0; right: 0; z-index: 10;
+    display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+    padding: 10px 14px; pointer-events: none;
+    background: linear-gradient(180deg, rgba(7,11,15,.94), rgba(7,11,15,.60) 65%, rgba(7,11,15,0));
+    color: #dbe6f0; font-size: 13px;
+  }
+  .stat {
+    background: rgba(18,26,34,.82); border: 1px solid #22303e;
+    padding: 5px 10px; border-radius: 7px; white-space: nowrap;
+  }
+  .stat b { color: #8fe3ff; font-variant-numeric: tabular-nums; }
+  .stat.enemy b { color: #ff8b7a; }
+  .spacer { flex: 1 1 20px; }
+
+  #btnMove {
+    pointer-events: auto; cursor: pointer;
+    background: linear-gradient(180deg,#38a86a,#237a4a);
+    border: 1px solid #52d18c; color: #eafff3;
+    font: inherit; font-weight: 700; letter-spacing: .09em;
+    padding: 9px 20px; border-radius: 8px;
+    box-shadow: 0 3px 0 #14512f, 0 6px 14px rgba(0,0,0,.5);
+    transition: transform .07s, filter .12s;
+  }
+  #btnMove:hover { filter: brightness(1.12); }
+  #btnMove:active { transform: translateY(2px); box-shadow: 0 1px 0 #14512f; }
+  #btnMove:disabled { filter: grayscale(.7) brightness(.7); cursor: default; transform: none; }
+
+  #btnNew {
+    pointer-events: auto; cursor: pointer;
+    background: rgba(30,42,54,.9); border: 1px solid #34485c; color: #cfe0ee;
+    font: inherit; padding: 9px 12px; border-radius: 8px;
+  }
+  #btnNew:hover { background: rgba(44,60,76,.95); }
+
+  #hint {
+    position: fixed; left: 50%; bottom: 12px; transform: translateX(-50%);
+    z-index: 10; max-width: min(92vw, 720px); text-align: center;
+    color: #8ea3b6; font-size: 12px; line-height: 1.5;
+    background: rgba(10,15,20,.82); border: 1px solid #1e2b38;
+    border-radius: 9px; padding: 8px 14px; pointer-events: none;
+  }
+  #hint kbd {
+    background: #1b2733; border: 1px solid #2f4356; border-radius: 4px;
+    padding: 1px 5px; font-family: inherit; font-size: 11px; color: #cfe0ee;
+  }
+
+  #toast {
+    position: fixed; left: 50%; bottom: 76px; transform: translateX(-50%);
+    z-index: 11; max-width: min(92vw, 640px); text-align: center;
+    background: rgba(14,22,30,.94); border: 1px solid #2c4256;
+    color: #e6f1fa; font-size: 13px; line-height: 1.5;
+    padding: 10px 18px; border-radius: 10px;
+    opacity: 0; transition: opacity .3s; pointer-events: none;
+    box-shadow: 0 8px 26px rgba(0,0,0,.6);
+  }
+
+  #loading {
+    position: fixed; inset: 0; z-index: 50; display: flex;
+    align-items: center; justify-content: center; flex-direction: column; gap: 14px;
+    background: #07090b; color: #9fb4c6; font-size: 14px; letter-spacing: .06em;
+  }
+  #loading .spin {
+    width: 34px; height: 34px; border-radius: 50%;
+    border: 3px solid #1c2a36; border-top-color: #4fd18b;
+    animation: spin 0.9s linear infinite;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+</style>
+</head>
+<body>
+
+<canvas id="c"></canvas>
+
+<div id="hud">
+  <span class="stat">🐺 Wolves <b id="s-wolf">2</b></span>
+  <span class="stat">🐻 Bears <b id="s-bear">6</b></span>
+  <span class="stat">Squad <b id="s-squad">8</b></span>
+  <span class="stat enemy">👹 Trogs <b id="s-enemy">0</b></span>
+  <span class="stat">Turn <b id="s-turn">1</b></span>
+  <span class="spacer"></span>
+  <button id="btnNew">New Map</button>
+  <button id="btnMove">MOVE ▶</button>
+</div>
+
+<div id="hint">
+  Tap a <b>wolf (3)</b> or <b>bear (2)</b> to see its movement range.
+  Tap a highlighted hex to plan a move — then press <kbd>MOVE</kbd>.
+  Water is impassable · forest &amp; rocks cost 2 · scroll / pinch to zoom.
+</div>
+
+<div id="toast"></div>
+
+<div id="loading"><div class="spin"></div><div id="loadingText">Generating world…</div></div>
+
+<script>
+"use strict";
+
+/* =========================================================================
+   CONSTANTS
+   ========================================================================= */
+const N        = 1024;                    // grid is N x N hexes
+const SQ3      = Math.sqrt(3);
+const WATER = 0, FIELD = 1, FOREST = 2, ROCK = 3, SAND = 4;
+const TCOL  = ['#2c6ca6', '#79b34c', '#2f6b3d', '#8b8d90', '#dcc98d'];
+const TCOST = [Infinity, 1, 2, 2, 1];     // movement cost to ENTER a tile
+const MIN_SIZE = 7;                       // max zoom-out  (~100 x 60 cells visible)
+const MAX_SIZE = 52;                      // max zoom-in
+
+/* =========================================================================
+   STATE
+   ========================================================================= */
+let tiles    = null;          // Uint8Array(N*N)
+let squad    = [];            // {id,type,col,row,move,alive}
+let enemies  = [];            // {id,col,row,count}  (a "group" of trogs)
+let nextId   = 1;
+let selectedId = null;
+let reachable  = new Map();   // "col,row" -> {cost, from, attack}
+let plans      = [];          // ordered list of planned moves
+let turn       = 1;
+let gameOver   = false;
+let dirty      = true;
+
+const cam = { x: 0, y: 0, size: 26 };
+
+/* =========================================================================
+   CANVAS
+   ========================================================================= */
+const canvas = document.getElementById('c');
+const ctx    = canvas.getContext('2d');
+let W = 0, H = 0;
+
+function resize() {
+  const dpr = Math.min(window.devicePixelRatio || 1, 2);
+  W = canvas.clientWidth;
+  H = canvas.clientHeight;
+  canvas.width  = Math.round(W * dpr);
+  canvas.height = Math.round(H * dpr);
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  clampCam();
+  dirty = true;
+}
+window.addEventListener('resize', resize);
+
+/* =========================================================================
+   NOISE / WORLD GENERATION
+   ========================================================================= */
+function hash2(x, y, seed) {
+  let h = Math.imul(x | 0, 374761393) + Math.imul(y | 0, 668265263) + Math.imul(seed | 0, 1442695041);
+  h = Math.imul(h ^ (h >>> 13), 1274126177);
+  h ^= h >>> 16;
+  return (h >>> 0) * 2.3283064365386963e-10;
+}
+
+function vnoise(x, y, seed) {
+  const xi = Math.floor(x), yi = Math.floor(y);
+  const fx = x - xi, fy = y - yi;
+  const ux = fx * fx * (3 - 2 * fx);
+  const uy = fy * fy * (3 - 2 * fy);
+  const a = hash2(xi,     yi,     seed);
+  const b = hash2(xi + 1, yi,     seed);
+  const c = hash2(xi,     yi + 1, seed);
+  const d = hash2(xi + 1, yi + 1, seed);
+  return (a + (b - a) * ux) * (1 - uy) + (c + (d - c) * ux) * uy;
+}
+
+function fbm(x, y, seed, oct) {
+  let v = 0, amp = 0.5, f = 1, tot = 0;
+  for (let i = 0; i < oct; i++) {
+    v += amp * vnoise(x * f, y * f, seed + i * 131);
+    tot += amp;
+    amp *= 0.5; f *= 2;
+  }
+  return v / tot;
+}
+
+/* find the value below which `frac` of the samples fall, using a histogram */
+function percentileOf(arr, frac) {
+  const BINS = 512;
+  const hist = new Int32Array(BINS);
+  let mn = Infinity, mx = -Infinity;
+  for (let i = 0; i < arr.length; i++) { const v = arr[i]; if (v < mn) mn = v; if (v > mx) mx = v; }
+  const scale = (BINS - 1) / ((mx - mn) || 1);
+  for (let i = 0; i < arr.length; i++) hist[Math.min(BINS - 1, ((arr[i] - mn) * scale) | 0)]++;
+  const target = arr.length * frac;
+  let acc = 0;
+  for (let b = 0; b < BINS; b++) { acc += hist[b]; if (acc >= target) return mn + (b + 1) / scale; }
+  return mx;
+}
+
+/* same, but only counting cells whose elevation is inside (lo, hi) */
+function percentileOverLand(moist, elev, lo, hi, frac) {
+  const BINS = 512;
+  const hist = new Int32Array(BINS);
+  let mn = Infinity, mx = -Infinity, count = 0;
+  for (let i = 0; i < moist.length; i++) {
+    const e = elev[i]; if (e <= lo || e >= hi) continue;
+    const v = moist[i]; if (v < mn) mn = v; if (v > mx) mx = v; count++;
+  }
+  if (count === 0) return 0.5;
+  const scale = (BINS - 1) / ((mx - mn) || 1);
+  for (let i = 0; i < moist.length; i++) {
+    const e = elev[i]; if (e <= lo || e >= hi) continue;
+    hist[Math.min(BINS - 1, ((moist[i] - mn) * scale) | 0)]++;
+  }
+  const target = count * frac;
+  let acc = 0;
+  for (let b = 0; b < BINS; b++) { acc += hist[b]; if (acc >= target) return mn + (b + 1) / scale; }
+  return mx;
+}
+
+function generateWorld(seed) {
+  const total = N * N;
+  const elev  = new Float32Array(total);
+  const moist = new Float32Array(total);
+
+  for (let r = 0; r < N; r++) {
+    const yr = r * 0.018;
+    const base = r * N;
+    for (let c = 0; c < N; c++) {
+      elev[base + c]  = fbm(c * 0.018, yr, seed, 3);
+      moist[base + c] = fbm(c * 0.035, r * 0.035, seed + 7777, 2);
+    }
+  }
+
+  // 15% water (lowest elevation), 15% rock (highest elevation) -> 70% land
+  const waterT = percentileOf(elev, 0.15);
+  const rockT  = percentileOf(elev, 0.85);
+
+  // among land: 10% sand, 40% field, 20% forest  ->  14.3% / 57.1% / 28.6%
+  const sandT   = percentileOverLand(moist, elev, waterT, rockT, 0.143);
+  const forestT = percentileOverLand(moist, elev, waterT, rockT, 0.714);
+
+  const out = new Uint8Array(total);
+  for (let i = 0; i < total; i++) {
+    const e = elev[i];
+    if (e <= waterT)      out[i] = WATER;
+    else if (e >= rockT)  out[i] = ROCK;
+    else {
+      const m = moist[i];
+      if (m <= sandT)        out[i] = SAND;
+      else if (m <= forestT) out[i] = FIELD;
+      else                   out[i] = FOREST;
+    }
+  }
+  return out;
+}
+
+/* =========================================================================
+   HEX HELPERS  (pointy-top, "odd-r" offset coordinates)
+   ========================================================================= */
+function neighbors(col, row) {
+  if (row & 1) {
+    return [
+      { col: col + 1, row: row - 1 }, { col: col,     row: row - 1 },
+      { col: col - 1, row: row     }, { col: col + 1, row: row     },
+      { col: col,     row: row + 1 }, { col: col + 1, row: row + 1 }
+    ];
+  }
+  return [
+    { col: col - 1, row: row - 1 }, { col: col,     row: row - 1 },
+    { col: col - 1, row: row     }, { col: col + 1, row: row     },
+    { col: col - 1, row: row + 1 }, { col: col,     row: row + 1 }
+  ];
+}
+
+function cellWorld(col, row) {
+  const s = cam.size;
+  return { x: SQ3 * s * (col + 0.5 * (row & 1)), y: 1.5 * s * row };
+}
+
+function axialRound(q, r) {
+  const s = -q - r;
+  let rq = Math.round(q), rr = Math.round(r), rs = Math.round(s);
+  const dq = Math.abs(rq - q), dr = Math.abs(rr - r), ds = Math.abs(rs - s);
+  if (dq > dr && dq > ds) rq = -rr - rs;
+  else if (dr > ds)       rr = -rq - rs;
+  return { q: rq, r: rr };
+}
+
+function screenToCell(sx, sy) {
+  const s = cam.size;
+  const wx = cam.x + (sx - W / 2);
+  const wy = cam.y + (sy - H / 2);
+  const q = (SQ3 / 3 * wx - wy / 3) / s;
+  const r = (2 / 3 * wy) / s;
+  const a = axialRound(q, r);
+  const row = a.r;
+  if (row < 0 || row >= N) return null;
+  const col = a.q + (row - (row & 1)) / 2;
+  if (col < 0 || col >= N) return null;
+  return { col: Math.round(col), row: Math.round(row) };
+}
+
+function addHex(p, x, y, s) {
+  const h = 0.8660254037844386 * s;
+  p.moveTo(x, y - s);
+  p.lineTo(x + h, y - 0.5 * s);
+  p.lineTo(x + h, y + 0.5 * s);
+  p.lineTo(x, y + s);
+  p.lineTo(x - h, y + 0.5 * s);
+  p.lineTo(x - h, y - 0.5 * s);
+  p.closePath();
+}
+
+/* =========================================================================
+   CAMERA
+   ========================================================================= */
+function clampCam() {
+  const s = cam.size;
+  const mapW = SQ3 * s * (N + 0.5);
+  const mapH = 1.5 * s * N;
+  const hw = Math.min(W / 2, mapW / 2);
+  const hh = Math.min(H / 2, mapH / 2);
+  cam.x = Math.max(hw, Math.min(mapW - hw, cam.x));
+  cam.y = Math.max(hh, Math.min(mapH - hh, cam.y));
+}
+
+function zoomAt(sx, sy, factor) {
+  const oldSize = cam.size;
+  let newSize = oldSize * factor;
+  newSize = Math.max(MIN_SIZE, Math.min(MAX_SIZE, newSize));
+  if (Math.abs(newSize - oldSize) < 1e-6) return;
+
+  const wx = cam.x + (sx - W / 2);
+  const wy = cam.y + (sy - H / 2);
+
+  cam.size = newSize;
+  const ratio = newSize / oldSize;
+  cam.x = wx * ratio - (sx - W / 2);
+  cam.y = wy * ratio - (sy - H / 2);
+  clampCam();
+  dirty = true;
+}
+
+/* =========================================================================
+   ENTITY HELPERS
+   ========================================================================= */
+function memberAt(col, row) {
+  return squad.find(m => m.alive && m.col === col && m.row === row);
+}
+function groupAt(col, row) {
+  return enemies.find(g => g.count > 0 && g.col === col && g.row === row);
+}
+function inBounds(c, r) { return c >= 0 && r >= 0 && c < N && r < N; }
+
+function findFreeNear(col, row, exclude) {
+  const occ = new Set();
+  for (const m of squad) if (m.alive && m !== exclude) occ.add(m.col + ',' + m.row);
+  for (const g of enemies) if (g.count > 0) occ.add(g.col + ',' + g.row);
+  const cands = neighbors(col, row).filter(n =>
+    inBounds(n.col, n.row) &&
+    tiles[n.row * N + n.col] !== WATER &&
+    !occ.has(n.col + ',' + n.row)
+  );
+  if (!cands.length) return null;
+  return cands[(Math.random() * cands.length) | 0];
+}
+
+/* =========================================================================
+   MOVEMENT RANGE
+   ========================================================================= */
+function computeReachable(m) {
+  const budget = m.move;
+  const dist = new Map();
+
+  const occupied = new Set();
+  for (const o of squad) if (o.alive && o.id !== m.id) occupied.add(o.col + ',' + o.row);
+
+  const eAt = new Map();
+  for (const g of enemies) if (g.count > 0) eAt.set(g.col + ',' + g.row, g);
+
+  const startKey = m.col + ',' + m.row;
+  dist.set(startKey, { cost: 0, from: null, attack: null });
+
+  const open = [{ col: m.col, row: m.row, cost: 0 }];
+
+  while (open.length) {
+    let bi = 0;
+    for (let i = 1; i < open.length; i++) if (open[i].cost < open[bi].cost) bi = i;
+    const cur = open.splice(bi, 1)[0];
+    const curKey = cur.col + ',' + cur.row;
+    const dn = dist.get(curKey);
+    if (!dn || dn.cost < cur.cost) continue;
+
+    for (const nb of neighbors(cur.col, cur.row)) {
+      if (!inBounds(nb.col, nb.row)) continue;
+      const k = nb.col + ',' + nb.row;
+      if (occupied.has(k)) continue;
+      if (eAt.has(k)) continue;                 // trogs block; handled below
+      const t = tiles[nb.row * N + nb.col];
+      if (t === WATER) continue;
+      const nc = cur.cost + TCOST[t];
+      if (nc > budget) continue;
+      const prev = dist.get(k);
+      if (!prev || nc < prev.cost) {
+        dist.set(k, { cost: nc, from: curKey, attack: null });
+        open.push({ col: nb.col, row: nb.row, cost: nc });
+      }
+    }
+  }
+
+  // cells holding a trog group become "attack" destinations
+  const additions = new Map();
+  for (const [key, node] of dist) {
+    if (node.attack) continue;
+    const [c, r] = key.split(',').map(Number);
+    for (const nb of neighbors(c, r)) {
+      if (!inBounds(nb.col, nb.row)) continue;
+      const k = nb.col + ',' + nb.row;
+      const g = eAt.get(k);
+      if (!g) continue;
+      const t = tiles[nb.row * N + nb.col];
+      const cost = node.cost + TCOST[t];
+      if (cost > budget) continue;
+      const existing = dist.get(k) || additions.get(k);
+      if (!existing || cost < existing.cost) additions.set(k, { cost, from: key, attack: g.id });
+    }
+  }
+  for (const [k, v] of additions) dist.set(k, v);
+
+  return dist;
+}
+
+function buildPath(key, dist) {
+  const path = [];
+  let k = key;
+  let guard = 0;
+  while (k && guard++ < 64) {
+    const [c, r] = k.split(',').map(Number);
+    path.push({ col: c, row: r });
+    const node = dist.get(k);
+    k = node ? node.from : null;
+  }
+  return path.reverse();
+}
+
+/* =========================================================================
+   PLANNING
+   ========================================================================= */
+function selectMember(m) {
+  // tapping a member that already has a plan cancels the plan
+  const idx = plans.findIndex(p => p.memberId === m.id);
+  if (idx >= 0) {
+    plans.splice(idx, 1);
+    selectedId = null;
+    reachable.clear();
+    toast(m.type === 'wolf' ? 'Wolf move cancelled.' : 'Bear move cancelled.');
+    dirty = true;
+    return;
+  }
+  selectedId = m.id;
+  reachable = computeReachable(m);
+  dirty = true;
+}
+
+function planMove(col, row) {
+  const m = squad.find(x => x.id === selectedId);
+  if (!m) return;
+  const key = col + ',' + row;
+  const node = reachable.get(key);
+  if (!node) return;
+
+  const fromKey = node.attack != null ? node.from : key;
+  const path = buildPath(fromKey, reachable);
+  if (!path.length) return;
+
+  const last = path[path.length - 1];
+
+  plans = plans.filter(p => p.memberId !== m.id);
+  plans.push({
+    memberId: m.id,
+    col: last.col,
+    row: last.row,
+    targetCol: col,
+    targetRow: row,
+    attackGroupId: node.attack,
+    path
+  });
+
+  selectedId = null;
+  reachable.clear();
+  dirty = true;
+}
+
+/* =========================================================================
+   TURN EXECUTION
+   ========================================================================= */
+function executeTurn() {
+  if (gameOver) return;
+  if (plans.length === 0) { toast('Plan some moves first — tap a wolf or a bear.'); return; }
+
+  document.getElementById('btnMove').disabled = true;
+  const log = [];
+
+  /* ---- 1. player movement (in planning order) ---- */
+  const attacks = new Map();     // groupId -> [member, ...] in order
+
+  for (const plan of plans) {
+    const m = squad.find(x => x.id === plan.memberId);
+    if (!m || !m.alive) continue;
+    const dest = plan.path[plan.path.length - 1];
+    m.col = dest.col;
+    m.row = dest.row;
+    if (plan.attackGroupId != null) {
+      if (!attacks.has(plan.attackGroupId)) attacks.set(plan.attackGroupId, []);
+      attacks.get(plan.attackGroupId).push(m);
+    }
+  }
+
+  /* ---- 2. resolve attacks ---- */
+  for (const [gid, attackers] of attacks) {
+    const g = enemies.find(e => e.id === gid);
+    if (!g || g.count <= 0) continue;
+
+    let dmg = 0;
+    for (const m of attackers) dmg += (m.type === 'bear' ? 1 : 0.5);   // bear = 1, wolf = 1/2
+    const kills = Math.min(Math.floor(dmg), g.count);
+    g.count -= kills;
+
+    if (kills > 0) log.push(`Squad killed ${kills} trog${kills > 1 ? 's' : ''}.`);
+    else           log.push('Attack repelled — not enough force.');
+
+    // three trogs can drag down a bear
+    for (const m of attackers) {
+      if (m.type === 'bear' && g.count >= 3) {
+        m.alive = false;
+        log.push('A bear was overwhelmed and killed!');
+      }
+    }
+
+    if (g.count <= 0) {
+      // first attacker takes the tile, the rest are placed nearby
+      const alive = attackers.filter(m => m.alive);
+      const first = alive[0];
+      if (first) { first.col = g.col; first.row = g.row; }
+      for (let i = 1; i < alive.length; i++) {
+        const spot = findFreeNear(g.col, g.row, alive[i]);
+        if (spot) { alive[i].col = spot.col; alive[i].row = spot.row; }
+      }
+      log.push('Trog group wiped out.');
+    }
+  }
+
+  /* ---- 3. trog turn : they wander, then stick together ---- */
+  const order = enemies.filter(g => g.count > 0).sort(() => Math.random() - 0.5);
+
+  for (const g of order) {
+    if (g.count <= 0) continue;
+    const opts = neighbors(g.col, g.row).filter(n =>
+      inBounds(n.col, n.row) && tiles[n.row * N + n.col] !== WATER
+    );
+    if (!opts.length) continue;
+
+    const dest = opts[(Math.random() * opts.length) | 0];
+    const target = memberAt(dest.col, dest.row);
+
+    if (target) {
+      const need = target.type === 'bear' ? 3 : 2;
+      if (g.count >= need) {
+        target.alive = false;
+        if (target.type === 'bear') g.count -= 1;   // the bear takes one with it
+        log.push(`A ${target.type} was killed by trogs!`);
+        g.col = dest.col; g.row = dest.row;
+      } else {
+        g.count -= 1;                                // the squad member wins the exchange
+        log.push(`A ${target.type} killed a trog.`);
+      }
+      if (g.count < 0) g.count = 0;
+    } else {
+      g.col = dest.col;
+      g.row = dest.row;
+    }
+  }
+
+  /* ---- 4. merge groups that end up on the same hex ---- */
+  const byCell = new Map();
+  for (const g of enemies) {
+    if (g.count <= 0) continue;
+    const k = g.col + ',' + g.row;
+    if (byCell.has(k)) {
+      byCell.get(k).count += g.count;
+      g.count = 0;
+    } else {
+      byCell.set(k, g);
+    }
+  }
+
+  enemies = enemies.filter(g => g.count > 0);
+  squad   = squad.filter(m => m.alive);
+
+  /* ---- 5. bookkeeping ---- */
+  plans = [];
+  selectedId = null;
+  reachable.clear();
+  turn++;
+
+  updateHUD();
+  dirty = true;
+  document.getElementById('btnMove').disabled = false;
+
+  const aliveSquad = squad.length;
+  if (aliveSquad === 0) {
+    gameOver = true;
+    toast('💀 Your squad was wiped out. Game over — press "New Map".');
+    return;
+  }
+  if (enemies.length === 0) {
+    gameOver = true;
+    toast('🏆 All trogs eliminated. You win!');
+    return;
+  }
+  if (log.length) toast(log.join('  '));
+}
+
+/* =========================================================================
+   RENDERING
+   ========================================================================= */
+function draw() {
+  if (!tiles) return;
+
+  ctx.fillStyle = '#07090b';
+  ctx.fillRect(0, 0, W, H);
+
+  const s  = cam.size;
+  const ox = -cam.x + W / 2;
+  const oy = -cam.y + H / 2;
+
+  const left   = cam.x - W / 2, right  = cam.x + W / 2;
+  const top    = cam.y - H / 2, bottom = cam.y + H / 2;
+
+  const rowMin = Math.max(0, Math.floor(top / (1.5 * s)) - 1);
+  const rowMax = Math.min(N - 1, Math.ceil(bottom / (1.5 * s)) + 1);
+
+  const paths = [new Path2D(), new Path2D(), new Path2D(), new Path2D(), new Path2D()];
+
+  for (let row = rowMin; row <= rowMax; row++) {
+    const sy  = 1.5 * s * row + oy;
+    const off = (row & 1) ? 0.5 : 0;
+    const cMin = Math.max(0, Math.floor(left  / (SQ3 * s) - off) - 1);
+    const cMax = Math.min(N - 1, Math.ceil(right / (SQ3 * s) - off) + 1);
+    const base = row * N;
+    for (let col = cMin; col <= cMax; col++) {
+      const sx = SQ3 * s * (col + off) + ox;
+      addHex(paths[tiles[base + col]], sx, sy, s);
+    }
+  }
+
+  for (let t = 0; t < 5; t++) { ctx.fillStyle = TCOL[t]; ctx.fill(paths[t]); }
+  if (s >= 9) {
+    ctx.strokeStyle = 'rgba(0,0,0,0.16)';
+    ctx.lineWidth = 1;
+    for (let t = 0; t < 5; t++) ctx.stroke(paths[t]);
+  }
+
+  /* ---- movement range highlight ---- */
+  if (selectedId != null && reachable.size) {
+    const movePath = new Path2D();
+    const atkPath  = new Path2D();
+    for (const [key, node] of reachable) {
+      const [c, r] = key.split(',').map(Number);
+      const w = cellWorld(c, r);
+      addHex(node.attack != null ? atkPath : movePath, w.x + ox, w.y + oy, s * 0.94);
+    }
+    ctx.fillStyle = 'rgba(95,205,255,0.32)';
+    ctx.fill(movePath);
+    ctx.fillStyle = 'rgba(255,110,90,0.45)';
+    ctx.fill(atkPath);
+    ctx.strokeStyle = 'rgba(150,225,255,0.55)';
+    ctx.lineWidth = Math.max(1, s * 0.08);
+    ctx.stroke(movePath);
+    ctx.strokeStyle = 'rgba(255,140,110,0.75)';
+    ctx.stroke(atkPath);
+  }
+
+  /* ---- planned routes ---- */
+  if (plans.length) {
+    ctx.lineWidth = Math.max(2, s * 0.16);
+    ctx.strokeStyle = 'rgba(255,232,120,0.85)';
+    ctx.setLineDash([Math.max(3, s * 0.3), Math.max(3, s * 0.25)]);
+    for (const p of plans) {
+      const m = squad.find(x => x.id === p.memberId);
+      if (!m) continue;
+      ctx.beginPath();
+      const w0 = cellWorld(m.col, m.row);
+      ctx.moveTo(w0.x + ox, w0.y + oy);
+      for (const step of p.path) {
+        const w = cellWorld(step.col, step.row);
+        ctx.lineTo(w.x + ox, w.y + oy);
+      }
+      if (p.attackGroupId != null) {
+        const w = cellWorld(p.targetCol, p.targetRow);
+        ctx.lineTo(w.x + ox, w.y + oy);
+      }
+      ctx.stroke();
+    }
+    ctx.setLineDash([]);
+  }
+
+  /* ---- enemy groups ---- */
+  const tFont = Math.max(9, s * 0.7);
+  for (const g of enemies) {
+    if (g.count <= 0) continue;
+    const w = cellWorld(g.col, g.row);
+    const x = w.x + ox, y = w.y + oy;
+    if (x < -80 || y < -80 || x > W + 80 || y > H + 80) continue;
+
+    ctx.beginPath();
+    ctx.arc(x, y, s * 0.62, 0, Math.PI * 2);
+    ctx.fillStyle = '#c0392b';
+    ctx.fill();
+    ctx.lineWidth = Math.max(1.5, s * 0.09);
+    ctx.strokeStyle = '#5b1a12';
+    ctx.stroke();
+
+    ctx.fillStyle = '#fff';
+    ctx.font = `bold ${tFont}px ui-sans-serif, system-ui, sans-serif`;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(String(g.count), x, y);
+  }
+
+  /* ---- squad ---- */
+  const sFont = Math.max(8, s * 0.58);
+  for (const m of squad) {
+    if (!m.alive) continue;
+    const w = cellWorld(m.col, m.row);
+    const x = w.x + ox, y = w.y + oy;
+    if (x < -80 || y < -80 || x > W + 80 || y > H + 80) continue;
+
+    const isSel   = m.id === selectedId;
+    const hasPlan = plans.some(p => p.memberId === m.id);
+
+    ctx.beginPath();
+    ctx.arc(x, y, s * 0.58, 0, Math.PI * 2);
+    ctx.fillStyle = m.type === 'wolf' ? '#9aa7b5' : '#a8703c';
+    ctx.fill();
+    ctx.lineWidth = Math.max(1.5, s * 0.1);
+    ctx.strokeStyle = isSel ? '#6fe3ff' : (hasPlan ? '#ffe36e' : '#161b21');
+    ctx.stroke();
+
+    ctx.fillStyle = '#12171d';
+    ctx.font = `bold ${sFont}px ui-sans-serif, system-ui, sans-serif`;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(m.type === 'wolf' ? 'W' : 'B', x, y);
+  }
+}
+
+let rafPending = false;
+function loop() {
+  if (dirty) { draw(); dirty = false; }
+  requestAnimationFrame(loop);
+}
+
+/* =========================================================================
+   INPUT
+   ========================================================================= */
+const pointers = new Map();
+let dragStart = null, camStart = null, moved = false;
+let pinchDist = 0, pinchSize = 0;
+
+canvas.addEventListener('pointerdown', e => {
+  canvas.setPointerCapture(e.pointerId);
+  pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+
+  if (pointers.size === 1) {
+    dragStart = { x: e.clientX, y: e.clientY };
+    camStart  = { x: cam.x, y: cam.y };
+    moved = false;
+  } else if (pointers.size === 2) {
+    const [a, b] = [...pointers.values()];
+    pinchDist = Math.hypot(a.x - b.x, a.y - b.y);
+    pinchSize = cam.size;
+  }
+});
+
+canvas.addEventListener('pointermove', e => {
+  if (!pointers.has(e.pointerId)) return;
+  pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+
+  if (pointers.size === 1 && dragStart) {
+    const dx = e.clientX - dragStart.x;
+    const dy = e.clientY - dragStart.y;
+    if (Math.hypot(dx, dy) > 7) moved = true;
+    if (moved) {
+      cam.x = camStart.x - dx;
+      cam.y = camStart.y - dy;
+      clampCam();
+      dirty = true;
+    }
+  } else if (pointers.size === 2) {
+    const [a, b] = [...pointers.values()];
+    const d = Math.hypot(a.x - b.x, a.y - b.y);
+    if (pinchDist > 0) {
+      const mx = (a.x + b.x) / 2;
+      const my = (a.y + b.y) / 2;
+      const target = Math.max(MIN_SIZE, Math.min(MAX_SIZE, pinchSize * (d / pinchDist)));
+      zoomAt(mx, my, target / cam.size);
+    }
+    moved = true;
+  }
+});
+
+function endPointer(e) {
+  if (!pointers.has(e.pointerId)) return;
+  const wasSingle = pointers.size === 1;
+  pointers.delete(e.pointerId);
+
+  if (wasSingle && !moved) {
+    const rect = canvas.getBoundingClientRect();
+    handleTap(e.clientX - rect.left, e.clientY - rect.top);
+  }
+  if (pointers.size === 0) { dragStart = null; moved = false; }
+  else if (pointers.size === 1) {
+    const [a] = [...pointers.values()];
+    dragStart = { x: a.x, y: a.y };
+    camStart  = { x: cam.x, y: cam.y };
+    moved = true;
+  }
+  pinchDist = 0;
+}
+canvas.addEventListener('pointerup', endPointer);
+canvas.addEventListener('pointercancel', endPointer);
+
+canvas.addEventListener('wheel', e => {
+  e.preventDefault();
+  const rect = canvas.getBoundingClientRect();
+  const factor = Math.pow(0.9992, e.deltaY * (e.deltaMode === 1 ? 18 : 1));
+  zoomAt(e.clientX - rect.left, e.clientY - rect.top, factor);
+}, { passive: false });
+
+function handleTap(sx, sy) {
+  if (gameOver) return;
+  const cell = screenToCell(sx, sy);
+  if (!cell) return;
+
+  const key = cell.col + ',' + cell.row;
+
+  const m = memberAt(cell.col, cell.row);
+  if (m) {
+    if (selectedId === m.id) { selectedId = null; reachable.clear(); dirty = true; return; }
+    selectMember(m);
+    return;
+  }
+
+  if (selectedId != null && reachable.has(key)) { planMove(cell.col, cell.row); return; }
+
+  selectedId = null;
+  reachable.clear();
+  dirty = true;
+}
+
+/* =========================================================================
+   HUD / MESSAGES
+   ========================================================================= */
+let toastTimer = null;
+function toast(msg) {
+  const el = document.getElementById('toast');
+  el.textContent = msg;
+  el.style.opacity = '1';
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => { el.style.opacity = '0'; }, 4200);
+}
+
+function updateHUD() {
+  const wolves = squad.filter(m => m.alive && m.type === 'wolf').length;
+  const bears  = squad.filter(m => m.alive && m.type === 'bear').length;
+  const trogs  = enemies.reduce((a, g) => a + g.count, 0);
+  document.getElementById('s-wolf').textContent  = wolves;
+  document.getElementById('s-bear').textContent  = bears;
+  document.getElementById('s-squad').textContent = wolves + bears;
+  document.getElementById('s-enemy').textContent = trogs;
+  document.getElementById('s-turn').textContent  = turn;
+}
+
+document.getElementById('btnMove').addEventListener('click', executeTurn);
+document.getElementById('btnNew').addEventListener('click', () => {
+  if (!confirm('Generate a new map and restart?')) return;
+  startNewGame(Math.floor(Math.random() * 1e9));
+});
+
+/* =========================================================================
+   WORLD SETUP
+   ========================================================================= */
+function findStart() {
+  const cx = N >> 1, cy = N >> 1;
+  for (let rad = 0; rad < 500; rad++) {
+    const steps = Math.max(1, rad * 8);
+    for (let a = 0; a < steps; a++) {
+      const t = (a / steps) * Math.PI * 2;
+      const c = Math.round(cx + Math.cos(t) * rad * 1.4);
+      const r = Math.round(cy + Math.sin(t) * rad);
+      if (!inBounds(c, r)) continue;
+      const tv = tiles[r * N + c];
+      if (tv !== FIELD && tv !== SAND) continue;
+      const land = neighbors(c, r).filter(n => inBounds(n.col, n.row) && tiles[n.row * N + n.col] !== WATER).length;
+      if (land >= 5) return { col: c, row: r };
+    }
+  }
+  return { col: cx, row: cy };
+}
+
+function placeSquad(start) {
+  squad = [];
+  const spots = [{ col: start.col, row: start.row }];
+  for (const n of neighbors(start.col, start.row)) {
+    if (inBounds(n.col, n.row) && tiles[n.row * N + n.col] !== WATER) spots.push(n);
+  }
+  if (spots.length < 8) {
+    for (const n of neighbors(start.col, start.row)) {
+      for (const n2 of neighbors(n.col, n.row)) {
+        if (spots.length >= 12) break;
+        if (inBounds(n2.col, n2.row) && tiles[n2.row * N + n2.col] !== WATER &&
+            !spots.some(sp => sp.col === n2.col && sp.row === n2.row)) spots.push(n2);
+      }
+    }
+  }
+
+  const defs = ['wolf', 'wolf', 'bear', 'bear', 'bear', 'bear', 'bear', 'bear'];
+  defs.forEach((type, i) => {
+    const s = spots[i % spots.length];
+    squad.push({
+      id: nextId++,
+      type,
+      col: s.col,
+      row: s.row,
+      move: type === 'wolf' ? 3 : 2,
+      alive: true
+    });
+  });
+}
+
+function placeEnemies(start, groupCount) {
+  enemies = [];
+  for (let i = 0; i < groupCount; i++) {
+    for (let tries = 0; tries < 500; tries++) {
+      const ang  = Math.random() * Math.PI * 2;
+      const dist = 8 + Math.random() * 20;
+      const c = Math.round(start.col + Math.cos(ang) * dist);
+      const r = Math.round(start.row + Math.sin(ang) * dist);
+      if (!inBounds(c, r)) continue;
+      if (tiles[r * N + c] === WATER) continue;
+      if (enemies.some(e => e.col === c && e.row === r)) continue;
+      enemies.push({ id: nextId++, col: c, row: r, count: 1 + ((Math.random() * 3) | 0) });
+      break;
+    }
+  }
+}
+
+function startNewGame(seed) {
+  document.getElementById('loading').style.display = 'flex';
+  document.getElementById('loadingText').textContent = 'Generating world…';
+
+  setTimeout(() => {
+    tiles = generateWorld(seed);
+
+    const start = findStart();
+    placeSquad(start);
+    placeEnemies(start, 10);
+
+    cam.size = 26;
+    const w = cellWorld(start.col, start.row);
+    cam.x = w.x;
+    cam.y = w.y;
+    clampCam();
+
+    plans = [];
+    selectedId = null;
+    reachable.clear();
+    turn = 1;
+    gameOver = false;
+    nextId = 100000;
+
+    updateHUD();
+    document.getElementById('btnMove').disabled = false;
+    document.getElementById('loading').style.display = 'none';
+
+    dirty = true;
+    toast('Squad deployed. Tap a wolf or bear to plan its move.');
+  }, 30);
+}
+
+/* =========================================================================
+   BOOT
+   ========================================================================= */
+resize();
+requestAnimationFrame(loop);
+startNewGame(20240517);
+</script>
+</body>
+</html>

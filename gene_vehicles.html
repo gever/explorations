@@ -101,7 +101,7 @@
       z-index: 20;
     }
 
-    #toolbar {
+    #toolbar, #acc-toolbar {
       display: flex;
       align-items: center;
       gap: 12px;
@@ -110,7 +110,7 @@
       flex-shrink: 0;
     }
 
-    #toolbar button {
+    #toolbar button, #acc-toolbar button {
       background: #2a2a2a;
       color: #eee;
       border: 1px solid #444;
@@ -121,41 +121,41 @@
       transition: background 0.15s;
     }
 
-    #toolbar button:hover {
+    #toolbar button:hover, #acc-toolbar button:hover {
       background: #3a3a3a;
     }
 
-    #toolbar button:active {
+    #toolbar button:active, #acc-toolbar button:active {
       background: #ffaa66;
       color: #111;
     }
 
-    #toolbar button.primary {
+    #toolbar button.primary, #acc-toolbar button.primary {
       background: #66ccff22;
       border-color: #66ccff88;
       color: #cceeff;
     }
 
-    #toolbar button.primary:hover {
+    #toolbar button.primary:hover, #acc-toolbar button.primary:hover {
       background: #66ccff44;
     }
 
-    #toolbar button.active {
+    #toolbar button.active, #acc-toolbar button.active {
       background: #ffaa6622;
       border-color: #ffaa6688;
       color: #ffcc99;
     }
 
-    #toolbar button.active:hover {
+    #toolbar button.active:hover, #acc-toolbar button.active:hover {
       background: #ffaa6644;
     }
 
-    #toolbar button:disabled {
+    #toolbar button:disabled, #acc-toolbar button:disabled {
       opacity: 0.4;
       cursor: not-allowed;
     }
 
-    #toolbar label {
+    #toolbar label, #acc-toolbar label {
       font-size: 13px;
       color: #aaa;
       display: flex;
@@ -163,12 +163,12 @@
       gap: 8px;
     }
 
-    #toolbar input[type="range"] {
+    #toolbar input[type="range"], #acc-toolbar input[type="range"] {
       width: 120px;
       accent-color: #66ccff;
     }
 
-    #toolbar .value-badge {
+    #toolbar .value-badge, #acc-toolbar .value-badge {
       font-family: monospace;
       color: #66ccff;
       background: #66ccff22;
@@ -179,7 +179,7 @@
       text-align: center;
     }
 
-    #history-label {
+    #history-label, #acc-status-label {
       font-size: 12px;
       color: #888;
       margin-left: auto;
@@ -400,13 +400,306 @@
       margin-right: 4px;
       vertical-align: middle;
     }
+
+    /* Top Tab Switcher */
+    #tab-bar {
+      position: absolute;
+      top: 16px;
+      right: 16px;
+      display: flex;
+      gap: 6px;
+      background: rgba(15, 15, 15, 0.85);
+      padding: 5px;
+      border-radius: 40px;
+      backdrop-filter: blur(8px);
+      border: 1px solid #444;
+      z-index: 30;
+    }
+
+    .tab-btn {
+      background: transparent;
+      color: #aaa;
+      border: 1px solid transparent;
+      border-radius: 30px;
+      padding: 6px 16px;
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.15s;
+    }
+
+    .tab-btn:hover {
+      color: #fff;
+      background: rgba(255, 255, 255, 0.06);
+    }
+
+    .tab-btn.active {
+      background: #ffaa6628;
+      color: #ffbb77;
+      border-color: #ffaa6688;
+      box-shadow: 0 0 12px rgba(255, 170, 102, 0.2);
+    }
+
+    /* Accessories Tab Viewport */
+    #accessories-container {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100vw;
+      height: calc(100vh - 140px);
+      background: #121316;
+      display: none;
+      overflow: hidden;
+      user-select: none;
+    }
+
+    #accessories-container.active {
+      display: block;
+    }
+
+    #acc-stage {
+      width: 100%;
+      height: 100%;
+      cursor: grab;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    #acc-stage.dragging {
+      cursor: grabbing;
+    }
+
+    #acc-stage svg {
+      width: 100%;
+      height: 100%;
+      display: block;
+    }
+
+    .acc-item-group {
+      cursor: pointer;
+      transition: filter 0.12s;
+    }
+
+    .acc-item-group .acc-bbox {
+      fill: rgba(255, 255, 255, 0.01);
+      stroke: rgba(255, 255, 255, 0.06);
+      stroke-width: 0.25;
+      stroke-dasharray: 1.5 1.5;
+      rx: 2px;
+      transition: fill 0.15s, stroke 0.15s;
+    }
+
+    .acc-item-group .acc-body-fill {
+      fill: #1d222b;
+      fill-rule: evenodd;
+      transition: fill 0.15s;
+    }
+
+    .acc-item-group .acc-cut {
+      fill: none;
+      stroke: #ff4d4d;
+      stroke-width: 0.55;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+    }
+
+    .acc-item-group .acc-score {
+      fill: none;
+      stroke: #4da6ff;
+      stroke-width: 0.4;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+    }
+
+    .acc-item-group .acc-label {
+      fill: #ffaa66;
+      font-family: monospace, sans-serif;
+      text-anchor: middle;
+      pointer-events: none;
+      opacity: 0.85;
+    }
+
+    .acc-item-group:hover .acc-bbox {
+      fill: rgba(255, 170, 102, 0.08);
+      stroke: #ffaa66;
+      stroke-width: 0.5;
+      stroke-dasharray: none;
+    }
+
+    .acc-item-group:hover .acc-body-fill {
+      fill: #28303d;
+    }
+
+    .acc-item-group.selected .acc-bbox {
+      fill: rgba(102, 204, 255, 0.12);
+      stroke: #66ccff;
+      stroke-width: 0.7;
+      stroke-dasharray: none;
+    }
+
+    .acc-item-group.selected .acc-body-fill {
+      fill: #1f3347;
+    }
+
+    #acc-hud-badge {
+      position: absolute;
+      bottom: 14px;
+      left: 16px;
+      background: rgba(15, 15, 18, 0.88);
+      border: 1px solid #444;
+      border-radius: 10px;
+      padding: 8px 14px;
+      font-family: monospace;
+      font-size: 12px;
+      color: #ddd;
+      pointer-events: none;
+      backdrop-filter: blur(6px);
+      z-index: 15;
+    }
+
+    #acc-hud-badge .hud-accent {
+      color: #ffaa66;
+      font-weight: 600;
+    }
+
+    #acc-hud-badge .hud-blue {
+      color: #66ccff;
+    }
+
+    #acc-zoom-controls {
+      position: absolute;
+      bottom: 14px;
+      right: 16px;
+      display: flex;
+      gap: 6px;
+      z-index: 15;
+    }
+
+    #acc-zoom-controls button {
+      background: rgba(25, 25, 28, 0.88);
+      color: #ddd;
+      border: 1px solid #444;
+      border-radius: 8px;
+      padding: 6px 11px;
+      font-size: 12px;
+      font-family: monospace;
+      cursor: pointer;
+      backdrop-filter: blur(6px);
+    }
+
+    #acc-zoom-controls button:hover {
+      background: #333;
+      border-color: #66ccff;
+    }
+
+    /* Category Filter Strip in Bottom Panel */
+    #acc-filter-bar {
+      display: flex;
+      gap: 6px;
+      padding: 10px 16px;
+      overflow-x: auto;
+      flex: 1;
+      align-items: center;
+    }
+
+    .cat-pill {
+      flex-shrink: 0;
+      background: #1e1e1e;
+      color: #aaa;
+      border: 1px solid #383838;
+      border-radius: 20px;
+      padding: 5px 12px;
+      font-size: 12px;
+      cursor: pointer;
+      transition: all 0.15s;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .cat-pill:hover {
+      border-color: #666;
+      color: #eee;
+    }
+
+    .cat-pill.active {
+      background: #66ccff22;
+      color: #cceeff;
+      border-color: #66ccff88;
+    }
+
+    .cat-pill .cat-count {
+      font-family: monospace;
+      font-size: 11px;
+      background: rgba(0, 0, 0, 0.45);
+      padding: 1px 6px;
+      border-radius: 10px;
+      color: #ffaa66;
+    }
+
+    /* Accessories SVG Export Modal */
+    #acc-modal {
+      position: fixed;
+      inset: 0;
+      background: rgba(0, 0, 0, 0.8);
+      backdrop-filter: blur(6px);
+      display: none;
+      align-items: center;
+      justify-content: center;
+      z-index: 100;
+      padding: 24px;
+      box-sizing: border-box;
+    }
+
+    #acc-modal.open {
+      display: flex;
+    }
+
+    #acc-viewport {
+      flex: 1;
+      background: #0e0e0e;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      overflow: auto;
+      padding: 20px;
+    }
+
+    #acc-viewport svg {
+      max-width: 100%;
+      max-height: 100%;
+      width: auto;
+      height: auto;
+      background: #141414;
+      border: 1px solid #2a2a2a;
+      border-radius: 8px;
+    }
   </style>
 </head>
 <body>
   <div id="info">
     🧬 genetic car browser · click a car to <span>select &amp; breed</span> · <span>spacebar</span> toggles wheel transparency · dimensions in mm
   </div>
+
+  <div id="tab-bar">
+    <button class="tab-btn active" id="tab-vehicles-btn" data-tab="vehicles">🚗 Vehicle Bodies</button>
+    <button class="tab-btn" id="tab-accessories-btn" data-tab="accessories">🔧 Automobile Accessories</button>
+  </div>
+
   <div id="grid-container"></div>
+
+  <div id="accessories-container">
+    <div id="acc-stage"></div>
+    <div id="acc-hud-badge">
+      Hover an accessory to inspect · Click to <span class="hud-blue">select / pin</span> · Bumpers = <span class="hud-accent">80mm ±10%</span> (72–88mm) · Headlights = <span class="hud-accent">L/R symmetrical</span>
+    </div>
+    <div id="acc-zoom-controls">
+      <button id="acc-zoom-in-btn" title="Zoom In">＋</button>
+      <button id="acc-zoom-out-btn" title="Zoom Out">－</button>
+      <button id="acc-zoom-fit-btn" title="Reset / Fit Sheet">⊡ Fit Sheet</button>
+    </div>
+  </div>
 
   <div id="bottom-panel">
     <div id="toolbar">
@@ -427,6 +720,25 @@
       <span id="history-label">📜 Evolution history</span>
     </div>
     <div id="history"></div>
+
+    <div id="acc-toolbar" style="display: none;">
+      <button id="acc-reseed-btn">🔀 Generate New Sheet</button>
+      <button id="acc-breed-btn" class="primary" disabled>🧬 Breed from Selected</button>
+      <button id="acc-clear-sel-btn" disabled>✕ Clear Selection</button>
+      <button id="acc-export-modal-btn" class="primary">📐 Export Laser SVG</button>
+      <label>
+        Density (items):
+        <input type="range" id="acc-density-slider" min="24" max="84" step="6" value="54">
+        <span class="value-badge" id="acc-density-value">54</span>
+      </label>
+      <label>
+        Mutation:
+        <input type="range" id="acc-mutation-slider" min="5" max="100" step="5" value="35">
+        <span class="value-badge" id="acc-mutation-value">35%</span>
+      </label>
+      <span id="acc-status-label">🔧 54 accessories · 0 selected</span>
+    </div>
+    <div id="acc-filter-bar" style="display: none;"></div>
   </div>
 
   <div id="net-modal">
@@ -469,6 +781,61 @@
           <span class="legend-dot" style="background:#ffaa66;"></span>Amber = Etch / Labels
         </span>
         <span id="net-dimensions-info"></span>
+      </div>
+    </div>
+  </div>
+
+  <div id="acc-modal">
+    <div class="net-dialog">
+      <div class="net-header">
+        <span class="net-title">🔧 Automobile Accessories · Laser-Cut SVG Export</span>
+        <label>
+          Scope:
+          <select id="acc-export-scope">
+            <option value="all">All Visible Accessories on Sheet</option>
+            <option value="selected">Selected / Pinned Only</option>
+          </select>
+        </label>
+        <label>
+          Layout:
+          <select id="acc-export-layout">
+            <option value="nested">Dense 2D Nesting (Tight Pack)</option>
+            <option value="grouped">Grouped by Category</option>
+          </select>
+        </label>
+        <label title="Target laser bed / sheet width in millimeters">
+          Sheet width (mm):
+          <input type="number" id="acc-sheet-width-input" value="360" min="140" max="1200" step="20">
+        </label>
+        <label title="Minimum clearance gap between nested parts in millimeters">
+          Part gap (mm):
+          <input type="number" id="acc-gap-input" value="3.5" min="1" max="20" step="0.5">
+        </label>
+        <label>
+          <input type="checkbox" id="acc-score-chk" checked>
+          Score / Detail lines
+        </label>
+        <label>
+          <input type="checkbox" id="acc-labels-chk">
+          Part labels
+        </label>
+        <label>
+          File name:
+          <input type="text" id="acc-filename-input" spellcheck="false" placeholder="accessories_sheet">
+        </label>
+        <button id="acc-download-btn" class="primary">💾 Download SVG (1:1 mm)</button>
+        <button id="acc-close-btn">✕ Close</button>
+      </div>
+      <div id="acc-viewport"></div>
+      <div class="net-footer">
+        <span>
+          <span class="legend-dot" style="background:#FF0000;"></span>Solid Red (#FF0000) = Cut (Outer &amp; Inner Holes)
+          &nbsp;&nbsp;
+          <span class="legend-dot" style="background:#0000FF;"></span>Solid Blue (#0000FF) = Score / Fold / Detail
+          &nbsp;&nbsp;
+          <span class="legend-dot" style="background:#ffaa66;"></span>Amber = Etch / Labels
+        </span>
+        <span id="acc-dimensions-info"></span>
       </div>
     </div>
   </div>
@@ -2218,11 +2585,17 @@
     });
 
     window.addEventListener('keydown', (e) => {
-      if (e.key === 'Escape' && netModal.classList.contains('open')) {
-        netModal.classList.remove('open');
-        return;
+      if (e.key === 'Escape') {
+        if (netModal.classList.contains('open')) {
+          netModal.classList.remove('open');
+          return;
+        }
+        if (accModal && accModal.classList.contains('open')) {
+          accModal.classList.remove('open');
+          return;
+        }
       }
-      if ((e.code === 'Space' || e.key === ' ') && !netModal.classList.contains('open')) {
+      if ((e.code === 'Space' || e.key === ' ') && activeTab === 'vehicles' && !netModal.classList.contains('open')) {
         if (e.repeat) return;
         e.preventDefault();
         toggleWheelTransparency();
@@ -2265,9 +2638,2142 @@
     // initialize history UI
     renderHistory();
 
+    // =========================================================================
+    // --- AUTOMOBILE ACCESSORIES GENERATOR (2D Shapes & Laser SVG Export) ---
+    // =========================================================================
+    const BUMPER_MIN_WIDTH = Math.round(FIXED_WIDTH * 0.90); // 72 mm (-10% of 80mm chassis)
+    const BUMPER_MAX_WIDTH = Math.round(FIXED_WIDTH * 1.10); // 88 mm (+10% of 80mm chassis)
+
+    const ACCESSORY_CATEGORIES = [
+      { id: 'all',           name: 'All Accessories', icon: '✦', weight: 0 },
+      { id: 'bumper',        name: 'Bumpers',         icon: '🛡️', weight: 6 },
+      { id: 'headlight',     name: 'Headlights (L/R)',icon: '💡', weight: 7 },
+      { id: 'hood_ornament', name: 'Hood Ornaments',  icon: '🦅', weight: 5 },
+      { id: 'fender',        name: 'Fenders',         icon: '🛞', weight: 5 },
+      { id: 'running_board', name: 'Running-Boards',  icon: '🪜', weight: 5 },
+      { id: 'door_handle',   name: 'Door Handles',    icon: '🚪', weight: 6 },
+      { id: 'grille',        name: 'Grilles',         icon: '▦',  weight: 4 },
+      { id: 'spoiler',       name: 'Spoilers & Wings',icon: '✈️', weight: 4 },
+      { id: 'mirror',        name: 'Side Mirrors',    icon: '🪞', weight: 4 },
+      { id: 'taillight',     name: 'Taillights',      icon: '🚨', weight: 4 },
+      { id: 'exhaust',       name: 'Exhausts',        icon: '💨', weight: 3 },
+      { id: 'windshield',    name: 'Windshields',     icon: '🪟', weight: 3 }
+    ];
+
+    let activeTab = 'vehicles';
+    let accDensity = 54;
+    let accMutationRate = 0.35;
+    let activeCategoryFilter = 'all';
+    let accessoriesList = [];
+    let selectedAccessoryIds = new Set();
+    let nextAccId = 1;
+    let currentSheetFilename = generateSafeFileName() + '_accessories';
+
+    // Pan & Zoom state for the interactive 2D Accessories stage
+    let stageViewBox = { x: -10, y: -10, w: 380, h: 280 };
+    let defaultStageViewBox = { x: -10, y: -10, w: 380, h: 280 };
+    let isPanningStage = false;
+    let panStartClient = { x: 0, y: 0 };
+    let panStartViewBox = { x: 0, y: 0 };
+    let didDragStage = false;
+
+    // DOM Elements for Accessories Tab
+    const infoBanner = document.getElementById('info');
+    const tabVehiclesBtn = document.getElementById('tab-vehicles-btn');
+    const tabAccessoriesBtn = document.getElementById('tab-accessories-btn');
+    const accessoriesContainer = document.getElementById('accessories-container');
+    const accStage = document.getElementById('acc-stage');
+    const accHudBadge = document.getElementById('acc-hud-badge');
+    const accZoomInBtn = document.getElementById('acc-zoom-in-btn');
+    const accZoomOutBtn = document.getElementById('acc-zoom-out-btn');
+    const accZoomFitBtn = document.getElementById('acc-zoom-fit-btn');
+    const vehicleToolbar = document.getElementById('toolbar');
+    const accToolbar = document.getElementById('acc-toolbar');
+    const accFilterBar = document.getElementById('acc-filter-bar');
+    const accReseedBtn = document.getElementById('acc-reseed-btn');
+    const accBreedBtn = document.getElementById('acc-breed-btn');
+    const accClearSelBtn = document.getElementById('acc-clear-sel-btn');
+    const accExportModalBtn = document.getElementById('acc-export-modal-btn');
+    const accDensitySlider = document.getElementById('acc-density-slider');
+    const accDensityValue = document.getElementById('acc-density-value');
+    const accMutationSlider = document.getElementById('acc-mutation-slider');
+    const accMutationValue = document.getElementById('acc-mutation-value');
+    const accStatusLabel = document.getElementById('acc-status-label');
+
+    // DOM Elements for Accessories Laser Export Modal
+    const accModal = document.getElementById('acc-modal');
+    const accViewport = document.getElementById('acc-viewport');
+    const accExportScope = document.getElementById('acc-export-scope');
+    const accExportLayout = document.getElementById('acc-export-layout');
+    const accSheetWidthInput = document.getElementById('acc-sheet-width-input');
+    const accGapInput = document.getElementById('acc-gap-input');
+    const accScoreChk = document.getElementById('acc-score-chk');
+    const accLabelsChk = document.getElementById('acc-labels-chk');
+    const accFilenameInput = document.getElementById('acc-filename-input');
+    const accDownloadBtn = document.getElementById('acc-download-btn');
+    const accCloseBtn = document.getElementById('acc-close-btn');
+    const accDimensionsInfo = document.getElementById('acc-dimensions-info');
+
+    // --- 2D Geometry Primitive Helpers ---
+    function randFloat(min, max) {
+      return min + Math.random() * (max - min);
+    }
+
+    function clampFloat(v, min, max) {
+      return Math.min(max, Math.max(min, v));
+    }
+
+    function lerp(a, b, t) {
+      return a + (b - a) * t;
+    }
+
+    function makePolyCircle(cx, cy, r, segs = 16, startAngle = 0) {
+      const pts = [];
+      for (let i = 0; i < segs; i++) {
+        const a = startAngle + (i / segs) * Math.PI * 2;
+        pts.push({ x: cx + Math.cos(a) * r, y: cy + Math.sin(a) * r });
+      }
+      return pts;
+    }
+
+    function makePolyEllipse(cx, cy, rx, ry, segs = 18, rotRad = 0) {
+      const pts = [];
+      const c = Math.cos(rotRad), s = Math.sin(rotRad);
+      for (let i = 0; i < segs; i++) {
+        const a = (i / segs) * Math.PI * 2;
+        const lx = Math.cos(a) * rx;
+        const ly = Math.sin(a) * ry;
+        pts.push({
+          x: cx + lx * c - ly * s,
+          y: cy + lx * s + ly * c
+        });
+      }
+      return pts;
+    }
+
+    function makeStadiumLoop(cx, cy, w, h, endSegs = 6) {
+      const pts = [];
+      if (w >= h) {
+        const r = h / 2;
+        const dx = Math.max(0, (w - h) / 2);
+        for (let i = 0; i <= endSegs; i++) {
+          const a = -Math.PI / 2 + (i / endSegs) * Math.PI;
+          pts.push({ x: cx + dx + Math.cos(a) * r, y: cy + Math.sin(a) * r });
+        }
+        for (let i = 0; i <= endSegs; i++) {
+          const a = Math.PI / 2 + (i / endSegs) * Math.PI;
+          pts.push({ x: cx - dx + Math.cos(a) * r, y: cy + Math.sin(a) * r });
+        }
+      } else {
+        const r = w / 2;
+        const dy = Math.max(0, (h - w) / 2);
+        for (let i = 0; i <= endSegs; i++) {
+          const a = (i / endSegs) * Math.PI;
+          pts.push({ x: cx + Math.cos(a) * r, y: cy + dy + Math.sin(a) * r });
+        }
+        for (let i = 0; i <= endSegs; i++) {
+          const a = Math.PI + (i / endSegs) * Math.PI;
+          pts.push({ x: cx + Math.cos(a) * r, y: cy - dy + Math.sin(a) * r });
+        }
+      }
+      return pts;
+    }
+
+    function makeChamferRect(cx, cy, w, h, ch) {
+      const hw = w / 2, hh = h / 2;
+      const c = Math.min(ch, hw * 0.8, hh * 0.8);
+      return [
+        { x: cx - hw + c, y: cy - hh },
+        { x: cx + hw - c, y: cy - hh },
+        { x: cx + hw,     y: cy - hh + c },
+        { x: cx + hw,     y: cy + hh - c },
+        { x: cx + hw - c, y: cy + hh },
+        { x: cx - hw + c, y: cy + hh },
+        { x: cx - hw,     y: cy + hh - c },
+        { x: cx - hw,     y: cy - hh + c }
+      ];
+    }
+
+    // Mirror a closed loop horizontally across X = 0
+    function mirrorLoopX(loop) {
+      return loop.slice().reverse().map(p => ({ x: -p.x, y: p.y }));
+    }
+
+    // Mirror an open polyline across X = 0
+    function mirrorPolylineX(pts) {
+      return pts.map(p => ({ x: -p.x, y: p.y }));
+    }
+
+    function translateLoop(loop, dx, dy) {
+      return loop.map(p => ({ x: p.x + dx, y: p.y + dy }));
+    }
+
+    // Build a bilaterally symmetrical closed polygon from right-side points (x >= 0) ordered top-to-bottom
+    function makeSymmetricLoopFromRightHalf(rightPts) {
+      const out = [];
+      for (const p of rightPts) {
+        out.push({ x: p.x, y: p.y });
+      }
+      for (let i = rightPts.length - 1; i >= 0; i--) {
+        const p = rightPts[i];
+        if ((i === 0 || i === rightPts.length - 1) && Math.abs(p.x) < 1e-4) continue;
+        out.push({ x: -p.x, y: p.y });
+      }
+      return out;
+    }
+
+    // Normalize accessory loops around (0,0) and optionally enforce exact target width in mm
+    function finalizeAccessoryGeometry(cutLoops, scoreSegments, targetWidthMm = null) {
+      let minX = Infinity, maxX = -Infinity;
+      let minY = Infinity, maxY = -Infinity;
+      for (const loop of cutLoops) {
+        for (const p of loop) {
+          if (p.x < minX) minX = p.x;
+          if (p.x > maxX) maxX = p.x;
+          if (p.y < minY) minY = p.y;
+          if (p.y > maxY) maxY = p.y;
+        }
+      }
+      if (!Number.isFinite(minX)) {
+        minX = -10; maxX = 10; minY = -5; maxY = 5;
+      }
+      const rawW = Math.max(0.1, maxX - minX);
+      const rawH = Math.max(0.1, maxY - minY);
+      const cx = (minX + maxX) * 0.5;
+      const cy = (minY + maxY) * 0.5;
+      const scaleX = targetWidthMm !== null ? (targetWidthMm / rawW) : 1.0;
+
+      const normCutLoops = cutLoops.map(loop =>
+        loop.map(p => ({
+          x: (p.x - cx) * scaleX,
+          y: p.y - cy
+        }))
+      );
+      const normScoreSegments = scoreSegments.map(seg =>
+        seg.map(p => ({
+          x: (p.x - cx) * scaleX,
+          y: p.y - cy
+        }))
+      );
+
+      return {
+        cutLoops: normCutLoops,
+        scoreSegments: normScoreSegments,
+        widthMm: Number((rawW * scaleX).toFixed(1)),
+        heightMm: Number(rawH.toFixed(1))
+      };
+    }
+
+    // --- Default & Mutated Gene Vector Helper ---
+    function createRandomGenes(subTypeCount = 5) {
+      return {
+        subType: randInt(0, subTypeCount - 1),
+        p0: Math.random(),
+        p1: Math.random(),
+        p2: Math.random(),
+        p3: Math.random(),
+        p4: Math.random(),
+        p5: Math.random(),
+        p6: Math.random(),
+        p7: Math.random()
+      };
+    }
+
+    function mutateGenes(genes, subTypeCount, rate = accMutationRate) {
+      const next = { ...genes };
+      if (Math.random() < rate * 0.22) {
+        next.subType = randInt(0, subTypeCount - 1);
+      }
+      for (const k of ['p0', 'p1', 'p2', 'p3', 'p4', 'p5', 'p6', 'p7']) {
+        if (Math.random() < 0.8) {
+          next[k] = clampFloat(next[k] + gauss() * rate * 0.32, 0, 1);
+        }
+      }
+      return next;
+    }
+
+    // =========================================================================
+    // --- CATEGORY SHAPE GENERATORS (1:1 mm Coordinates) ---
+    // =========================================================================
+
+    // 1. BUMPERS: Strictly within 80mm chassis width ±10% (72.0 mm to 88.0 mm)
+    function buildBumperGeometry(genes) {
+      const targetW = Number(lerp(BUMPER_MIN_WIDTH, BUMPER_MAX_WIDTH, genes.p0).toFixed(1)); // 72.0 .. 88.0 mm
+      const hw = targetW * 0.5;
+      const cutLoops = [];
+      const scoreSegments = [];
+      let subLabel = 'Bumper';
+
+      const st = genes.subType % 5;
+      if (st === 0) {
+        // Classic Bar Bumper with Symmetrical Vertical Overriders
+        subLabel = 'Overrider Bumper';
+        const barH = lerp(7.5, 11.5, genes.p1);
+        const hh = barH * 0.5;
+        const ovrX = lerp(15, 25, genes.p2);
+        const ovrW = lerp(4.0, 6.2, genes.p3);
+        const ovrTop = hh + lerp(3.5, 6.5, genes.p4);
+        const ovrBot = hh + lerp(2.0, 4.5, genes.p5);
+        const tipSweep = lerp(1.5, 4.5, genes.p6);
+
+        const rightPts = [
+          { x: 0,                 y: -hh },
+          { x: ovrX - ovrW * 0.6, y: -hh },
+          { x: ovrX - ovrW * 0.4, y: -ovrTop },
+          { x: ovrX + ovrW * 0.4, y: -ovrTop },
+          { x: ovrX + ovrW * 0.6, y: -hh },
+          { x: hw - 3.5,          y: -hh },
+          { x: hw,                y: -hh + tipSweep },
+          { x: hw,                y: hh - 1.2 },
+          { x: hw - 4.0,          y: hh },
+          { x: ovrX + ovrW * 0.6, y: hh },
+          { x: ovrX + ovrW * 0.4, y: ovrBot },
+          { x: ovrX - ovrW * 0.4, y: ovrBot },
+          { x: ovrX - ovrW * 0.6, y: hh },
+          { x: 0,                 y: hh }
+        ];
+        cutLoops.push(makeSymmetricLoopFromRightHalf(rightPts));
+
+        // Central intake slot(s)
+        const slotW = (ovrX - ovrW) * 1.45;
+        const slotH = barH * 0.36;
+        cutLoops.push(makeStadiumLoop(0, 0, slotW, slotH, 5));
+
+        // Side wing slots
+        const wingCx = (ovrX + ovrW * 0.7 + hw - 4) * 0.5;
+        const wingSlotW = Math.max(5, (hw - 5) - (ovrX + ovrW * 0.8));
+        const rSlot = makeStadiumLoop(wingCx, 0, wingSlotW, slotH * 0.85, 4);
+        cutLoops.push(rSlot, mirrorLoopX(rSlot));
+
+        // Score lines on overriders & trim
+        const rOvrScore = [
+          { x: ovrX, y: -ovrTop + 1.2 },
+          { x: ovrX, y: ovrBot - 1.2 }
+        ];
+        scoreSegments.push(rOvrScore, mirrorPolylineX(rOvrScore));
+        scoreSegments.push([{ x: -hw + 2, y: -hh * 0.55 }, { x: hw - 2, y: -hh * 0.55 }]);
+      } else if (st === 1) {
+        // Off-Road Bullbar / Winch Bumper
+        subLabel = 'Bullbar Bumper';
+        const barH = lerp(10, 14, genes.p1);
+        const hoopH = lerp(8.5, 13.5, genes.p2);
+        const hoopTopW = lerp(18, 28, genes.p3);
+        const hoopBaseW = hoopTopW + lerp(7, 13, genes.p4);
+        const wingBevel = lerp(3.5, 6.5, genes.p5);
+
+        const rightPts = [
+          { x: 0,                 y: -barH * 0.5 - hoopH },
+          { x: hoopTopW * 0.5,    y: -barH * 0.5 - hoopH },
+          { x: hoopBaseW * 0.5,   y: -barH * 0.5 },
+          { x: hw - 3,            y: -barH * 0.5 },
+          { x: hw,                y: -barH * 0.5 + 2.5 },
+          { x: hw - 2,            y: barH * 0.5 - wingBevel },
+          { x: hw - 14,           y: barH * 0.5 },
+          { x: 0,                 y: barH * 0.5 }
+        ];
+        cutLoops.push(makeSymmetricLoopFromRightHalf(rightPts));
+
+        // Bullbar hoop inner trapezoidal cutout
+        const tubeThick = 3.2;
+        const innerHoop = makeSymmetricLoopFromRightHalf([
+          { x: 0,                                  y: -barH * 0.5 - hoopH + tubeThick },
+          { x: Math.max(4, hoopTopW * 0.5 - 2.6),  y: -barH * 0.5 - hoopH + tubeThick },
+          { x: Math.max(6, hoopBaseW * 0.5 - 3.2), y: -barH * 0.5 - 0.5 },
+          { x: 0,                                  y: -barH * 0.5 - 0.5 }
+        ]);
+        cutLoops.push(innerHoop);
+
+        // Winch fairlead slot + D-shackle holes
+        cutLoops.push(makeStadiumLoop(0, 0, lerp(14, 20, genes.p6), 3.2, 5));
+        const shackleX = hoopBaseW * 0.5 + 5.5;
+        const rHole = makePolyCircle(shackleX, 0, 2.0, 10);
+        cutLoops.push(rHole, mirrorLoopX(rHole));
+
+        // Fold score lines along wing bevels
+        const rFold = [{ x: hoopBaseW * 0.5, y: -barH * 0.5 }, { x: hoopBaseW * 0.42, y: barH * 0.5 }];
+        scoreSegments.push(rFold, mirrorPolylineX(rFold));
+      } else if (st === 2) {
+        // GT Aero Splitter / Intercooler Bumper
+        subLabel = 'Aero Splitter Bumper';
+        const H = lerp(13, 18, genes.p1);
+        const hh = H * 0.5;
+        const canardStep = lerp(2.5, 5.0, genes.p2);
+        const lipExt = lerp(2.0, 4.0, genes.p3);
+
+        const rightPts = [
+          { x: 0,             y: -hh },
+          { x: hw - 6,        y: -hh },
+          { x: hw - 2,        y: -hh + 3 },
+          { x: hw,            y: 0 },
+          { x: hw - canardStep, y: 1.5 },
+          { x: hw,            y: hh - 2 },
+          { x: hw - 3,        y: hh },
+          { x: 20,            y: hh },
+          { x: 16,            y: hh + lipExt },
+          { x: 0,             y: hh + lipExt }
+        ];
+        cutLoops.push(makeSymmetricLoopFromRightHalf(rightPts));
+
+        // Central trapezoidal intercooler cutout
+        const icTopW = lerp(11, 16, genes.p4);
+        const icBotW = icTopW + lerp(4, 8, genes.p5);
+        const icH = H * 0.52;
+        cutLoops.push(makeSymmetricLoopFromRightHalf([
+          { x: 0,      y: -icH * 0.5 },
+          { x: icTopW, y: -icH * 0.5 },
+          { x: icBotW, y: icH * 0.5 },
+          { x: 0,      y: icH * 0.5 }
+        ]));
+
+        // Symmetrical side brake-duct polygon cutouts
+        const ductX0 = icBotW + 4.5;
+        const ductX1 = hw - 6.5;
+        if (ductX1 - ductX0 > 5) {
+          const rDuct = [
+            { x: ductX0,     y: -icH * 0.45 },
+            { x: ductX1,     y: -icH * 0.3 },
+            { x: ductX1 - 2, y: icH * 0.45 },
+            { x: ductX0 + 1, y: icH * 0.45 }
+          ];
+          cutLoops.push(rDuct, mirrorLoopX(rDuct));
+        }
+        // Splitter crease score line
+        scoreSegments.push([{ x: -hw + 3, y: hh - 1.2 }, { x: hw - 3, y: hh - 1.2 }]);
+      } else if (st === 3) {
+        // Twin-Tube Double Rail Bumper
+        subLabel = 'Twin-Rail Bumper';
+        const H = lerp(11, 15.5, genes.p1);
+        const hh = H * 0.5;
+        const tabX = lerp(16, 24, genes.p2);
+        const tabW = 6.0;
+        const tabDrop = 3.2;
+
+        const rightPts = [
+          { x: 0,               y: -hh },
+          { x: hw - 4.5,        y: -hh },
+          { x: hw,              y: -hh + 3.5 },
+          { x: hw,              y: hh - 3.5 },
+          { x: hw - 4.5,        y: hh },
+          { x: tabX + tabW / 2, y: hh },
+          { x: tabX + tabW / 3, y: hh + tabDrop },
+          { x: tabX - tabW / 3, y: hh + tabDrop },
+          { x: tabX - tabW / 2, y: hh },
+          { x: 0,               y: hh }
+        ];
+        cutLoops.push(makeSymmetricLoopFromRightHalf(rightPts));
+
+        // 3 elongated slots separating the upper and lower rails
+        const slotH = H * 0.34;
+        const centerSlotW = (tabX - 3.5) * 1.8;
+        cutLoops.push(makeStadiumLoop(0, 0, centerSlotW, slotH, 5));
+        const sideSlotCx = (tabX + 3.5 + hw - 5.5) * 0.5;
+        const sideSlotW = Math.max(6, (hw - 5.5) - (tabX + 3.5));
+        const rSideSlot = makeStadiumLoop(sideSlotCx, 0, sideSlotW, slotH, 5);
+        cutLoops.push(rSideSlot, mirrorLoopX(rSideSlot));
+
+        // Fold line for mounting tabs
+        scoreSegments.push(
+          [{ x: tabX - tabW / 2, y: hh }, { x: tabX + tabW / 2, y: hh }],
+          [{ x: -tabX - tabW / 2, y: hh }, { x: -tabX + tabW / 2, y: hh }]
+        );
+      } else {
+        // Art-Deco Gullwing Ribbed Bumper
+        subLabel = 'Deco Gullwing Bumper';
+        const barH = lerp(8.5, 12.5, genes.p1);
+        const dip = lerp(3.0, 6.5, genes.p2);
+        const stepIn = lerp(3.5, 6.5, genes.p3);
+
+        const rightPts = [
+          { x: 0,           y: -barH * 0.5 + dip },
+          { x: 11,          y: -barH * 0.5 },
+          { x: hw - stepIn, y: -barH * 0.5 },
+          { x: hw - stepIn, y: -barH * 0.22 },
+          { x: hw,          y: -barH * 0.22 },
+          { x: hw,          y: barH * 0.28 },
+          { x: hw - stepIn, y: barH * 0.28 },
+          { x: hw - stepIn, y: barH * 0.5 },
+          { x: 13,          y: barH * 0.5 },
+          { x: 0,           y: barH * 0.5 + dip }
+        ];
+        cutLoops.push(makeSymmetricLoopFromRightHalf(rightPts));
+
+        // Central diamond hole + 2 speed slots
+        cutLoops.push([
+          { x: 0,   y: dip - 2.6 },
+          { x: 3.8, y: dip },
+          { x: 0,   y: dip + 2.6 },
+          { x: -3.8,y: dip }
+        ]);
+        const rSlot = makeStadiumLoop((14 + hw - stepIn - 3) * 0.5, 0, Math.max(8, hw - stepIn - 19), 2.6, 4);
+        cutLoops.push(rSlot, mirrorLoopX(rSlot));
+
+        // Gullwing speed ribs
+        for (const yOff of [-barH * 0.26, barH * 0.26]) {
+          scoreSegments.push([
+            { x: -hw + stepIn + 1.5, y: yOff },
+            { x: -12,                y: yOff },
+            { x: 0,                  y: yOff + dip },
+            { x: 12,                 y: yOff },
+            { x: hw - stepIn - 1.5,  y: yOff }
+          ]);
+        }
+      }
+
+      const geom = finalizeAccessoryGeometry(cutLoops, scoreSegments, targetW);
+      return { subLabel, ...geom };
+    }
+
+    // 2. HEADLIGHTS: Symmetrical Left and Right pairs, non-round shapes
+    function buildHeadlightPairGeometry(genes) {
+      const rightCutLoops = [];
+      const rightScoreSegs = [];
+      let subLabel = 'Headlights (L/R)';
+
+      const pairGap = lerp(5.0, 8.0, genes.p0);
+      const w = lerp(13.0, 21.0, genes.p1);
+      const h = lerp(10.0, 17.0, genes.p2);
+      const cx = pairGap * 0.5 + w * 0.5;
+      const hw = w * 0.5;
+      const hh = h * 0.5;
+
+      const st = genes.subType % 6;
+      if (st === 0) {
+        // Cat-Eye Swept Low-Poly Pair (sculpted outer peak, tapered inner corner)
+        subLabel = 'Cat-Eye Headlights';
+        const sweepY = lerp(2.5, 5.5, genes.p3);
+        const outerLoop = [
+          { x: cx - hw,          y: 1.2 },
+          { x: cx - hw * 0.55,   y: -hh * 0.75 },
+          { x: cx + hw * 0.35,   y: -hh - sweepY * 0.4 },
+          { x: cx + hw,          y: -hh * 0.5 - sweepY },
+          { x: cx + hw * 0.82,   y: hh * 0.45 },
+          { x: cx + hw * 0.1,    y: hh },
+          { x: cx - hw * 0.65,   y: hh * 0.7 }
+        ];
+        rightCutLoops.push(outerLoop);
+
+        // Faceted inner lens cutout
+        const innerLoop = outerLoop.map(p => ({
+          x: cx + (p.x - cx) * 0.58,
+          y: p.y * 0.58
+        }));
+        rightCutLoops.push(innerLoop);
+
+        // Reflector score rays
+        for (let i = 0; i < outerLoop.length; i++) {
+          rightScoreSegs.push([innerLoop[i], outerLoop[i]]);
+        }
+      } else if (st === 1) {
+        // Stretched Hexagonal Rally Pod Pair with Bottom Mount Tab
+        subLabel = 'Hex Rally Headlights';
+        const flatW = hw * lerp(0.45, 0.72, genes.p3);
+        const tabW = 2.4;
+        const tabH = 3.2;
+        const outerLoop = [
+          { x: cx - flatW, y: -hh },
+          { x: cx + flatW, y: -hh },
+          { x: cx + hw,    y: 0 },
+          { x: cx + flatW, y: hh },
+          { x: cx + tabW,  y: hh },
+          { x: cx + tabW,  y: hh + tabH },
+          { x: cx - tabW,  y: hh + tabH },
+          { x: cx - tabW,  y: hh },
+          { x: cx - flatW, y: hh },
+          { x: cx - hw,    y: 0 }
+        ];
+        rightCutLoops.push(outerLoop);
+
+        // Inner hexagonal cutout
+        const s = 0.62;
+        rightCutLoops.push([
+          { x: cx - flatW * s, y: -hh * s },
+          { x: cx + flatW * s, y: -hh * s },
+          { x: cx + hw * s,    y: 0 },
+          { x: cx + flatW * s, y: hh * s },
+          { x: cx - flatW * s, y: hh * s },
+          { x: cx - hw * s,    y: 0 }
+        ]);
+        // Rally crosshair score lines
+        rightScoreSegs.push(
+          [{ x: cx - hw * 0.85, y: 0 }, { x: cx + hw * 0.85, y: 0 }],
+          [{ x: cx - tabW, y: hh }, { x: cx + tabW, y: hh }]
+        );
+      } else if (st === 2) {
+        // Classic Hooded Shield / Crest Pair
+        subLabel = 'Shield Headlights';
+        const browPeak = lerp(2.0, 4.5, genes.p3);
+        const outerLoop = [
+          { x: cx - hw * 0.85, y: -hh * 0.55 },
+          { x: cx - hw * 0.35, y: -hh },
+          { x: cx + hw * 0.35, y: -hh - browPeak * 0.5 },
+          { x: cx + hw,        y: -hh * 0.45 },
+          { x: cx + hw * 0.78, y: hh * 0.4 },
+          { x: cx,             y: hh },
+          { x: cx - hw * 0.78, y: hh * 0.4 }
+        ];
+        rightCutLoops.push(outerLoop);
+
+        // Inner shield cutout
+        const innerLoop = outerLoop.map(p => ({
+          x: cx + (p.x - cx) * 0.56,
+          y: p.y * 0.56
+        }));
+        rightCutLoops.push(innerLoop);
+
+        // Hood brow & vertical flute score lines
+        rightScoreSegs.push(
+          [{ x: cx - hw * 0.75, y: -hh * 0.3 }, { x: cx + hw * 0.82, y: -hh * 0.25 }],
+          [{ x: cx, y: -hh * 0.85 }, { x: cx, y: hh * 0.85 }]
+        );
+      } else if (st === 3) {
+        // Slanted Twin-Beam Quad Lamp Pair
+        subLabel = 'Twin-Beam Headlights';
+        const slant = lerp(2.5, 5.5, genes.p3);
+        const rise = lerp(1.5, 4.0, genes.p4);
+        const outerLoop = [
+          { x: cx - hw + slant * 0.5, y: -hh + rise * 0.5 },
+          { x: cx + hw + slant * 0.5, y: -hh - rise * 0.5 },
+          { x: cx + hw - slant * 0.5, y: hh - rise * 0.5 },
+          { x: cx - hw - slant * 0.5, y: hh + rise * 0.5 }
+        ];
+        rightCutLoops.push(outerLoop);
+
+        // Dual non-round diamond/hex lamp cutouts inside the bezel
+        for (const side of [-1, 1]) {
+          const lcx = cx + side * (hw * 0.44);
+          const lcy = -side * (rise * 0.22);
+          const rx = hw * 0.30;
+          const ry = hh * 0.52;
+          rightCutLoops.push([
+            { x: lcx - rx * 0.6, y: lcy - ry },
+            { x: lcx + rx * 0.8, y: lcy - ry },
+            { x: lcx + rx,       y: lcy },
+            { x: lcx + rx * 0.6, y: lcy + ry },
+            { x: lcx - rx * 0.8, y: lcy + ry },
+            { x: lcx - rx,       y: lcy }
+          ]);
+        }
+        rightScoreSegs.push([
+          { x: cx - hw, y: rise * 0.4 },
+          { x: cx + hw, y: -rise * 0.4 }
+        ]);
+      } else if (st === 4) {
+        // Winged Art-Deco Pod Pair (almond lamp + lateral speed-fin winglet)
+        subLabel = 'Winged Pod Headlights';
+        const bodyRx = hw * 0.68;
+        const bodyRy = hh * 0.88;
+        const bodyCx = cx - hw * 0.18;
+        const wingTipX = cx + hw;
+
+        const outerLoop = [
+          { x: bodyCx,               y: -bodyRy },
+          { x: bodyCx + bodyRx * 0.7,y: -bodyRy * 0.7 },
+          { x: wingTipX,             y: -bodyRy * 0.55 },
+          { x: wingTipX - 2.0,       y: -bodyRy * 0.1 },
+          { x: wingTipX - 0.5,       y: bodyRy * 0.2 },
+          { x: bodyCx + bodyRx * 0.8,y: bodyRy * 0.65 },
+          { x: bodyCx,               y: bodyRy },
+          { x: bodyCx - bodyRx * 0.8,y: bodyRy * 0.6 },
+          { x: bodyCx - bodyRx,      y: 0 },
+          { x: bodyCx - bodyRx * 0.8,y: -bodyRy * 0.6 }
+        ];
+        rightCutLoops.push(outerLoop);
+        rightCutLoops.push(makePolyEllipse(bodyCx, 0, bodyRx * 0.55, bodyRy * 0.58, 10, 0.15));
+        rightScoreSegs.push(
+          [{ x: bodyCx + bodyRx * 0.6, y: -bodyRy * 0.3 }, { x: wingTipX - 1.5, y: -bodyRy * 0.35 }],
+          [{ x: bodyCx + bodyRx * 0.6, y: bodyRy * 0.15 }, { x: wingTipX - 1.5, y: bodyRy * 0.1 }]
+        );
+      } else {
+        // Cyber Chamfered Stadium DRL Pair
+        subLabel = 'Cyber DRL Headlights';
+        const tilt = lerp(-0.22, -0.05, genes.p3);
+        const outerLoop = makeChamferRect(0, 0, w, h * 0.78, 3.0).map(p => {
+          const c = Math.cos(tilt), s = Math.sin(tilt);
+          return { x: cx + p.x * c - p.y * s, y: p.x * s + p.y * c };
+        });
+        rightCutLoops.push(outerLoop);
+
+        // Two angled DRL bar slots inside
+        for (const yOff of [-h * 0.15, h * 0.15]) {
+          const slot = makeStadiumLoop(0, yOff, w * 0.62, h * 0.16, 4).map(p => {
+            const c = Math.cos(tilt), s = Math.sin(tilt);
+            return { x: cx + p.x * c - p.y * s, y: p.x * s + p.y * c };
+          });
+          rightCutLoops.push(slot);
+        }
+      }
+
+      // Mirror every Right headlight cut loop & score line across X = 0 to form the symmetrical Left headlight
+      const allCutLoops = [];
+      for (const loop of rightCutLoops) {
+        allCutLoops.push(loop, mirrorLoopX(loop));
+      }
+      const allScoreSegs = [];
+      for (const seg of rightScoreSegs) {
+        allScoreSegs.push(seg, mirrorPolylineX(seg));
+      }
+
+      const geom = finalizeAccessoryGeometry(allCutLoops, allScoreSegs);
+      return { subLabel, ...geom };
+    }
+
+    // 3. HOOD ORNAMENTS: Winged crests, speed birds, rockets, animal silhouettes, art-deco fins
+    function buildHoodOrnamentGeometry(genes) {
+      const cutLoops = [];
+      const scoreSegments = [];
+      let subLabel = 'Hood Ornament';
+
+      const st = genes.subType % 5;
+      if (st === 0) {
+        // Art-Deco Speed Bird / Falcon Profile with Flat Mounting Base
+        subLabel = 'Speed Bird Ornament';
+        const L = lerp(24, 36, genes.p0);
+        const H = lerp(16, 25, genes.p1);
+        const sweep = lerp(4, 10, genes.p2);
+
+        const outer = [
+          { x: -L * 0.28,          y: H * 0.5 },   // front base toe
+          { x: L * 0.22,           y: H * 0.5 },   // rear base heel
+          { x: L * 0.14,           y: H * 0.25 },  // pedestal back
+          { x: L * 0.5 + sweep * 0.3, y: -H * 0.12 }, // lower feather tip
+          { x: L * 0.32,           y: -H * 0.22 },
+          { x: L * 0.5 + sweep * 0.6, y: -H * 0.36 }, // mid feather tip
+          { x: L * 0.28,           y: -H * 0.42 },
+          { x: L * 0.48 + sweep,   y: -H * 0.5 },  // top wing tip
+          { x: -L * 0.08,          y: -H * 0.42 }, // wing leading edge
+          { x: -L * 0.28,          y: -H * 0.48 }, // head crest
+          { x: -L * 0.5,           y: -H * 0.32 }, // beak tip
+          { x: -L * 0.32,          y: -H * 0.18 }, // throat
+          { x: -L * 0.42,          y: H * 0.08 },  // chest prow
+          { x: -L * 0.20,          y: H * 0.32 }   // front ankle
+        ];
+        cutLoops.push(outer);
+        // Teardrop speed slot inside wing
+        cutLoops.push([
+          { x: -L * 0.08, y: -H * 0.24 },
+          { x: L * 0.24,  y: -H * 0.30 },
+          { x: L * 0.12,  y: -H * 0.10 }
+        ]);
+        // Feather score lines
+        scoreSegments.push(
+          [{ x: -L * 0.18, y: -H * 0.05 }, { x: L * 0.36, y: -H * 0.35 }],
+          [{ x: -L * 0.14, y: H * 0.08 },  { x: L * 0.32, y: -H * 0.14 }],
+          [{ x: -L * 0.24, y: H * 0.35 },  { x: L * 0.18, y: H * 0.35 }]
+        );
+      } else if (st === 1) {
+        // Retro Rocket / Jet Spear Ornament
+        subLabel = 'Rocket Spear Ornament';
+        const L = lerp(28, 42, genes.p0);
+        const H = lerp(15, 23, genes.p1);
+        const outer = [
+          { x: -L * 0.18, y: H * 0.5 },    // pedestal front
+          { x: L * 0.22,  y: H * 0.5 },    // pedestal back
+          { x: L * 0.12,  y: H * 0.18 },   // pylon back
+          { x: L * 0.44,  y: H * 0.14 },   // lower tail fin
+          { x: L * 0.36,  y: -H * 0.04 },  // exhaust nozzle
+          { x: L * 0.5,   y: -H * 0.48 },  // tall dorsal tail fin
+          { x: L * 0.14,  y: -H * 0.22 },  // fuselage spine
+          { x: -L * 0.18, y: -H * 0.22 },  // canopy front
+          { x: -L * 0.5,  y: -H * 0.06 },  // needle nose cone
+          { x: -L * 0.18, y: H * 0.08 },   // chin intake
+          { x: -L * 0.06, y: H * 0.16 }    // pylon front
+        ];
+        cutLoops.push(outer);
+        cutLoops.push(makePolyCircle(0, -H * 0.06, H * 0.11, 8));
+        scoreSegments.push(
+          [{ x: -L * 0.42, y: -H * 0.06 }, { x: L * 0.34, y: -H * 0.06 }],
+          [{ x: L * 0.12,  y: -H * 0.18 }, { x: L * 0.42, y: -H * 0.38 }]
+        );
+      } else if (st === 2) {
+        // Symmetrical Spread-Wings Crest Emblem
+        subLabel = 'Winged Crest Emblem';
+        const W = lerp(30, 48, genes.p0);
+        const H = lerp(13, 21, genes.p1);
+        const hw = W * 0.5, hh = H * 0.5;
+        const rightPts = [
+          { x: 0,         y: -hh * 0.55 },
+          { x: 4.5,       y: -hh * 0.75 },
+          { x: hw,        y: -hh },
+          { x: hw * 0.82, y: -hh * 0.35 },
+          { x: hw * 0.92, y: -hh * 0.1 },
+          { x: hw * 0.70, y: hh * 0.25 },
+          { x: hw * 0.78, y: hh * 0.5 },
+          { x: 6.5,       y: hh * 0.65 },
+          { x: 5.0,       y: hh },
+          { x: 0,         y: hh }
+        ];
+        cutLoops.push(makeSymmetricLoopFromRightHalf(rightPts));
+        // Central star/diamond emblem cutout
+        const r = Math.min(4.2, hh * 0.48);
+        cutLoops.push([
+          { x: 0, y: -r },
+          { x: r * 0.45, y: -r * 0.45 },
+          { x: r, y: 0 },
+          { x: r * 0.45, y: r * 0.45 },
+          { x: 0, y: r },
+          { x: -r * 0.45, y: r * 0.45 },
+          { x: -r, y: 0 },
+          { x: -r * 0.45, y: -r * 0.45 }
+        ]);
+        const rWingScore = [
+          [{ x: 6, y: -hh * 0.2 }, { x: hw * 0.82, y: -hh * 0.55 }],
+          [{ x: 6, y: hh * 0.1 },  { x: hw * 0.72, y: hh * 0.05 }]
+        ];
+        for (const s of rWingScore) {
+          scoreSegments.push(s, mirrorPolylineX(s));
+        }
+      } else if (st === 3) {
+        // Leaping Greyhound / Charging Mascot Low-Poly Silhouette
+        subLabel = 'Leaping Mascot Ornament';
+        const L = lerp(26, 38, genes.p0);
+        const H = lerp(15, 23, genes.p1);
+        const outer = [
+          { x: -L * 0.24, y: H * 0.5 },    // plinth front
+          { x: L * 0.26,  y: H * 0.5 },    // plinth back
+          { x: L * 0.22,  y: H * 0.28 },   // hind leg mount
+          { x: L * 0.48,  y: H * 0.12 },   // outstretched hind paw
+          { x: L * 0.30,  y: -H * 0.12 },  // hip
+          { x: L * 0.44,  y: -H * 0.28 },  // tail tip
+          { x: L * 0.18,  y: -H * 0.22 },  // croup
+          { x: -L * 0.10, y: -H * 0.18 },  // arched back
+          { x: -L * 0.24, y: -H * 0.5 },   // pointed ears
+          { x: -L * 0.46, y: -H * 0.32 },  // snout
+          { x: -L * 0.28, y: -H * 0.12 },  // chest
+          { x: -L * 0.5,  y: H * 0.05 },   // front paws
+          { x: -L * 0.16, y: H * 0.08 },   // ribcage
+          { x: -L * 0.08, y: H * 0.28 }    // belly strut
+        ];
+        cutLoops.push(outer);
+        // Low-poly facet score lines
+        scoreSegments.push(
+          [{ x: -L * 0.28, y: -H * 0.12 }, { x: -L * 0.10, y: -H * 0.18 }, { x: L * 0.18, y: -H * 0.22 }],
+          [{ x: -L * 0.10, y: -H * 0.18 }, { x: -L * 0.16, y: H * 0.08 },  { x: L * 0.30, y: -H * 0.12 }]
+        );
+      } else {
+        // Art-Deco Fin / Lightning Crest
+        subLabel = 'Deco Fin Ornament';
+        const L = lerp(24, 38, genes.p0);
+        const H = lerp(16, 26, genes.p1);
+        const outer = [
+          { x: -L * 0.38, y: H * 0.5 },
+          { x: L * 0.32,  y: H * 0.5 },
+          { x: L * 0.24,  y: H * 0.22 },
+          { x: L * 0.46,  y: H * 0.12 },
+          { x: L * 0.34,  y: -H * 0.10 },
+          { x: L * 0.5,   y: -H * 0.5 },
+          { x: -L * 0.08, y: -H * 0.25 },
+          { x: -L * 0.5,  y: H * 0.26 }
+        ];
+        cutLoops.push(outer);
+        // 3 graduated speed holes
+        cutLoops.push(
+          makePolyCircle(-L * 0.12, H * 0.16, 1.6, 8),
+          makePolyCircle(L * 0.02,  H * 0.04, 2.1, 8),
+          makePolyCircle(L * 0.18,  -H * 0.10, 2.5, 8)
+        );
+        scoreSegments.push([
+          { x: -L * 0.38, y: H * 0.32 },
+          { x: L * 0.02,  y: -H * 0.12 },
+          { x: L * 0.38,  y: -H * 0.32 }
+        ]);
+      }
+
+      const geom = finalizeAccessoryGeometry(cutLoops, scoreSegments);
+      return { subLabel, ...geom };
+    }
+
+    // 4. FENDERS: Wheel-arch profiles scaled for the 40mm diameter wheels (inner arch r ~ 22-25mm)
+    function buildFenderGeometry(genes) {
+      const cutLoops = [];
+      const scoreSegments = [];
+      let subLabel = 'Fender';
+
+      const innerR = lerp(21.5, 24.5, genes.p0); // clears 20mm wheel radius
+      const archWidth = lerp(8.5, 13.5, genes.p1);
+      const outerR = innerR + archWidth;
+      const st = genes.subType % 4;
+
+      if (st === 0) {
+        // Swept Teardrop Pontoon Fender
+        subLabel = 'Teardrop Fender';
+        const tailExt = lerp(14, 26, genes.p2);
+        const pts = [];
+        const steps = 12;
+        // Outer arch from front lip (angle PI) over top (PI/2) to swept rear tail
+        for (let i = 0; i <= steps; i++) {
+          const a = Math.PI - (i / steps) * (Math.PI * 0.85);
+          pts.push({
+            x: Math.cos(a) * outerR,
+            y: -Math.sin(a) * outerR
+          });
+        }
+        // Teardrop tail tip
+        pts.push({ x: outerR + tailExt, y: 1.5 });
+        pts.push({ x: innerR + 4,       y: 2.5 });
+        // Inner wheel well arch back to front lip
+        for (let i = 0; i <= steps; i++) {
+          const a = (i / steps) * Math.PI;
+          pts.push({
+            x: Math.cos(a) * innerR,
+            y: -Math.sin(a) * innerR
+          });
+        }
+        pts.push({ x: -outerR - 2, y: 2.0 });
+        cutLoops.push(pts);
+
+        // Swept skirt score line
+        const midR = (innerR + outerR) * 0.52;
+        const scoreLine = [];
+        for (let i = 1; i <= steps - 1; i++) {
+          const a = Math.PI - (i / steps) * (Math.PI * 0.82);
+          scoreLine.push({ x: Math.cos(a) * midR, y: -Math.sin(a) * midR });
+        }
+        scoreLine.push({ x: outerR + tailExt * 0.65, y: 0.5 });
+        scoreSegments.push(scoreLine);
+      } else if (st === 1) {
+        // Boxy Off-Road / Baja Flare with Rivet/Bolt Holes
+        subLabel = 'Off-Road Fender Flare';
+        const topFlat = innerR * lerp(0.55, 0.80, genes.p2);
+        const outerFlat = outerR * 0.68;
+        const outer = [
+          { x: -outerR,    y: 2 },
+          { x: -outerR,    y: -outerR * 0.38 },
+          { x: -outerFlat, y: -outerR },
+          { x: outerFlat,  y: -outerR },
+          { x: outerR,     y: -outerR * 0.38 },
+          { x: outerR,     y: 2 },
+          { x: innerR,     y: 2 },
+          { x: innerR,     y: -innerR * 0.42 },
+          { x: topFlat,    y: -innerR },
+          { x: -topFlat,   y: -innerR },
+          { x: -innerR,    y: -innerR * 0.42 },
+          { x: -innerR,    y: 2 }
+        ];
+        cutLoops.push(outer);
+
+        // Bolt holes along flare perimeter
+        const boltR = (innerR + outerR) * 0.54;
+        const boltAngles = [0.22, 0.42, 0.58, 0.78].map(f => f * Math.PI);
+        for (const a of boltAngles) {
+          cutLoops.push(makePolyCircle(Math.cos(a) * boltR, -Math.sin(a) * boltR, 1.35, 8));
+        }
+        // Crease score lines
+        scoreSegments.push(
+          [{ x: -topFlat, y: -innerR }, { x: -outerFlat, y: -outerR }],
+          [{ x: topFlat,  y: -innerR }, { x: outerFlat,  y: -outerR }]
+        );
+      } else if (st === 2) {
+        // Cycle Fender with Twin Axle-Mounting Struts
+        subLabel = 'Cycle Fender + Struts';
+        const segs = 12;
+        const outer = [];
+        for (let i = 0; i <= segs; i++) {
+          const a = Math.PI * 0.92 - (i / segs) * (Math.PI * 0.84);
+          outer.push({ x: Math.cos(a) * outerR, y: -Math.sin(a) * outerR });
+        }
+        // Rear inner arch with strut reaching toward (0, 0)
+        outer.push({ x: Math.cos(0.08 * Math.PI) * innerR, y: -Math.sin(0.08 * Math.PI) * innerR });
+        outer.push({ x: 3.5, y: 0 });
+        outer.push({ x: 0,   y: 3.2 });
+        outer.push({ x: -3.5,y: 0 });
+        outer.push({ x: Math.cos(0.92 * Math.PI) * innerR, y: -Math.sin(0.92 * Math.PI) * innerR });
+        cutLoops.push(outer);
+
+        // Cutout window between the two V-struts and inner arch
+        const winPts = [{ x: 0, y: -3.2 }];
+        for (let i = 2; i <= segs - 2; i++) {
+          const a = (i / segs) * Math.PI;
+          winPts.push({ x: Math.cos(a) * innerR, y: -Math.sin(a) * innerR });
+        }
+        cutLoops.push(winPts);
+        cutLoops.push(makePolyCircle(0, 0, 1.6, 8)); // axle pin hole
+      } else {
+        // Stepped Art-Deco Fender
+        subLabel = 'Stepped Deco Fender';
+        const segs = 10;
+        const pts = [];
+        for (let i = 0; i <= segs; i++) {
+          const a = Math.PI - (i / segs) * (Math.PI * 0.65);
+          pts.push({ x: Math.cos(a) * outerR, y: -Math.sin(a) * outerR });
+        }
+        // 3 stepped fins on the trailing side
+        pts.push(
+          { x: outerR + 10, y: -outerR * 0.52 },
+          { x: outerR + 5,  y: -outerR * 0.32 },
+          { x: outerR + 12, y: -outerR * 0.25 },
+          { x: outerR + 6,  y: -outerR * 0.05 },
+          { x: outerR + 14, y: 0 },
+          { x: innerR,      y: 2 }
+        );
+        for (let i = 0; i <= segs; i++) {
+          const a = (i / segs) * Math.PI;
+          pts.push({ x: Math.cos(a) * innerR, y: -Math.sin(a) * innerR });
+        }
+        cutLoops.push(pts);
+        scoreSegments.push(
+          [{ x: 0, y: -outerR * 0.78 }, { x: outerR + 7, y: -outerR * 0.45 }],
+          [{ x: 4, y: -outerR * 0.56 }, { x: outerR + 9, y: -outerR * 0.20 }]
+        );
+      }
+
+      const geom = finalizeAccessoryGeometry(cutLoops, scoreSegments);
+      return { subLabel, ...geom };
+    }
+
+    // 5. RUNNING-BOARDS: Long stepped sideboards spanning between front & rear fenders
+    function buildRunningBoardGeometry(genes) {
+      const cutLoops = [];
+      const scoreSegments = [];
+      let subLabel = 'Running-Board';
+
+      const L = lerp(56, 92, genes.p0);
+      const W = lerp(11, 18, genes.p1);
+      const hl = L * 0.5;
+      const hw = W * 0.5;
+      const st = genes.subType % 4;
+
+      if (st === 0) {
+        // Slotted Anti-Slip Tread Running-Board with Chassis Tabs
+        subLabel = 'Slotted Running-Board';
+        const taper = lerp(4, 9, genes.p2);
+        const tabX = hl * 0.55;
+        const tabW = 7.0;
+        const tabD = 3.5;
+
+        const rightPts = [
+          { x: 0,               y: -hw - tabD * 0 },
+          { x: tabX - tabW / 2, y: -hw },
+          { x: tabX - tabW / 3, y: -hw - tabD },
+          { x: tabX + tabW / 3, y: -hw - tabD },
+          { x: tabX + tabW / 2, y: -hw },
+          { x: hl,              y: -hw },
+          { x: hl - taper,      y: hw },
+          { x: 0,               y: hw }
+        ];
+        cutLoops.push(makeSymmetricLoopFromRightHalf(rightPts));
+
+        // Row of stadium tread slots
+        const slotCount = clampInt(3 + Math.floor(genes.p3 * 3), 3, 5);
+        const usableL = (hl - taper - 4) * 2;
+        const stepX = usableL / slotCount;
+        for (let i = 0; i < slotCount; i++) {
+          const sx = -usableL * 0.5 + (i + 0.5) * stepX;
+          cutLoops.push(makeStadiumLoop(sx, 0, stepX * 0.68, W * 0.36, 4));
+        }
+        scoreSegments.push(
+          [{ x: -hl + 2, y: -hw }, { x: hl - 2, y: -hw }]
+        );
+      } else if (st === 1) {
+        // Diamond-Ribbed Rocker Step
+        subLabel = 'Diamond Rocker Board';
+        const flare = lerp(3, 6, genes.p2);
+        const rightPts = [
+          { x: 0,          y: -hw },
+          { x: hl - 8,     y: -hw },
+          { x: hl,         y: -hw - flare },
+          { x: hl - 3,     y: hw },
+          { x: 0,          y: hw }
+        ];
+        cutLoops.push(makeSymmetricLoopFromRightHalf(rightPts));
+
+        // 2 elongated drainage slots
+        const rSlot = makeStadiumLoop(hl * 0.45, hw * 0.25, hl * 0.55, 2.2, 4);
+        cutLoops.push(rSlot, mirrorLoopX(rSlot));
+
+        // Diamond tread score chevrons
+        const chevCount = 7;
+        for (let i = -chevCount; i <= chevCount; i++) {
+          const cx = i * (L * 0.055);
+          scoreSegments.push([
+            { x: cx - 2.2, y: -hw * 0.55 },
+            { x: cx,       y: -hw * 0.1 },
+            { x: cx + 2.2, y: -hw * 0.55 }
+          ]);
+        }
+      } else if (st === 2) {
+        // Off-Road Rock Slider with Truss Cutouts
+        subLabel = 'Rock Slider Step';
+        const armX = hl * 0.58;
+        const armD = 4.5;
+        const rightPts = [
+          { x: 0,        y: -hw },
+          { x: armX - 4, y: -hw },
+          { x: armX - 3, y: -hw - armD },
+          { x: armX + 3, y: -hw - armD },
+          { x: armX + 4, y: -hw },
+          { x: hl - 6,   y: -hw },
+          { x: hl,       y: -hw + 4 },
+          { x: hl - 8,   y: hw },
+          { x: 0,        y: hw }
+        ];
+        cutLoops.push(makeSymmetricLoopFromRightHalf(rightPts));
+
+        // Center + side truss cutouts
+        cutLoops.push(makeChamferRect(0, 0, hl * 0.5, W * 0.44, 1.8));
+        const rCut = [
+          { x: hl * 0.34, y: -hw * 0.44 },
+          { x: hl * 0.78, y: -hw * 0.44 },
+          { x: hl * 0.70, y: hw * 0.44 },
+          { x: hl * 0.34, y: hw * 0.44 }
+        ];
+        cutLoops.push(rCut, mirrorLoopX(rCut));
+      } else {
+        // Stepped Vintage Running-Board with Chrome Strip Scores
+        subLabel = 'Stepped Running-Board';
+        const stepW = lerp(5, 10, genes.p2);
+        const rightPts = [
+          { x: 0,          y: -hw },
+          { x: hl,         y: -hw },
+          { x: hl,         y: 0 },
+          { x: hl - stepW, y: 0 },
+          { x: hl - stepW, y: hw },
+          { x: 0,          y: hw }
+        ];
+        cutLoops.push(makeSymmetricLoopFromRightHalf(rightPts));
+        const rScraper = makeStadiumLoop(hl * 0.38, -hw * 0.25, hl * 0.42, 2.5, 4);
+        cutLoops.push(rScraper, mirrorLoopX(rScraper));
+        scoreSegments.push(
+          [{ x: -hl + stepW + 2, y: hw * 0.35 }, { x: hl - stepW - 2, y: hw * 0.35 }],
+          [{ x: -hl + stepW + 2, y: hw * 0.68 }, { x: hl - stepW - 2, y: hw * 0.68 }]
+        );
+      }
+
+      const geom = finalizeAccessoryGeometry(cutLoops, scoreSegments);
+      return { subLabel, ...geom };
+    }
+
+    // 6. DOOR HANDLES: Symmetrical Left and Right pairs
+    function buildDoorHandlePairGeometry(genes) {
+      const rightCutLoops = [];
+      const rightScoreSegs = [];
+      let subLabel = 'Door Handles (L/R)';
+
+      const w = lerp(16, 26, genes.p0);
+      const h = lerp(6.5, 11.5, genes.p1);
+      const pairGap = 5.0;
+      const cx = pairGap * 0.5 + w * 0.5;
+      const hw = w * 0.5;
+      const hh = h * 0.5;
+      const st = genes.subType % 4;
+
+      if (st === 0) {
+        // Vintage Escutcheon + Tapered Lever Handle
+        subLabel = 'Lever Door Handles';
+        const baseX = cx - hw * 0.52;
+        const outer = [
+          { x: baseX - 3.5, y: 0 },
+          { x: baseX,       y: -hh },
+          { x: baseX + 4.5, y: -hh * 0.45 },
+          { x: cx + hw - 2, y: -hh * 0.38 },
+          { x: cx + hw,     y: 0 },
+          { x: cx + hw - 3, y: hh * 0.42 },
+          { x: baseX + 4.5, y: hh * 0.35 },
+          { x: baseX,       y: hh }
+        ];
+        rightCutLoops.push(outer);
+        rightCutLoops.push(makePolyCircle(baseX, 0, 1.35, 8)); // keyhole
+        rightScoreSegs.push([{ x: baseX + 3.2, y: 0 }, { x: cx + hw - 2.5, y: 0 }]);
+      } else if (st === 1) {
+        // Grab-Loop Pull Handle with Finger Cutout
+        subLabel = 'Grab-Loop Handles';
+        const padW = 4.2;
+        const outer = [
+          { x: cx - hw,        y: hh },
+          { x: cx - hw,        y: hh * 0.2 },
+          { x: cx - hw + padW, y: -hh },
+          { x: cx + hw - padW, y: -hh },
+          { x: cx + hw,        y: hh * 0.2 },
+          { x: cx + hw,        y: hh },
+          { x: cx + hw - padW, y: hh },
+          { x: cx + hw - padW, y: 0 },
+          { x: cx - hw + padW, y: 0 },
+          { x: cx - hw + padW, y: hh }
+        ];
+        rightCutLoops.push(outer);
+        rightScoreSegs.push([
+          { x: cx - hw + padW, y: -hh * 0.5 },
+          { x: cx + hw - padW, y: -hh * 0.5 }
+        ]);
+      } else if (st === 2) {
+        // Flush Aero Paddle Handle
+        subLabel = 'Aero Paddle Handles';
+        rightCutLoops.push(makeChamferRect(cx, 0, w, h, 2.2));
+        // Thumb recess cutout on outer end
+        rightCutLoops.push(makeStadiumLoop(cx + hw * 0.38, 0, w * 0.34, h * 0.48, 4));
+        // Hinged paddle score line
+        rightScoreSegs.push([
+          { x: cx - hw * 0.75, y: -hh * 0.55 },
+          { x: cx + hw * 0.08, y: -hh * 0.55 },
+          { x: cx + hw * 0.08, y: hh * 0.55 },
+          { x: cx - hw * 0.75, y: hh * 0.55 },
+          { x: cx - hw * 0.75, y: -hh * 0.55 }
+        ]);
+      } else {
+        // Winged Coach T-Latch
+        subLabel = 'Coach T-Handles';
+        const stemW = 2.4;
+        const outer = [
+          { x: cx - hw,   y: -hh * 0.35 },
+          { x: cx - stemW,y: -hh * 0.55 },
+          { x: cx,        y: -hh },
+          { x: cx + stemW,y: -hh * 0.55 },
+          { x: cx + hw,   y: -hh * 0.35 },
+          { x: cx + hw * 0.85, y: hh * 0.2 },
+          { x: cx + stemW,y: hh * 0.25 },
+          { x: cx + stemW,y: hh },
+          { x: cx - stemW,y: hh },
+          { x: cx - stemW,y: hh * 0.25 },
+          { x: cx - hw * 0.85, y: hh * 0.2 }
+        ];
+        rightCutLoops.push(outer);
+        rightCutLoops.push(makePolyCircle(cx, -hh * 0.15, 1.3, 8));
+      }
+
+      const allCutLoops = [];
+      for (const loop of rightCutLoops) allCutLoops.push(loop, mirrorLoopX(loop));
+      const allScoreSegs = [];
+      for (const seg of rightScoreSegs) allScoreSegs.push(seg, mirrorPolylineX(seg));
+
+      const geom = finalizeAccessoryGeometry(allCutLoops, allScoreSegs);
+      return { subLabel, ...geom };
+    }
+
+    // 7. GRILLES: Radiator grilles sized to fit the 80mm chassis front
+    function buildGrilleGeometry(genes) {
+      const cutLoops = [];
+      const scoreSegments = [];
+      let subLabel = 'Radiator Grille';
+
+      const W = lerp(42, 70, genes.p0);
+      const H = lerp(22, 40, genes.p1);
+      const hw = W * 0.5, hh = H * 0.5;
+      const st = genes.subType % 3;
+
+      if (st === 0) {
+        // Classic Shield / Waterfall Vertical-Slat Grille
+        subLabel = 'Waterfall Shield Grille';
+        const botTaper = hw * lerp(0.62, 0.85, genes.p2);
+        const peak = lerp(2.5, 5.5, genes.p3);
+        const rightPts = [
+          { x: 0,        y: -hh - peak * 0.5 },
+          { x: hw * 0.8, y: -hh },
+          { x: hw,       y: -hh * 0.65 },
+          { x: botTaper, y: hh * 0.72 },
+          { x: 0,        y: hh + peak * 0.5 }
+        ];
+        cutLoops.push(makeSymmetricLoopFromRightHalf(rightPts));
+
+        // Vertical laser-cut grille slots
+        const pairs = 2;
+        const spacing = (botTaper * 0.78) / (pairs + 0.5);
+        cutLoops.push(makeStadiumLoop(0, 0, 2.6, H * 0.68, 4));
+        for (let i = 1; i <= pairs; i++) {
+          const sx = i * spacing;
+          const sh = H * (0.66 - i * 0.08);
+          const rSlot = makeStadiumLoop(sx, 0, 2.6, sh, 4);
+          cutLoops.push(rSlot, mirrorLoopX(rSlot));
+        }
+      } else if (st === 1) {
+        // 7-Slot Off-Road Grille
+        subLabel = '7-Slot Off-Road Grille';
+        cutLoops.push(makeChamferRect(0, 0, W, H, 4.0));
+        const slotCount = 7;
+        const spanX = W * 0.78;
+        const stepX = spanX / slotCount;
+        for (let i = 0; i < slotCount; i++) {
+          const sx = -spanX * 0.5 + (i + 0.5) * stepX;
+          cutLoops.push(makeStadiumLoop(sx, 0, stepX * 0.56, H * 0.64, 4));
+        }
+        scoreSegments.push(makeChamferRect(0, 0, W - 4, H - 4, 2.8));
+      } else {
+        // Chevron Louvered Grille
+        subLabel = 'Chevron Mesh Grille';
+        cutLoops.push(makeChamferRect(0, 0, W, H, 5.0));
+        const rows = 3;
+        for (let r = 0; r < rows; r++) {
+          const y0 = -hh * 0.52 + r * (H * 0.28);
+          const dip = 3.8;
+          const barT = 2.6;
+          const rLouv = [
+            { x: 2.5,       y: y0 + dip },
+            { x: hw * 0.78, y: y0 },
+            { x: hw * 0.78, y: y0 + barT },
+            { x: 2.5,       y: y0 + dip + barT }
+          ];
+          cutLoops.push(rLouv, mirrorLoopX(rLouv));
+        }
+        scoreSegments.push([{ x: 0, y: -hh + 2 }, { x: 0, y: hh - 2 }]);
+      }
+
+      const geom = finalizeAccessoryGeometry(cutLoops, scoreSegments);
+      return { subLabel, ...geom };
+    }
+
+    // 8. SPOILERS & WINGS: Chassis width ±10% (72–88 mm) with endplates
+    function buildSpoilerGeometry(genes) {
+      const targetW = Number(lerp(BUMPER_MIN_WIDTH, BUMPER_MAX_WIDTH, genes.p0).toFixed(1));
+      const hw = targetW * 0.5;
+      const chord = lerp(13, 21, genes.p1);
+      const hc = chord * 0.5;
+      const endplateExt = lerp(3.5, 6.5, genes.p2);
+      const sweep = lerp(2.0, 6.5, genes.p3);
+      const pylonX = lerp(14, 24, genes.p4);
+
+      const cutLoops = [];
+      const scoreSegments = [];
+      const rightPts = [
+        { x: 0,        y: -hc + sweep },
+        { x: hw - 5,   y: -hc },
+        { x: hw,       y: -hc - endplateExt * 0.5 },
+        { x: hw,       y: hc + endplateExt },
+        { x: hw - 5,   y: hc },
+        { x: pylonX + 3, y: hc },
+        { x: pylonX + 2, y: hc + 4.5 },
+        { x: pylonX - 2, y: hc + 4.5 },
+        { x: pylonX - 3, y: hc },
+        { x: 0,        y: hc + sweep * 0.5 }
+      ];
+      cutLoops.push(makeSymmetricLoopFromRightHalf(rightPts));
+
+      // Lightening slots along the main element
+      const rSlot = makeStadiumLoop((pylonX + hw - 7) * 0.5, 0, Math.max(6, (hw - 8) - (pylonX + 4)), 2.6, 4);
+      cutLoops.push(rSlot, mirrorLoopX(rSlot));
+
+      // Endplate fold lines & Gurney flap score line
+      scoreSegments.push(
+        [{ x: hw - 5, y: -hc }, { x: hw - 5, y: hc }],
+        [{ x: -hw + 5, y: -hc }, { x: -hw + 5, y: hc }],
+        [{ x: -hw + 6, y: hc - 2.2 }, { x: 0, y: hc + sweep * 0.5 - 2.2 }, { x: hw - 6, y: hc - 2.2 }]
+      );
+
+      const geom = finalizeAccessoryGeometry(cutLoops, scoreSegments, targetW);
+      return { subLabel: 'GT Spoiler Wing', ...geom };
+    }
+
+    // 9. SIDE MIRRORS: Symmetrical Left & Right pairs
+    function buildMirrorPairGeometry(genes) {
+      const rightCutLoops = [];
+      const rightScoreSegs = [];
+      const w = lerp(12, 18, genes.p0);
+      const h = lerp(8, 13, genes.p1);
+      const cx = 3.5 + w * 0.5;
+      const hw = w * 0.5, hh = h * 0.5;
+
+      const outer = [
+        { x: cx - hw,        y: hh * 0.5 },
+        { x: cx - hw,        y: -hh * 0.1 },
+        { x: cx - hw * 0.35, y: -hh },
+        { x: cx + hw * 0.85, y: -hh * 0.85 },
+        { x: cx + hw,        y: 0 },
+        { x: cx + hw * 0.72, y: hh * 0.75 },
+        { x: cx - hw * 0.25, y: hh * 0.65 },
+        { x: cx - hw * 0.55, y: hh }
+      ];
+      rightCutLoops.push(outer);
+      rightCutLoops.push(makeStadiumLoop(cx + hw * 0.12, -hh * 0.1, w * 0.48, h * 0.46, 5));
+      rightScoreSegs.push([{ x: cx - hw * 0.35, y: hh * 0.4 }, { x: cx - hw, y: hh * 0.2 }]);
+
+      const allCutLoops = [];
+      for (const l of rightCutLoops) allCutLoops.push(l, mirrorLoopX(l));
+      const allScoreSegs = [];
+      for (const s of rightScoreSegs) allScoreSegs.push(s, mirrorPolylineX(s));
+
+      const geom = finalizeAccessoryGeometry(allCutLoops, allScoreSegs);
+      return { subLabel: 'Side Mirrors (L/R)', ...geom };
+    }
+
+    // 10. TAILLIGHTS: Symmetrical Left & Right pairs
+    function buildTaillightPairGeometry(genes) {
+      const rightCutLoops = [];
+      const rightScoreSegs = [];
+      const w = lerp(14, 22, genes.p0);
+      const h = lerp(8, 13, genes.p1);
+      const cx = 3.5 + w * 0.5;
+      const hw = w * 0.5, hh = h * 0.5;
+
+      // Triple-slot / Chevron taillight housing
+      const outer = makeChamferRect(cx, 0, w, h, 2.4);
+      rightCutLoops.push(outer);
+      const slotW = (w * 0.68) / 3;
+      for (let i = -1; i <= 1; i++) {
+        const sx = cx + i * (slotW * 1.15);
+        rightCutLoops.push(makeStadiumLoop(sx, 0, slotW * 0.68, h * 0.58, 4));
+      }
+      rightScoreSegs.push(makeChamferRect(cx, 0, w - 2.2, h - 2.2, 1.6));
+
+      const allCutLoops = [];
+      for (const l of rightCutLoops) allCutLoops.push(l, mirrorLoopX(l));
+      const allScoreSegs = [];
+      for (const s of rightScoreSegs) allScoreSegs.push(s, mirrorPolylineX(s));
+
+      const geom = finalizeAccessoryGeometry(allCutLoops, allScoreSegs);
+      return { subLabel: 'Taillights (L/R)', ...geom };
+    }
+
+    // 11. EXHAUSTS & SIDE PIPES
+    function buildExhaustGeometry(genes) {
+      const cutLoops = [];
+      const scoreSegments = [];
+      const L = lerp(38, 62, genes.p0);
+      const H = lerp(9, 14, genes.p1);
+      const hl = L * 0.5, hh = H * 0.5;
+
+      // Perforated Lakester Side Pipe
+      const outer = [
+        { x: -hl,        y: -hh },
+        { x: -hl + 7,    y: -hh },
+        { x: -hl + 10,   y: -hh * 0.48 },
+        { x: hl - 4,     y: -hh * 0.55 },
+        { x: hl,         y: -hh * 0.78 },
+        { x: hl - 2.5,   y: hh * 0.78 },
+        { x: hl - 6,     y: hh * 0.55 },
+        { x: -hl + 4,    y: hh * 0.55 }
+      ];
+      cutLoops.push(outer);
+      const holes = 5;
+      const span = (hl - 9) - (-hl + 12);
+      for (let i = 0; i < holes; i++) {
+        const hx = -hl + 12 + (i / (holes - 1)) * span;
+        cutLoops.push(makePolyCircle(hx, 0, 1.35, 8));
+      }
+      scoreSegments.push([{ x: -hl + 10, y: -hh * 0.3 }, { x: hl - 6, y: -hh * 0.3 }]);
+
+      const geom = finalizeAccessoryGeometry(cutLoops, scoreSegments);
+      return { subLabel: 'Side-Pipe Exhaust', ...geom };
+    }
+
+    // 12. WINDSHIELDS & VISORS: ~74–84mm wide folding frames with glass cutouts
+    function buildWindshieldGeometry(genes) {
+      const targetW = Number(lerp(74, 84, genes.p0).toFixed(1));
+      const hw = targetW * 0.5;
+      const H = lerp(18, 25, genes.p1);
+      const hh = H * 0.5;
+      const vPeak = lerp(2.0, 4.5, genes.p2);
+
+      const cutLoops = [];
+      const scoreSegments = [];
+      const rightPts = [
+        { x: 0,       y: -hh - vPeak * 0.5 },
+        { x: hw - 3,  y: -hh },
+        { x: hw,      y: hh - 3 },
+        { x: hw - 10, y: hh - 3 },
+        { x: hw - 12, y: hh },
+        { x: 10,      y: hh },
+        { x: 8,       y: hh - 3 },
+        { x: 0,       y: hh - 3 + vPeak * 0.5 }
+      ];
+      cutLoops.push(makeSymmetricLoopFromRightHalf(rightPts));
+
+      // Left & Right split-window glass pane cutouts
+      const rPane = [
+        { x: 2.2,     y: -hh - vPeak * 0.3 + 3.2 },
+        { x: hw - 5.2,y: -hh + 3.2 },
+        { x: hw - 3.5,y: hh - 6.2 },
+        { x: 2.2,     y: hh - 6.2 + vPeak * 0.3 }
+      ];
+      cutLoops.push(rPane, mirrorLoopX(rPane));
+
+      // Center V-fold & bottom dashboard tab fold lines
+      scoreSegments.push(
+        [{ x: 0, y: -hh - vPeak * 0.5 }, { x: 0, y: hh - 3 + vPeak * 0.5 }],
+        [{ x: 8, y: hh - 3 }, { x: hw - 10, y: hh - 3 }],
+        [{ x: -hw + 10, y: hh - 3 }, { x: -8, y: hh - 3 }]
+      );
+
+      const geom = finalizeAccessoryGeometry(cutLoops, scoreSegments, targetW);
+      return { subLabel: 'Split Windshield Frame', ...geom };
+    }
+
+    // --- Unified Accessory Factory & Mutator ---
+    function createAccessoryItem(category, genes = null) {
+      const g = genes ? { ...genes } : createRandomGenes(6);
+      let built;
+      switch (category) {
+        case 'bumper':        built = buildBumperGeometry(g); break;
+        case 'headlight':     built = buildHeadlightPairGeometry(g); break;
+        case 'hood_ornament': built = buildHoodOrnamentGeometry(g); break;
+        case 'fender':        built = buildFenderGeometry(g); break;
+        case 'running_board': built = buildRunningBoardGeometry(g); break;
+        case 'door_handle':   built = buildDoorHandlePairGeometry(g); break;
+        case 'grille':        built = buildGrilleGeometry(g); break;
+        case 'spoiler':       built = buildSpoilerGeometry(g); break;
+        case 'mirror':        built = buildMirrorPairGeometry(g); break;
+        case 'taillight':     built = buildTaillightPairGeometry(g); break;
+        case 'exhaust':       built = buildExhaustGeometry(g); break;
+        case 'windshield':    built = buildWindshieldGeometry(g); break;
+        default:              built = buildBumperGeometry(g); break;
+      }
+      return {
+        id: nextAccId++,
+        category,
+        genes: g,
+        subLabel: built.subLabel,
+        cutLoops: built.cutLoops,
+        scoreSegments: built.scoreSegments,
+        widthMm: built.widthMm,
+        heightMm: built.heightMm,
+        placedX: 0,
+        placedY: 0
+      };
+    }
+
+    function pickWeightedCategory() {
+      if (activeCategoryFilter !== 'all') return activeCategoryFilter;
+      const pool = ACCESSORY_CATEGORIES.filter(c => c.id !== 'all');
+      const totalW = pool.reduce((s, c) => s + c.weight, 0);
+      let r = Math.random() * totalW;
+      for (const c of pool) {
+        r -= c.weight;
+        if (r <= 0) return c.id;
+      }
+      return 'bumper';
+    }
+
+    // Generate a dense collection of accessories (preserving any currently selected/pinned items if keepSelected = true)
+    function generateAccessoriesCollection(keepSelected = false) {
+      const kept = keepSelected
+        ? accessoriesList.filter(item => selectedAccessoryIds.has(item.id))
+        : [];
+      if (!keepSelected) {
+        selectedAccessoryIds.clear();
+      }
+
+      const targetTotal = accDensity;
+      const newItems = [...kept];
+
+      // Ensure every primary category mentioned by the user is well-represented when in 'all' view
+      const coreCategories = [
+        'bumper', 'bumper',
+        'headlight', 'headlight',
+        'hood_ornament', 'hood_ornament',
+        'fender', 'fender',
+        'running_board', 'running_board',
+        'door_handle', 'door_handle',
+        'grille', 'spoiler', 'mirror', 'taillight', 'exhaust', 'windshield'
+      ];
+
+      let coreIdx = 0;
+      while (newItems.length < targetTotal) {
+        let cat;
+        if (activeCategoryFilter !== 'all') {
+          cat = activeCategoryFilter;
+        } else if (coreIdx < coreCategories.length && kept.length === 0) {
+          cat = coreCategories[coreIdx++];
+        } else {
+          cat = pickWeightedCategory();
+        }
+        newItems.push(createAccessoryItem(cat));
+      }
+
+      accessoriesList = newItems;
+      currentSheetFilename = generateSafeFileName() + '_accessories';
+      renderCategoryFilterBar();
+      renderInteractiveAccessoriesSheet(true);
+      updateAccessoriesToolbarState();
+    }
+
+    // Breed/mutate unselected slots from the currently selected accessories
+    function breedFromSelectedAccessories() {
+      const parents = accessoriesList.filter(item => selectedAccessoryIds.has(item.id));
+      if (parents.length === 0) return;
+
+      accessoriesList = accessoriesList.map(item => {
+        if (selectedAccessoryIds.has(item.id)) return item;
+        const parent = parents[Math.floor(Math.random() * parents.length)];
+        const mutated = mutateGenes(parent.genes, 6, accMutationRate);
+        return createAccessoryItem(parent.category, mutated);
+      });
+
+      renderCategoryFilterBar();
+      renderInteractiveAccessoriesSheet(false);
+      updateAccessoriesToolbarState();
+    }
+
+    // =========================================================================
+    // --- 2D DENSE MAX-RECTS BIN PACKER & GROUPED LAYOUT ENGINE ---
+    // =========================================================================
+    function packAccessoriesMaxRects(items, sheetWidthMm = 360, gapMm = 3.5) {
+      // Sort copy by area descending so large items (bumpers, spoilers, running-boards, fenders)
+      // form the structural skeleton and small items (headlights, handles, ornaments, mirrors)
+      // pack tightly into every interior pocket and gap.
+      const order = items.slice().sort((a, b) => (b.widthMm * b.heightMm) - (a.widthMm * a.heightMm));
+      let freeRects = [{ x: 0, y: 0, w: Math.max(120, sheetWidthMm), h: 100000 }];
+
+      function rectsIntersect(a, b) {
+        return !(b.x >= a.x + a.w || b.x + b.w <= a.x || b.y >= a.y + a.h || b.y + b.h <= a.y);
+      }
+
+      function isContainedIn(a, b) {
+        return a.x >= b.x - 1e-4 && a.y >= b.y - 1e-4 &&
+               a.x + a.w <= b.x + b.w + 1e-4 && a.y + a.h <= b.y + b.h + 1e-4;
+      }
+
+      const placements = new Map();
+      let maxX = 0, maxY = 0;
+
+      for (const item of order) {
+        const rw = item.widthMm + gapMm;
+        const rh = item.heightMm + gapMm;
+
+        // Top-Left / Best Y then X fit
+        let bestRect = null;
+        let bestY = Infinity;
+        let bestX = Infinity;
+
+        for (const fr of freeRects) {
+          if (fr.w >= rw && fr.h >= rh) {
+            if (fr.y < bestY - 0.1 || (Math.abs(fr.y - bestY) <= 0.1 && fr.x < bestX)) {
+              bestY = fr.y;
+              bestX = fr.x;
+              bestRect = fr;
+            }
+          }
+        }
+
+        const px = bestRect ? bestRect.x : 0;
+        const py = bestRect ? bestRect.y : maxY + gapMm;
+        const used = { x: px, y: py, w: rw, h: rh };
+
+        // Center of the item inside its allocated cell
+        const cx = px + item.widthMm * 0.5;
+        const cy = py + item.heightMm * 0.5;
+        placements.set(item.id, { cx, cy, x0: px, y0: py });
+
+        if (px + item.widthMm > maxX) maxX = px + item.widthMm;
+        if (py + item.heightMm > maxY) maxY = py + item.heightMm;
+
+        // Split intersecting free rectangles
+        const nextFree = [];
+        for (const fr of freeRects) {
+          if (!rectsIntersect(fr, used)) {
+            nextFree.push(fr);
+            continue;
+          }
+          if (used.x > fr.x) {
+            nextFree.push({ x: fr.x, y: fr.y, w: used.x - fr.x, h: fr.h });
+          }
+          if (used.x + used.w < fr.x + fr.w) {
+            nextFree.push({ x: used.x + used.w, y: fr.y, w: (fr.x + fr.w) - (used.x + used.w), h: fr.h });
+          }
+          if (used.y > fr.y) {
+            nextFree.push({ x: fr.x, y: fr.y, w: fr.w, h: used.y - fr.y });
+          }
+          if (used.y + used.h < fr.y + fr.h) {
+            nextFree.push({ x: fr.x, y: used.y + used.h, w: fr.w, h: (fr.y + fr.h) - (used.y + used.h) });
+          }
+        }
+
+        // Prune redundant free rectangles
+        freeRects = [];
+        for (let i = 0; i < nextFree.length; i++) {
+          if (nextFree[i].w < 4 || nextFree[i].h < 4) continue;
+          let redundant = false;
+          for (let j = 0; j < nextFree.length; j++) {
+            if (i !== j && isContainedIn(nextFree[i], nextFree[j])) {
+              redundant = true;
+              break;
+            }
+          }
+          if (!redundant) freeRects.push(nextFree[i]);
+        }
+      }
+
+      return { placements, boundsW: Math.max(10, maxX), boundsH: Math.max(10, maxY) };
+    }
+
+    function packAccessoriesGrouped(items, sheetWidthMm = 360, gapMm = 3.5) {
+      const placements = new Map();
+      let curY = 0;
+      let maxX = 0, maxY = 0;
+
+      for (const cat of ACCESSORY_CATEGORIES) {
+        if (cat.id === 'all') continue;
+        const group = items.filter(it => it.category === cat.id);
+        if (group.length === 0) continue;
+
+        let curX = 0;
+        let rowH = 0;
+        for (const item of group) {
+          if (curX > 0 && curX + item.widthMm > sheetWidthMm) {
+            curX = 0;
+            curY += rowH + gapMm;
+            rowH = 0;
+          }
+          const cx = curX + item.widthMm * 0.5;
+          const cy = curY + item.heightMm * 0.5;
+          placements.set(item.id, { cx, cy, x0: curX, y0: curY });
+          if (curX + item.widthMm > maxX) maxX = curX + item.widthMm;
+          if (curY + item.heightMm > maxY) maxY = curY + item.heightMm;
+
+          curX += item.widthMm + gapMm;
+          if (item.heightMm > rowH) rowH = item.heightMm;
+        }
+        curY += rowH + gapMm * 1.8;
+      }
+
+      return { placements, boundsW: Math.max(10, maxX), boundsH: Math.max(10, maxY) };
+    }
+
+    // Convert a closed loop of points into an SVG path string shifted by (cx, cy)
+    function loopToSvgPath(loop, cx = 0, cy = 0) {
+      if (!loop || loop.length === 0) return '';
+      let d = `M ${(loop[0].x + cx).toFixed(2)} ${(loop[0].y + cy).toFixed(2)}`;
+      for (let i = 1; i < loop.length; i++) {
+        d += ` L ${(loop[i].x + cx).toFixed(2)} ${(loop[i].y + cy).toFixed(2)}`;
+      }
+      return d + ' Z';
+    }
+
+    function polylineToSvgPath(pts, cx = 0, cy = 0) {
+      if (!pts || pts.length < 2) return '';
+      let d = `M ${(pts[0].x + cx).toFixed(2)} ${(pts[0].y + cy).toFixed(2)}`;
+      for (let i = 1; i < pts.length; i++) {
+        d += ` L ${(pts[i].x + cx).toFixed(2)} ${(pts[i].y + cy).toFixed(2)}`;
+      }
+      return d;
+    }
+
+    function getVisibleAccessories() {
+      if (activeCategoryFilter === 'all') return accessoriesList;
+      return accessoriesList.filter(it => it.category === activeCategoryFilter);
+    }
+
+    // --- Render Interactive 2D Sheet in Accessories Tab ---
+    function renderInteractiveAccessoriesSheet(resetCamera = false) {
+      const visibleItems = getVisibleAccessories();
+      const sheetW = 380;
+      const gap = 4.0;
+      const { placements, boundsW, boundsH } = packAccessoriesMaxRects(visibleItems, sheetW, gap);
+
+      const margin = 12;
+      const vx = -margin;
+      const vy = -margin;
+      const vw = boundsW + margin * 2;
+      const vh = boundsH + margin * 2;
+
+      defaultStageViewBox = { x: vx, y: vy, w: vw, h: vh };
+      if (resetCamera) {
+        stageViewBox = { ...defaultStageViewBox };
+      }
+
+      const svgParts = [
+        `<svg id="acc-interactive-svg" xmlns="http://www.w3.org/2000/svg" viewBox="${stageViewBox.x.toFixed(2)} ${stageViewBox.y.toFixed(2)} ${stageViewBox.w.toFixed(2)} ${stageViewBox.h.toFixed(2)}" preserveAspectRatio="xMidYMid meet">`,
+        `  <defs>`,
+        `    <pattern id="mm-grid-10" width="10" height="10" patternUnits="userSpaceOnUse">`,
+        `      <path d="M 10 0 L 0 0 0 10" fill="none" stroke="#1e2229" stroke-width="0.25" />`,
+        `    </pattern>`,
+        `    <pattern id="mm-grid-50" width="50" height="50" patternUnits="userSpaceOnUse">`,
+        `      <rect width="50" height="50" fill="url(#mm-grid-10)" />`,
+        `      <path d="M 50 0 L 0 0 0 50" fill="none" stroke="#282e38" stroke-width="0.45" />`,
+        `    </pattern>`,
+        `  </defs>`,
+        `  <rect x="${(vx - 500).toFixed(1)}" y="${(vy - 500).toFixed(1)}" width="${(vw + 1000).toFixed(1)}" height="${(vh + 1000).toFixed(1)}" fill="url(#mm-grid-50)" />`,
+        `  <rect x="-3" y="-3" width="${(boundsW + 6).toFixed(2)}" height="${(boundsH + 6).toFixed(2)}" rx="4" fill="rgba(16, 18, 22, 0.55)" stroke="#333942" stroke-width="0.5" />`
+      ];
+
+      // 80mm Chassis Reference Scale Bar at the top of the sheet
+      svgParts.push(
+        `  <g transform="translate(0, -6)">`,
+        `    <line x1="0" y1="0" x2="${FIXED_WIDTH}" y2="0" stroke="#ffaa66" stroke-width="0.5" />`,
+        `    <line x1="0" y1="-1.5" x2="0" y2="1.5" stroke="#ffaa66" stroke-width="0.5" />`,
+        `    <line x1="${BUMPER_MIN_WIDTH}" y1="-1.2" x2="${BUMPER_MIN_WIDTH}" y2="1.2" stroke="#66ccff" stroke-width="0.4" />`,
+        `    <line x1="${FIXED_WIDTH}" y1="-1.8" x2="${FIXED_WIDTH}" y2="1.8" stroke="#ffaa66" stroke-width="0.6" />`,
+        `    <line x1="${BUMPER_MAX_WIDTH}" y1="-1.2" x2="${BUMPER_MAX_WIDTH}" y2="1.2" stroke="#66ccff" stroke-width="0.4" />`,
+        `    <text x="${FIXED_WIDTH / 2}" y="-2.2" fill="#ffaa66" font-family="monospace" font-size="2.8" text-anchor="middle">80mm CHASSIS WIDTH (BUMPERS 72–88mm ±10%)</text>`,
+        `  </g>`
+      );
+
+      for (const item of visibleItems) {
+        const pos = placements.get(item.id);
+        if (!pos) continue;
+        item.placedX = pos.cx;
+        item.placedY = pos.cy;
+
+        const isSel = selectedAccessoryIds.has(item.id);
+        const compoundCutD = item.cutLoops.map(l => loopToSvgPath(l, pos.cx, pos.cy)).join(' ');
+        const scoreD = item.scoreSegments.map(s => polylineToSvgPath(s, pos.cx, pos.cy)).join(' ');
+
+        svgParts.push(
+          `  <g class="acc-item-group ${isSel ? 'selected' : ''}" data-acc-id="${item.id}">`,
+          `    <rect class="acc-bbox" x="${(pos.cx - item.widthMm / 2 - 1).toFixed(2)}" y="${(pos.cy - item.heightMm / 2 - 1).toFixed(2)}" width="${(item.widthMm + 2).toFixed(2)}" height="${(item.heightMm + 2).toFixed(2)}" />`,
+          `    <path class="acc-body-fill" d="${compoundCutD}" />`
+        );
+        if (scoreD) {
+          svgParts.push(`    <path class="acc-score" d="${scoreD}" />`);
+        }
+        svgParts.push(
+          `    <path class="acc-cut" d="${compoundCutD}" />`,
+          `    <text class="acc-label" x="${pos.cx.toFixed(2)}" y="${(pos.cy + item.heightMm / 2 + 0.6).toFixed(2)}" font-size="2.1">${item.widthMm}×${item.heightMm}</text>`,
+          `  </g>`
+        );
+      }
+
+      svgParts.push(`</svg>`);
+      accStage.innerHTML = svgParts.join('\n');
+
+      // Attach hover and click listeners to each accessory group
+      const groups = accStage.querySelectorAll('.acc-item-group');
+      groups.forEach(gEl => {
+        const id = parseInt(gEl.getAttribute('data-acc-id'), 10);
+        const item = accessoriesList.find(it => it.id === id);
+        if (!item) return;
+
+        gEl.addEventListener('mouseenter', () => {
+          const chassisPct = Math.round((item.widthMm / FIXED_WIDTH) * 100);
+          const extraNote = item.category === 'bumper'
+            ? ` · <span class="hud-accent">${chassisPct}% of 80mm chassis</span>`
+            : item.category === 'headlight'
+            ? ` · <span class="hud-accent">Symmetrical L/R Non-Round Pair</span>`
+            : '';
+          accHudBadge.innerHTML =
+            `<span class="hud-accent">${item.subLabel}</span> · <span class="hud-blue">${item.widthMm} × ${item.heightMm} mm</span> · ${item.cutLoops.length} cut loop(s)${extraNote} · Click to ${selectedAccessoryIds.has(item.id) ? 'unpin' : 'select/pin'}`;
+        });
+
+        gEl.addEventListener('click', (e) => {
+          if (didDragStage) return;
+          e.stopPropagation();
+          if (selectedAccessoryIds.has(item.id)) {
+            selectedAccessoryIds.delete(item.id);
+            gEl.classList.remove('selected');
+          } else {
+            selectedAccessoryIds.add(item.id);
+            gEl.classList.add('selected');
+          }
+          updateAccessoriesToolbarState();
+        });
+      });
+    }
+
+    function applyStageViewBox() {
+      const svgEl = document.getElementById('acc-interactive-svg');
+      if (svgEl) {
+        svgEl.setAttribute(
+          'viewBox',
+          `${stageViewBox.x.toFixed(2)} ${stageViewBox.y.toFixed(2)} ${stageViewBox.w.toFixed(2)} ${stageViewBox.h.toFixed(2)}`
+        );
+      }
+    }
+
+    // Pan & Zoom handlers on #acc-stage
+    accStage.addEventListener('mousedown', (e) => {
+      if (e.button !== 0) return;
+      isPanningStage = true;
+      didDragStage = false;
+      panStartClient = { x: e.clientX, y: e.clientY };
+      panStartViewBox = { x: stageViewBox.x, y: stageViewBox.y };
+      accStage.classList.add('dragging');
+    });
+
+    window.addEventListener('mousemove', (e) => {
+      if (!isPanningStage) return;
+      const dxPx = e.clientX - panStartClient.x;
+      const dyPx = e.clientY - panStartClient.y;
+      if (Math.hypot(dxPx, dyPx) > 4) didDragStage = true;
+
+      const rect = accStage.getBoundingClientRect();
+      if (rect.width > 0 && rect.height > 0) {
+        const scale = Math.max(stageViewBox.w / rect.width, stageViewBox.h / rect.height);
+        stageViewBox.x = panStartViewBox.x - dxPx * scale;
+        stageViewBox.y = panStartViewBox.y - dyPx * scale;
+        applyStageViewBox();
+      }
+    });
+
+    window.addEventListener('mouseup', () => {
+      if (isPanningStage) {
+        isPanningStage = false;
+        accStage.classList.remove('dragging');
+      }
+    });
+
+    accStage.addEventListener('wheel', (e) => {
+      e.preventDefault();
+      const zoomFactor = e.deltaY > 0 ? 1.14 : 0.88;
+      const rect = accStage.getBoundingClientRect();
+      const fx = rect.width > 0 ? (e.clientX - rect.left) / rect.width : 0.5;
+      const fy = rect.height > 0 ? (e.clientY - rect.top) / rect.height : 0.5;
+
+      const newW = clampFloat(stageViewBox.w * zoomFactor, 60, 1600);
+      const newH = clampFloat(stageViewBox.h * zoomFactor, 45, 1200);
+      stageViewBox.x += (stageViewBox.w - newW) * fx;
+      stageViewBox.y += (stageViewBox.h - newH) * fy;
+      stageViewBox.w = newW;
+      stageViewBox.h = newH;
+      applyStageViewBox();
+    }, { passive: false });
+
+    accZoomInBtn.addEventListener('click', () => {
+      stageViewBox.x += stageViewBox.w * 0.1;
+      stageViewBox.y += stageViewBox.h * 0.1;
+      stageViewBox.w *= 0.8;
+      stageViewBox.h *= 0.8;
+      applyStageViewBox();
+    });
+
+    accZoomOutBtn.addEventListener('click', () => {
+      stageViewBox.x -= stageViewBox.w * 0.125;
+      stageViewBox.y -= stageViewBox.h * 0.125;
+      stageViewBox.w *= 1.25;
+      stageViewBox.h *= 1.25;
+      applyStageViewBox();
+    });
+
+    accZoomFitBtn.addEventListener('click', () => {
+      stageViewBox = { ...defaultStageViewBox };
+      applyStageViewBox();
+    });
+
+    // --- Category Filter Pills & Toolbar State ---
+    function renderCategoryFilterBar() {
+      accFilterBar.innerHTML = '';
+      for (const cat of ACCESSORY_CATEGORIES) {
+        const count = cat.id === 'all'
+          ? accessoriesList.length
+          : accessoriesList.filter(it => it.category === cat.id).length;
+
+        const btn = document.createElement('button');
+        btn.className = `cat-pill ${activeCategoryFilter === cat.id ? 'active' : ''}`;
+        btn.innerHTML = `${cat.icon} ${cat.name} <span class="cat-count">${count}</span>`;
+        btn.addEventListener('click', () => {
+          activeCategoryFilter = cat.id;
+          renderCategoryFilterBar();
+          renderInteractiveAccessoriesSheet(true);
+        });
+        accFilterBar.appendChild(btn);
+      }
+    }
+
+    function updateAccessoriesToolbarState() {
+      const selCount = selectedAccessoryIds.size;
+      accBreedBtn.disabled = selCount === 0;
+      accClearSelBtn.disabled = selCount === 0;
+      accStatusLabel.textContent = `🔧 ${accessoriesList.length} accessories · ${selCount} selected`;
+    }
+
+    // --- Build 1:1 mm Laser-Cutting SVG for Accessories Export Modal ---
+    function buildAccessoriesLaserSVG({
+      scope = 'all',
+      layout = 'nested',
+      sheetWidthMm = 360,
+      gapMm = 3.5,
+      includeScore = true,
+      includeLabels = false
+    } = {}) {
+      let items = getVisibleAccessories();
+      if (scope === 'selected' && selectedAccessoryIds.size > 0) {
+        items = accessoriesList.filter(it => selectedAccessoryIds.has(it.id));
+      }
+      if (items.length === 0) items = accessoriesList;
+
+      const packed = layout === 'grouped'
+        ? packAccessoriesGrouped(items, sheetWidthMm, gapMm)
+        : packAccessoriesMaxRects(items, sheetWidthMm, gapMm);
+
+      const { placements, boundsW, boundsH } = packed;
+      const margin = 10;
+      const vx = -margin;
+      const vy = -margin;
+      const vw = boundsW + margin * 2;
+      const vh = boundsH + margin * 2;
+
+      const svgLines = [
+        `<?xml version="1.0" encoding="UTF-8"?>`,
+        `<svg xmlns="http://www.w3.org/2000/svg" width="${vw.toFixed(2)}mm" height="${vh.toFixed(2)}mm" viewBox="${vx.toFixed(2)} ${vy.toFixed(2)} ${vw.toFixed(2)} ${vh.toFixed(2)}">`
+      ];
+
+      let scorePathCount = 0;
+      if (includeScore) {
+        svgLines.push(`  <g id="score-fold-lines" fill="none" stroke="#0000FF" stroke-width="0.45" stroke-linecap="round" stroke-linejoin="round">`);
+        for (const item of items) {
+          const pos = placements.get(item.id);
+          if (!pos) continue;
+          for (const seg of item.scoreSegments) {
+            const d = polylineToSvgPath(seg, pos.cx, pos.cy);
+            if (d) {
+              svgLines.push(`    <path d="${d}" />`);
+              scorePathCount++;
+            }
+          }
+        }
+        svgLines.push(`  </g>`);
+      }
+
+      let cutPathCount = 0;
+      svgLines.push(`  <g id="cut-lines" fill="none" stroke="#FF0000" stroke-width="0.6" stroke-linecap="round" stroke-linejoin="round">`);
+      for (const item of items) {
+        const pos = placements.get(item.id);
+        if (!pos) continue;
+        for (const loop of item.cutLoops) {
+          const d = loopToSvgPath(loop, pos.cx, pos.cy);
+          if (d) {
+            svgLines.push(`    <path d="${d}" />`);
+            cutPathCount++;
+          }
+        }
+      }
+      svgLines.push(`  </g>`);
+
+      if (includeLabels) {
+        svgLines.push(`  <g id="labels" fill="#ffaa66" font-family="monospace, sans-serif" text-anchor="middle">`);
+        for (const item of items) {
+          const pos = placements.get(item.id);
+          if (!pos) continue;
+          svgLines.push(
+            `    <text x="${pos.cx.toFixed(2)}" y="${pos.cy.toFixed(2)}" font-size="2.6">${item.subLabel} (${item.widthMm}×${item.heightMm}mm)</text>`
+          );
+        }
+        svgLines.push(`  </g>`);
+      }
+
+      svgLines.push(`</svg>`);
+
+      return {
+        svg: svgLines.join('\n'),
+        widthMm: Math.round(vw),
+        heightMm: Math.round(vh),
+        itemCount: items.length,
+        cutPathCount,
+        scorePathCount
+      };
+    }
+
+    function updateAccModalPreview() {
+      const cleanedName = accFilenameInput.value.trim().replace(/\.svg$/i, '') || currentSheetFilename;
+      currentSheetFilename = cleanedName;
+      const sheetW = clampFloat(parseFloat(accSheetWidthInput.value) || 360, 120, 2000);
+      const gap = clampFloat(parseFloat(accGapInput.value) || 3.5, 0.5, 30);
+
+      const res = buildAccessoriesLaserSVG({
+        scope: accExportScope.value,
+        layout: accExportLayout.value,
+        sheetWidthMm: sheetW,
+        gapMm: gap,
+        includeScore: accScoreChk.checked,
+        includeLabels: accLabelsChk.checked
+      });
+
+      accViewport.innerHTML = res.svg;
+      accDimensionsInfo.textContent =
+        `${currentSheetFilename}.svg · Sheet: ${res.widthMm} × ${res.heightMm} mm · ${res.itemCount} accessories (${res.cutPathCount} cut loops, ${res.scorePathCount} score paths)`;
+    }
+
+    // --- Tab Switching & Accessories Toolbar Events ---
+    function switchTab(tabName) {
+      activeTab = tabName;
+      const isVehicles = tabName === 'vehicles';
+
+      tabVehiclesBtn.classList.toggle('active', isVehicles);
+      tabAccessoriesBtn.classList.toggle('active', !isVehicles);
+
+      container.style.display = isVehicles ? 'grid' : 'none';
+      accessoriesContainer.classList.toggle('active', !isVehicles);
+
+      vehicleToolbar.style.display = isVehicles ? 'flex' : 'none';
+      historyContainer.style.display = isVehicles ? 'flex' : 'none';
+      accToolbar.style.display = isVehicles ? 'none' : 'flex';
+      accFilterBar.style.display = isVehicles ? 'none' : 'flex';
+
+      if (isVehicles) {
+        infoBanner.innerHTML =
+          `🧬 genetic car browser · click a car to <span>select &amp; breed</span> · <span>spacebar</span> toggles wheel transparency · dimensions in mm`;
+      } else {
+        infoBanner.innerHTML =
+          `🔧 automobile accessories generator · <span>80mm chassis</span> (bumpers ±10%) · <span>headlights L/R symmetrical</span> · click shapes to select/pin`;
+        if (accessoriesList.length === 0) {
+          generateAccessoriesCollection(false);
+        }
+      }
+    }
+
+    tabVehiclesBtn.addEventListener('click', () => switchTab('vehicles'));
+    tabAccessoriesBtn.addEventListener('click', () => switchTab('accessories'));
+
+    accReseedBtn.addEventListener('click', () => {
+      generateAccessoriesCollection(selectedAccessoryIds.size > 0);
+    });
+
+    accBreedBtn.addEventListener('click', () => {
+      breedFromSelectedAccessories();
+    });
+
+    accClearSelBtn.addEventListener('click', () => {
+      selectedAccessoryIds.clear();
+      accStage.querySelectorAll('.acc-item-group.selected').forEach(el => el.classList.remove('selected'));
+      updateAccessoriesToolbarState();
+    });
+
+    accDensitySlider.addEventListener('input', () => {
+      accDensity = parseInt(accDensitySlider.value, 10);
+      accDensityValue.textContent = String(accDensity);
+      generateAccessoriesCollection(true);
+    });
+
+    accMutationSlider.addEventListener('input', () => {
+      const pct = parseInt(accMutationSlider.value, 10);
+      accMutationRate = pct / 100;
+      accMutationValue.textContent = `${pct}%`;
+    });
+
+    accExportModalBtn.addEventListener('click', () => {
+      accFilenameInput.value = currentSheetFilename;
+      if (selectedAccessoryIds.size > 0) {
+        accExportScope.value = 'selected';
+      } else {
+        accExportScope.value = 'all';
+      }
+      updateAccModalPreview();
+      accModal.classList.add('open');
+    });
+
+    accExportScope.addEventListener('change', updateAccModalPreview);
+    accExportLayout.addEventListener('change', updateAccModalPreview);
+    accSheetWidthInput.addEventListener('input', updateAccModalPreview);
+    accGapInput.addEventListener('input', updateAccModalPreview);
+    accScoreChk.addEventListener('change', updateAccModalPreview);
+    accLabelsChk.addEventListener('change', updateAccModalPreview);
+    accFilenameInput.addEventListener('input', updateAccModalPreview);
+
+    accDownloadBtn.addEventListener('click', () => {
+      const cleanedName = accFilenameInput.value.trim().replace(/\.svg$/i, '') || currentSheetFilename;
+      currentSheetFilename = cleanedName;
+      accFilenameInput.value = cleanedName;
+      const sheetW = clampFloat(parseFloat(accSheetWidthInput.value) || 360, 120, 2000);
+      const gap = clampFloat(parseFloat(accGapInput.value) || 3.5, 0.5, 30);
+
+      const res = buildAccessoriesLaserSVG({
+        scope: accExportScope.value,
+        layout: accExportLayout.value,
+        sheetWidthMm: sheetW,
+        gapMm: gap,
+        includeScore: accScoreChk.checked,
+        includeLabels: accLabelsChk.checked
+      });
+
+      const blob = new Blob([res.svg], { type: 'image/svg+xml' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `${currentSheetFilename}.svg`;
+      a.click();
+      URL.revokeObjectURL(url);
+    });
+
+    accCloseBtn.addEventListener('click', () => {
+      accModal.classList.remove('open');
+    });
+
+    accModal.addEventListener('click', (e) => {
+      if (e.target === accModal) accModal.classList.remove('open');
+    });
+
+    // Pre-populate the initial accessories sheet
+    generateAccessoriesCollection(false);
+
     // --- animation loop ---
     function animate() {
       requestAnimationFrame(animate);
+
+      if (activeTab !== 'vehicles') return;
 
       if (!isRotationPaused) {
         currentRotationY += 0.008;

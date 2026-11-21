@@ -1,0 +1,606 @@
+; =====================================================================
+; CONWAY'S GAME OF LIFE - ATARI 800 (8bitworkshop / DASM)
+; =====================================================================
+; Format: 8K Atari Cartridge ROM ($A000 - $BFFF)
+; Grid:   40x24 Toroidal (Wrap-around) Universe in ANTIC Mode 2
+; Optimization: Separable 3x3 Sliding-Window Convolution + 9-Sum LUT
+; Controls:
+;   - Console SELECT or Joystick Fire: Generate new random soup (POKEY)
+;   - Console OPTION: Load classic patterns (Gliders + R-Pentomino)
+; =====================================================================
+
+        processor 6502
+
+; --- Zero Page Pointers & Variables ($80 - $9F) ---
+PTR_C       = $80       ; 2 bytes: Pointer to current row in CURR_GRID
+PTR_N       = $82       ; 2 bytes: Pointer to target row in NEXT_GRID
+PTR_SCR     = $84       ; 2 bytes: Pointer to video memory
+PTR_ABOVE   = $86       ; 2 bytes: Pointer to row y-1 in CURR_GRID
+PTR_BELOW   = $88       ; 2 bytes: Pointer to row y+1 in CURR_GRID
+PTR_TMP1    = $8A       ; 2 bytes: Boundary copy pointer
+ROW_CNT     = $8E       ; 1 byte:  Current Y row counter (1..24)
+DEBOUNCE    = $90       ; 1 byte:  Input cooldown timer
+
+; --- Separable Convolution Sliding Window (Zero Page) ---
+SUM_L       = $92       ; 1 byte:  Vertical 3-row sum for column c-1
+SUM_C       = $93       ; 1 byte:  Vertical 3-row sum for column c
+SUM_R       = $94       ; 1 byte:  Vertical 3-row sum for column c+1
+
+; --- RAM Buffers ---
+DLIST_ADDR  = $1000     ; ANTIC Display List in RAM
+SCR_MEM     = $1800     ; 40x24 Screen RAM (960 bytes)
+CURR_GRID   = $2000     ; 42x26 Padded Current Generation Buffer (1092 bytes)
+NEXT_GRID   = $2800     ; 42x26 Padded Next Generation Buffer (1092 bytes)
+
+; --- Grid Constants ---
+STRIDE      = 42        ; 40 visible columns + 2 border columns
+ROWS        = 24        ; 24 visible rows
+COLS        = 40        ; 40 visible columns
+
+; --- Pre-calculated Grid Row Addresses ---
+CURR_ROW0   = CURR_GRID
+CURR_ROW1   = CURR_GRID + 42
+CURR_ROW2   = CURR_GRID + 84
+CURR_ROW24  = CURR_GRID + 1008
+CURR_ROW25  = CURR_GRID + 1050
+NEXT_ROW1   = NEXT_GRID + 42
+
+; --- Atari 800 OS Shadow & Hardware Registers ---
+RTCLOK      = $0014     ; OS 60Hz Frame Counter (LSB)
+SDLSTL      = $0230     ; OS Shadow: Display List Pointer (Low)
+SDLSTH      = $0231     ; OS Shadow: Display List Pointer (High)
+COLOR1      = $02C5     ; OS Shadow: Playfield 1 Luminance (Text/Cell brightness)
+COLOR2      = $02C6     ; OS Shadow: Playfield 2 Color (Background hue)
+COLOR4      = $02C8     ; OS Shadow: Border Color
+CHBAS       = $02F4     ; OS Shadow: Character Set Base Page ($E0 = ROM font)
+
+STRIG0      = $0284     ; OS Shadow: Joystick 0 Trigger (0 = pressed)
+CONSOL      = $D01F     ; GTIA Console Switches (Bit 1=SELECT, Bit 2=OPTION)
+RANDOM      = $D20A     ; POKEY Hardware Random Number Generator
+SKCTL       = $D20F     ; POKEY Serial Port / RNG Control
+
+; =====================================================================
+; CARTRIDGE ROM ORIGIN ($A000)
+; =====================================================================
+        org $A000
+
+Start:
+        cld                     ; Clear decimal mode
+
+        ; Initialize POKEY so hardware RANDOM ($D20A) runs continuously
+        lda #$03
+        sta SKCTL
+
+        ; Copy ANTIC Display List from ROM into RAM at $1000
+        ldx #DListEnd - DList - 1
+.copyDL:
+        lda DList,x
+        sta DLIST_ADDR,x
+        dex
+        bpl .copyDL
+
+        ; Point OS Display List Shadow Registers to our custom Display List
+        lda #<DLIST_ADDR
+        sta SDLSTL
+        lda #>DLIST_ADDR
+        sta SDLSTH
+
+        ; Set Atari Color Palette
+        lda #$0E                ; High luminance white/gold for live cells
+        sta COLOR1
+        lda #$92                ; Deep ocean blue background
+        sta COLOR2
+        lda #$90                ; Darker blue border
+        sta COLOR4
+        lda #$E0                ; Standard Atari ROM character set ($E000)
+        sta CHBAS
+
+        lda #0
+        sta DEBOUNCE
+
+        ; Seed initial board with classic patterns + gliders, then render
+        jsr SeedPatterns
+        jsr RenderGrid
+
+; =====================================================================
+; MAIN SIMULATION LOOP
+; =====================================================================
+MainLoop:
+        ; Wait for Vertical Blank (ticks at 60Hz via OS RTCLOK)
+        ; Change ldx #4 to ldx #1 to run at full 60Hz frame rate!
+        ldx #4
+.waitFrames:
+        lda RTCLOK
+.waitTick:
+        cmp RTCLOK
+        beq .waitTick
+        dex
+        bne .waitFrames
+
+        ; Check user inputs (SELECT / OPTION / Joystick Trigger)
+        jsr CheckInput
+
+        ; 1. Wrap toroidal edges on CURR_GRID
+        jsr UpdateBorders
+
+        ; 2. Compute next generation into NEXT_GRID (Separable Convolution)
+        jsr StepLife
+
+        ; 3. Copy NEXT_GRID back to CURR_GRID and draw to screen RAM
+        jsr CommitAndRender
+
+        jmp MainLoop
+
+; =====================================================================
+; SUBROUTINE: CheckInput
+; Reads Console Switches (SELECT/OPTION) and Joystick 0 Fire Button
+; =====================================================================
+CheckInput:
+        lda DEBOUNCE
+        beq .readKeys
+        dec DEBOUNCE
+        rts
+
+.readKeys:
+        ; Check Console SELECT key (Bit 1 of CONSOL is 0 when pressed)
+        lda CONSOL
+        and #$02
+        beq .doRandom
+
+        ; Check Joystick 0 Fire Button (0 when pressed)
+        lda STRIG0
+        beq .doRandom
+
+        ; Check Console OPTION key (Bit 2 of CONSOL is 0 when pressed)
+        lda CONSOL
+        and #$04
+        beq .doPatterns
+        rts
+
+.doRandom:
+        lda #15                 ; Set debounce cooldown
+        sta DEBOUNCE
+        jsr SeedRandom
+        jsr RenderGrid
+        rts
+
+.doPatterns:
+        lda #15
+        sta DEBOUNCE
+        jsr SeedPatterns
+        jsr RenderGrid
+        rts
+
+; =====================================================================
+; SUBROUTINE: ClearGrids
+; Zeroes out both CURR_GRID ($2000) and NEXT_GRID ($2800)
+; =====================================================================
+ClearGrids:
+        lda #0
+        tax
+.clrLoop:
+        sta CURR_GRID+$000,x
+        sta CURR_GRID+$100,x
+        sta CURR_GRID+$200,x
+        sta CURR_GRID+$300,x
+        sta CURR_GRID+$400,x
+        sta NEXT_GRID+$000,x
+        sta NEXT_GRID+$100,x
+        sta NEXT_GRID+$200,x
+        sta NEXT_GRID+$300,x
+        sta NEXT_GRID+$400,x
+        inx
+        bne .clrLoop
+        rts
+
+; =====================================================================
+; SUBROUTINE: SeedRandom
+; Fills CURR_GRID with ~25% live cells using POKEY hardware RNG ($D20A)
+; =====================================================================
+SeedRandom:
+        jsr ClearGrids
+
+        lda #<CURR_ROW1
+        sta PTR_C
+        lda #>CURR_ROW1
+        sta PTR_C+1
+
+        lda #ROWS
+        sta ROW_CNT
+
+.randRow:
+        ldy #1                  ; Columns 1..40
+.randCol:
+        lda RANDOM              ; Read true hardware noise from POKEY
+        cmp #68                 ; ~26% probability of being alive
+        lda #0
+        rol                     ; C=1 if RANDOM >= 68, invert via EOR:
+        eor #1                  ; Now A=1 ~26% of the time, 0 otherwise
+        sta (PTR_C),y
+        iny
+        cpy #COLS+1
+        bne .randCol
+
+        clc
+        lda PTR_C
+        adc #STRIDE
+        sta PTR_C
+        bcc .noCarry
+        inc PTR_C+1
+.noCarry:
+        dec ROW_CNT
+        bne .randRow
+        rts
+
+; =====================================================================
+; SUBROUTINE: SeedPatterns
+; Places an R-pentomino and Gliders onto the grid
+; =====================================================================
+SeedPatterns:
+        jsr ClearGrids
+        ldx #0
+.patLoop:
+        lda PatternOffsetsLo,x
+        ora PatternOffsetsHi,x
+        beq .patDone            ; $0000 terminator reached
+
+        clc
+        lda PatternOffsetsLo,x
+        adc #<CURR_GRID
+        sta PTR_C
+        lda PatternOffsetsHi,x
+        adc #>CURR_GRID
+        sta PTR_C+1
+
+        ldy #0
+        lda #1
+        sta (PTR_C),y
+
+        inx
+        jmp .patLoop
+.patDone:
+        rts
+
+; =====================================================================
+; SUBROUTINE: UpdateBorders
+; Wraps top/bottom rows and left/right columns for a toroidal grid
+; =====================================================================
+UpdateBorders:
+        ; 1. Copy Row 24 -> Row 0 (top ghost row), and Row 1 -> Row 25 (bottom ghost row)
+        ldx #COLS
+.rowWrap:
+        lda CURR_ROW24,x
+        sta CURR_ROW0,x
+
+        lda CURR_ROW1,x
+        sta CURR_ROW25,x
+
+        dex
+        bne .rowWrap
+
+        ; 2. Copy Col 40 -> Col 0, and Col 1 -> Col 41 for all 26 rows (0..25)
+        lda #<CURR_GRID
+        sta PTR_TMP1
+        lda #>CURR_GRID
+        sta PTR_TMP1+1
+
+        ldx #ROWS+2             ; 26 total rows including top/bottom ghost rows
+.colWrap:
+        ldy #COLS               ; Y = 40 (Rightmost active column)
+        lda (PTR_TMP1),y
+        ldy #0                  ; Y = 0 (Left ghost column)
+        sta (PTR_TMP1),y
+
+        ldy #1                  ; Y = 1 (Leftmost active column)
+        lda (PTR_TMP1),y
+        ldy #COLS+1             ; Y = 41 (Right ghost column)
+        sta (PTR_TMP1),y
+
+        clc
+        lda PTR_TMP1
+        adc #STRIDE
+        sta PTR_TMP1
+        bcc .nextColWrap
+        inc PTR_TMP1+1
+.nextColWrap:
+        dex
+        bne .colWrap
+        rts
+
+; =====================================================================
+; SUBROUTINE: StepLife (Separable 3x3 Convolution + 9-Cell Lookup Table)
+;
+; Instead of 8 indirect loads per cell, we maintain a 3-column sliding
+; window of vertical sums (SUM_L, SUM_C, SUM_R).
+; Because the 9-cell sum = (8 neighbors + center cell):
+;   - 9-cell sum == 3 -> Always Alive (1) (0+3 birth, or 1+2 survive)
+;   - 9-cell sum == 4 -> Keep State ($FF) (1+3 survive, or 0+4 dead)
+;   - All other sums  -> Always Dead (0)
+; =====================================================================
+StepLife:
+        lda #<CURR_ROW0
+        sta PTR_ABOVE
+        lda #>CURR_ROW0
+        sta PTR_ABOVE+1
+
+        lda #<CURR_ROW1
+        sta PTR_C
+        lda #>CURR_ROW1
+        sta PTR_C+1
+
+        lda #<CURR_ROW2
+        sta PTR_BELOW
+        lda #>CURR_ROW2
+        sta PTR_BELOW+1
+
+        lda #<NEXT_ROW1
+        sta PTR_N
+        lda #>NEXT_ROW1
+        sta PTR_N+1
+
+        lda #ROWS
+        sta ROW_CNT
+
+.rowLoop:
+        ; Prime the sliding window for Column 0 (SUM_L) and Column 1 (SUM_C)
+        ldy #0
+        lda (PTR_ABOVE),y
+        clc
+        adc (PTR_C),y
+        adc (PTR_BELOW),y
+        sta SUM_L
+
+        iny                     ; Y = 1
+        lda (PTR_ABOVE),y
+        adc (PTR_C),y           ; Carry is guaranteed 0 (max sum is 3)
+        adc (PTR_BELOW),y
+        sta SUM_C
+
+        ; --- Inner Loop across columns 1..40 ---
+        ; Note: Carry is guaranteed 0 at the start of every iteration
+.colLoop:
+        iny                     ; Y = c + 1 (look ahead to right column)
+        lda (PTR_ABOVE),y       ; 5 cy
+        adc (PTR_C),y           ; 5 cy
+        adc (PTR_BELOW),y       ; 5 cy -> A = vertical sum for col c+1
+        sta SUM_R               ; 3 cy
+
+        adc SUM_C               ; 3 cy
+        adc SUM_L               ; 3 cy -> A = 3x3 total sum (0..9)
+        tax                     ; 2 cy
+
+        ; Slide the vertical-sum window left for the next column
+        lda SUM_C               ; 3 cy
+        sta SUM_L               ; 3 cy
+        lda SUM_R               ; 3 cy
+        sta SUM_C               ; 3 cy
+
+        dey                     ; 2 cy -> Restore Y = c (current column)
+        lda LifeTBL9,x          ; 4 cy -> Lookup fate from 9-cell sum
+        bpl .storeCell          ; 2/3 cy -> $00 or $01 stores directly
+        lda (PTR_C),y           ; 5 cy -> $FF sentinel: keep current state
+.storeCell:
+        sta (PTR_N),y           ; 6 cy -> Write to NEXT_GRID
+        iny                     ; 2 cy -> Advance Y to next center column
+        cpy #COLS+1             ; 2 cy
+        bne .colLoop            ; 3 cy
+
+        ; Advance all 4 row pointers by STRIDE (42 bytes)
+        clc
+        lda PTR_ABOVE
+        adc #STRIDE
+        sta PTR_ABOVE
+        bcc .c1
+        inc PTR_ABOVE+1
+.c1:
+        clc
+        lda PTR_C
+        adc #STRIDE
+        sta PTR_C
+        bcc .c2
+        inc PTR_C+1
+.c2:
+        clc
+        lda PTR_BELOW
+        adc #STRIDE
+        sta PTR_BELOW
+        bcc .c3
+        inc PTR_BELOW+1
+.c3:
+        clc
+        lda PTR_N
+        adc #STRIDE
+        sta PTR_N
+        bcc .c4
+        inc PTR_N+1
+.c4:
+        dec ROW_CNT
+        bne .rowLoop
+        rts
+
+; --- 9-Cell Sum Lookup Table (Index = 8 neighbors + center cell, 0..9) ---
+LifeTBL9:
+        .byte $00, $00, $00     ; Sums 0, 1, 2 -> Dead (0)
+        .byte $01               ; Sum 3        -> Alive (1)
+        .byte $FF               ; Sum 4        -> Keep current cell ($FF sentinel)
+        .byte $00, $00, $00, $00, $00 ; Sums 5..9 -> Dead (0)
+
+; =====================================================================
+; SUBROUTINE: CommitAndRender
+; Copies NEXT_GRID -> CURR_GRID and updates Screen RAM ($1800)
+; =====================================================================
+CommitAndRender:
+        lda #<CURR_ROW1
+        sta PTR_C
+        lda #>CURR_ROW1
+        sta PTR_C+1
+
+        lda #<NEXT_ROW1
+        sta PTR_N
+        lda #>NEXT_ROW1
+        sta PTR_N+1
+
+        lda #<SCR_MEM
+        sta PTR_SCR
+        lda #>SCR_MEM
+        sta PTR_SCR+1
+
+        lda #ROWS
+        sta ROW_CNT
+
+.commitRow:
+        ldy #1                  ; Grid columns are 1..40
+.commitCol:
+        lda (PTR_N),y
+        sta (PTR_C),y           ; Update CURR_GRID
+
+        ; Convert 0/1 to Atari internal character code:
+        ; 0 -> $00 (Empty Space), 1 -> $A0 (Inverse Solid Block)
+        beq .drawDead
+        lda #$80
+.drawDead:
+        dey                     ; Screen columns are 0..39
+        sta (PTR_SCR),y
+        iny                     ; Restore Y for grid index
+
+        iny
+        cpy #COLS+1
+        bne .commitCol
+
+        ; Advance PTR_C and PTR_N by STRIDE (42)
+        clc
+        lda PTR_C
+        adc #STRIDE
+        sta PTR_C
+        bcc .cc1
+        inc PTR_C+1
+.cc1:
+        clc
+        lda PTR_N
+        adc #STRIDE
+        sta PTR_N
+        bcc .cc2
+        inc PTR_N+1
+.cc2:
+        ; Advance PTR_SCR by 40 bytes (1 screen line)
+        clc
+        lda PTR_SCR
+        adc #COLS
+        sta PTR_SCR
+        bcc .cc3
+        inc PTR_SCR+1
+.cc3:
+        dec ROW_CNT
+        bne .commitRow
+        rts
+
+; =====================================================================
+; SUBROUTINE: RenderGrid
+; Renders CURR_GRID directly to Screen RAM ($1800)
+; =====================================================================
+RenderGrid:
+        lda #<CURR_ROW1
+        sta PTR_C
+        lda #>CURR_ROW1
+        sta PTR_C+1
+
+        lda #<SCR_MEM
+        sta PTR_SCR
+        lda #>SCR_MEM
+        sta PTR_SCR+1
+
+        lda #ROWS
+        sta ROW_CNT
+
+.renRow:
+        ldy #1
+.renCol:
+        lda (PTR_C),y
+        beq .renDead
+        lda #$A0
+.renDead:
+        dey
+        sta (PTR_SCR),y
+        iny
+        iny
+        cpy #COLS+1
+        bne .renCol
+
+        clc
+        lda PTR_C
+        adc #STRIDE
+        sta PTR_C
+        bcc .rc1
+        inc PTR_C+1
+.rc1:
+        clc
+        lda PTR_SCR
+        adc #COLS
+        sta PTR_SCR
+        bcc .rc2
+        inc PTR_SCR+1
+.rc2:
+        dec ROW_CNT
+        bne .renRow
+        rts
+
+; =====================================================================
+; ANTIC DISPLAY LIST DATA (Copied to $1000 at Startup)
+; =====================================================================
+DList:
+        .byte $70, $70, $70             ; 24 blank scanlines for top overscan
+        .byte $42, <SCR_MEM, >SCR_MEM   ; Mode 2 (GR.0 text) + Load Memory Scan ($1800)
+        .byte $02, $02, $02, $02, $02   ; 23 additional lines of ANTIC Mode 2
+        .byte $02, $02, $02, $02, $02
+        .byte $02, $02, $02, $02, $02
+        .byte $02, $02, $02, $02, $02
+        .byte $02, $02, $02
+        .byte $41, <DLIST_ADDR, >DLIST_ADDR ; Jump and Wait for Vertical Blank (JVB)
+DListEnd:
+
+; =====================================================================
+; INITIAL SEED OFFSETS (Row * 42 + Col)
+; Includes: R-Pentomino (Center) and 2 Gliders
+; =====================================================================
+PatternOffsetsLo:
+        ; R-Pentomino at (Col 20, Row 11..13)
+        .byte <482, <483
+        .byte <523, <524
+        .byte <566
+        ; Glider 1 at (Col 5, Row 3..5)
+        .byte <132
+        .byte <175
+        .byte <215, <216, <217
+        ; Glider 2 at (Col 32, Row 18..20)
+        .byte <789
+        .byte <832
+        .byte <872, <873, <874
+        .byte $00               ; Terminator
+
+PatternOffsetsHi:
+        ; R-Pentomino
+        .byte >482, >483
+        .byte >523, >524
+        .byte >566
+        ; Glider 1
+        .byte >132
+        .byte >175
+        .byte >215, >216, >217
+        ; Glider 2
+        .byte >789
+        .byte >832
+        .byte >872, >873, >874
+        .byte $00               ; Terminator
+
+; =====================================================================
+; ATARI 800 CARTRIDGE INIT & HARDWARE VECTORS ($BFF9 - $BFFF)
+; =====================================================================
+        org $BFF9
+CartInit:
+        rts                     ; $BFF9: Immediate return for Cart Init phase
+
+        org $BFFA
+        .word Start             ; $BFFA-$BFFB: Cartridge Start Vector ($A000)
+        .byte $00               ; $BFFC: $00 = Cartridge Present
+        .byte $04               ; $BFFD: Option byte ($04 = Start cart, skip disk boot)
+        .word CartInit          ; $BFFE-$BFFF: Cartridge Init Vector ($BFF9)

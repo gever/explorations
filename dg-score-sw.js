@@ -1,7 +1,7 @@
 /* dg-score service worker: makes dg-score.html (and any downloaded course pack file) available offline.
    - app shell + packs: stale-while-revalidate / cache-first
    - bump VERSION when dg-score.html changes in a way that must reach users immediately */
-const VERSION = 'dg-score-v2';
+const VERSION = 'dg-score-v3';
 const SHELL = ['./dg-score.html', './dg-score-sw.js'];
 
 self.addEventListener('install', e => {

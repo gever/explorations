@@ -12,7 +12,12 @@
     OpenStreetMap vectors). Packs are stored in IndexedDB, so everything works with no signal after download.
   * No external libraries: the 3D view is a small WebGL2 renderer. Open over https:// or http://localhost for
     GPS + service-worker offline caching (dg-score-sw.js). From file:// everything but those two still works.
-  * Deep links: ?pack=packs/morley.dgpack  ?view=3d|flat  ?base=sat|map  ?hole=3  ?demo=1
+  * "Play without pack": at a course with no .dgpack yet, the app builds one on the spot from free, key-less
+    sources (OpenStreetMap vectors via Overpass, AWS Terrain Tiles, USGS NAIP aerial photos) around your GPS
+    position, saves it on the device like any other pack, and learns tees/baskets as you play. A banner offers
+    it whenever your GPS fix is outside the open map; it is also in the Course dialog. Needs a data connection
+    once; with none it falls back to a blank GPS-only map that can be refreshed later (↻ in the Course dialog).
+  * Deep links: ?pack=packs/morley.dgpack  ?view=3d|flat  ?base=sat|map  ?hole=3  ?demo=1  ?live=1|LAT,LON
 -->
 <style>
   :root {
@@ -57,6 +62,12 @@
   #toast { position:absolute; z-index:9; left:50%; bottom:12px; transform:translateX(-50%); background:rgba(15,23,42,.95); border:1px solid var(--line);
            border-radius:12px; padding:10px 14px; font-size:.9rem; display:none; gap:12px; align-items:center; max-width:92%; }
   #toast.show { display:flex; }
+  #noPack { position:absolute; z-index:6; left:8px; right:8px; bottom:26px; display:flex; gap:8px; align-items:center; background:rgba(15,23,42,.94);
+            border:1px solid var(--warn); border-radius:12px; padding:8px 8px 8px 12px; font-size:.84rem; }
+  #noPack[hidden] { display:none; }
+  #noPack span { flex:1; min-width:0; }
+  #noPack .go { background:var(--primary); border-radius:8px; padding:8px 10px; font-weight:600; white-space:nowrap; }
+  #noPack .x { background:none; font-size:1.2rem; padding:0 6px; color:var(--sub); }
   #toast button { background:var(--primary); border-radius:8px; padding:6px 10px; font-weight:600; }
   #selbar { position:absolute; z-index:8; left:8px; right:8px; bottom:10px; background:rgba(15,23,42,.96); border:1px solid var(--accent); border-radius:14px; padding:10px; display:none; flex-direction:column; gap:8px; }
   #selbar.show { display:flex; }
@@ -139,6 +150,7 @@
       <button class="fab" id="zoomIn" aria-label="Zoom in">+</button>
       <button class="fab" id="zoomOut" aria-label="Zoom out">−</button>
     </div>
+    <div id="noPack" hidden><span id="noPackMsg"></span><button class="go" id="noPackGo"></button><button class="x" id="noPackX" aria-label="Dismiss">×</button></div>
     <div id="toast"><span id="toastMsg"></span><button id="toastBtn" hidden></button></div>
     <div id="selbar">
       <div id="selInfo"></div>
@@ -174,6 +186,11 @@
   <h2>Courses</h2>
   <h3>Downloaded for offline use</h3>
   <ul id="packList"></ul>
+  <h3>At a course with no pack?</h3>
+  <div class="row"><button class="b pri" id="liveGo">▶ Play without pack (use my location)</button></div>
+  <div class="row"><input type="text" id="liveLL" placeholder="or type lat,lon  e.g. 32.7335,-117.1437" inputmode="decimal">
+    <label>Area&nbsp;<select id="liveSize"><option value="1000">1 km</option><option value="1600" selected>1.6 km</option><option value="2500">2.5 km</option></select></label></div>
+  <p class="muted">Builds a map on the spot from free data (OpenStreetMap, AWS terrain tiles, USGS aerial photos). Needs a data connection once, then it is saved on this device. Tees and baskets are learned as you play. Start near the first tee, or pick a larger area for long courses.</p>
   <h3>Add a course pack</h3>
   <div class="row"><input type="file" id="packFile" accept=".dgpack,application/octet-stream"></div>
   <div class="row"><input type="url" id="packUrl" placeholder="packs/morley.dgpack or https://..." value="packs/morley.dgpack"><button class="b pri" id="packGo">Download</button></div>
@@ -250,7 +267,7 @@ let P = null;         // currently open course pack (decoded)
 let course = null;    // {id, layout:{holes}, round}
 let holes = [];       // layout in memory: {ref, par, tee:{lon,lat,x,y}|null, basket:{...}|null}
 let round = null;
-
+let building = false, bannerOff = false;   // "play without pack": build in progress / banner dismissed this session
 const toLocal = (lon, lat) => [(lon - P.lon0) * P.kx, (lat - P.lat0) * P.ky];
 const toLL = (x, y) => [P.lon0 + x / P.kx, P.lat0 + y / P.ky];
 
@@ -356,10 +373,10 @@ async function idb(mode, fn) {
   });
 }
 const packIndex = () => ls.get('dg.v1.packs', []);
-async function storePack(id, name, buf) {
+async function storePack(id, name, buf, extra = {}) {
   await idb('readwrite', s => s.put({ id, buffer: buf }));
   const idx = packIndex().filter(p => p.id !== id);
-  idx.unshift({ id, name, size: buf.byteLength, added: Date.now() });
+  idx.unshift({ id, name, size: buf.byteLength, added: Date.now(), ...extra });
   ls.set('dg.v1.packs', idx);
 }
 async function deletePack(id) {
@@ -443,6 +460,7 @@ function updateGpsChip() {
     c.textContent = t;
   }
   $('#btnFollow').classList.toggle('on', cam.follow);
+  updateBanner();
 }
 if (navigator.permissions && navigator.permissions.query)
   navigator.permissions.query({ name: 'geolocation' }).then(r => { if (r.state === 'granted') startGps(); }).catch(() => {});
@@ -792,7 +810,7 @@ function drawOverlay() {
 
   // OB areas from OSM (red) + water outline on aerial photo
   for (const f of P.feats) {
-    if (f.t !== 'a' || !(f.k === 'ob' || (f.k === 'water' && S.base === 'sat'))) continue;
+    if (f.t !== 'a' || !(f.k === 'ob' || (f.k === 'water' && S.base === 'sat' && P.img))) continue;
     g.beginPath(); for (const r of f.rings) pathOf(g, r, true);
     if (f.k === 'ob') { g.fillStyle = 'rgba(239,68,68,.22)'; g.fill('evenodd'); g.setLineDash([8, 5]); g.strokeStyle = '#ef4444'; g.lineWidth = 2; }
     else { g.setLineDash([]); g.strokeStyle = 'rgba(56,189,248,.9)'; g.lineWidth = 1.5; }
@@ -900,10 +918,12 @@ function setView(v) {
   $('#viewSeg').querySelectorAll('button').forEach(b => b.classList.toggle('on', b.dataset.v === v));
   dirty = true;
 }
-function setBase(b) {
-  if (b === 'sat' && (!P || !P.img)) { toast('No aerial imagery in this pack — showing the map'); b = 'map'; }
-  S.base = b; saveSettings();
-  $('#baseSeg').querySelectorAll('button').forEach(x => x.classList.toggle('on', x.dataset.b === b));
+function setBase(b, quiet) {              // a pack without imagery shows the map but must not overwrite the user's Satellite preference
+  const noImg = b === 'sat' && (!P || !P.img);
+  if (noImg && !quiet) toast('No aerial imagery in this pack — showing the map');
+  if (!noImg) { S.base = b; saveSettings(); }
+  const shown = noImg ? 'map' : b;
+  $('#baseSeg').querySelectorAll('button').forEach(x => x.classList.toggle('on', x.dataset.b === shown));
   dirty = true;
 }
 $('#viewSeg').addEventListener('click', e => { const b = e.target.closest('button'); if (b && !b.disabled) setView(b.dataset.v); });
@@ -981,7 +1001,7 @@ let toastT = 0;
 function toast(msg, btnLabel, btnFn, ms = 3500) {
   $('#toastMsg').textContent = msg; const b = $('#toastBtn');
   b.hidden = !btnLabel; b.textContent = btnLabel || ''; b.onclick = () => { $('#toast').classList.remove('show'); btnFn && btnFn(); };
-  $('#toast').classList.add('show'); clearTimeout(toastT); toastT = setTimeout(() => $('#toast').classList.remove('show'), btnLabel ? 7000 : ms);
+  $('#toast').classList.add('show'); clearTimeout(toastT); toastT = setTimeout(() => $('#toast').classList.remove('show'), btnLabel ? Math.max(7000, ms) : ms);
 }
 function selectMark(id) {
   selected = id; const bar = $('#selbar');
@@ -1170,7 +1190,7 @@ function openSettings() {
   $('#setUnits').value = S.units; $('#setExag').value = S.exag; $('#exagVal').textContent = S.exag + '×'; $('#setTrees').checked = S.trees; $('#setHoles').value = holes.length;
   renderPlayerEdit();
   $('#aboutPack').textContent = `${P.name}: ${Math.round(P.W)} × ${Math.round(P.H)} m, terrain ${P.dw}×${P.dh}, ${P.img ? 'aerial imagery, ' : 'no imagery, '}${P.feats.length} map features. ` +
-    ((P.header.sources || []).join('; ') || '');
+    ((P.header.sources || []).join('; ') || '') + (P.header.live ? ` — Built on this device without a course pack${P.header.partial ? ' (some data was unavailable; tap ↻ in Course when you have signal)' : ''}. For lidar terrain and a hole layout, build a real pack with python/dg_course_pack.py.` : '');
   $('#dlgSettings').showModal();
 }
 function renderPlayerEdit() {
@@ -1200,14 +1220,26 @@ $('#btnClearLayout').onclick = () => {
 };
 
 /* ---------- course/pack dialog */
+async function openStored(id) {
+  const rec = await idb('readonly', s => s.get(id));
+  if (!rec) { toast('Pack data missing'); return false; }
+  await openBuffer(rec.buffer, false); return true;
+}
 async function renderPackList() {
   const ul = $('#packList'); ul.replaceChildren();
   for (const p of packIndex()) {
     const open = el('button', { className: 'b pri', textContent: P && P.id === p.id ? 'Open ✓' : 'Open' });
-    open.onclick = async () => { const rec = await idb('readonly', s => s.get(p.id)); if (rec) { await openBuffer(rec.buffer, false); $('#dlgCourse').close(); } else toast('Pack data missing'); };
+    open.onclick = async () => { if (await openStored(p.id)) $('#dlgCourse').close(); };
     const del = el('button', { className: 'b dng', textContent: '✕' });
     del.onclick = async () => { if (confirm(`Delete "${p.name}" and its round data from this device?`)) { await deletePack(p.id); renderPackList(); } };
-    ul.append(el('li', {}, el('span', {}, `${p.name} · ${(p.size / 1048576).toFixed(1)} MB`), open, del));
+    const tag = p.live ? (p.partial ? ' · no-pack (partial)' : ' · no-pack') : '';
+    const btns = [open, del];
+    if (p.live) {
+      const re = el('button', { className: 'b', textContent: '↻', title: 'Re-download terrain/map data for this area (keeps your round)' });
+      re.onclick = () => { $('#dlgCourse').close(); playWithoutPack({ rebuild: p }); };
+      btns.unshift(re);
+    }
+    ul.append(el('li', {}, el('span', {}, `${p.name} · ${(p.size / 1048576).toFixed(1)} MB${tag}`), ...btns));
   }
   if (!ul.children.length) ul.append(el('li', {}, el('span', {}, 'Nothing downloaded yet')));
 }
@@ -1223,19 +1255,335 @@ $('#packDemo').onclick = () => { openPack(makeDemoPack()); $('#dlgCourse').close
 async function openBuffer(buf, persist) {
   toast('Opening course…', null, null, 60000);
   const pack = await parsePack(buf);
-  if (persist) { try { await storePack(pack.id, pack.name, buf); } catch (e) { console.warn(e); toast('Opened, but could not store offline: ' + e.message); } }
+  if (persist) { try { await storePack(pack.id, pack.name, buf, { bbox: pack.header.bbox, live: !!pack.header.live, partial: !!pack.header.partial }); } catch (e) { console.warn(e); toast('Opened, but could not store offline: ' + e.message); } }
   openPack(pack);
 }
 function openPack(pack) {
-  P = pack; texCache = {}; treeMesh = null; selected = null;
+  P = pack; texCache = {}; treeMesh = null; selected = null; bannerOff = false;
   if (gps.fix) [gps.fix.x, gps.fix.y] = toLocal(gps.fix.lon, gps.fix.lat);   // GPS may have fixed before the pack loaded $('#selbar').classList.remove('show');
   renderMapBase(); loadCourseState(); buildMesh();
-  setBase(P.img ? S.base : 'map');
+  setBase(S.base, true);
   if (!(holes[round.hole].tee || holes[round.hole].basket)) fitPack(); else fitHole();
   const bb = $('#baseSeg [data-b="sat"]'); bb.disabled = !P.img;
   ls.set('dg.v1.last', P.id); resize(); refreshUI(); updateGpsChip();
   $('#toast').classList.remove('show'); dirty = true;
 }
+
+/* ============================================================ play without a pack
+   Builds a .dgpack in the browser from free, key-less sources, then feeds it through the normal parsePack/openBuffer path
+   (so it is stored in IndexedDB, works offline afterwards, and behaves exactly like a pack made by dg_course_pack.py):
+     terrain  AWS Terrain Tiles (Terrarium PNG, z15 ~5 m)   CORS-enabled, no key
+     vectors  OpenStreetMap via Overpass (ODbL, attribution recorded)
+     imagery  USGS NAIP (US only, public domain) - optional
+   Anything that fails is skipped; with no connection at all we still make a flat blank map so GPS marking works. */
+const LIVE_SRC = {
+  terrarium: 'https://s3.amazonaws.com/elevation-tiles-prod/terrarium/{z}/{x}/{y}.png',
+  naip: ['https://imagery.nationalmap.gov/arcgis/rest/services/USGSNAIPPlus/ImageServer/exportImage',
+         'https://imagery.nationalmap.gov/arcgis/rest/services/USGSNAIPImagery/ImageServer/exportImage'],
+  overpass: ['https://overpass-api.de/api/interpreter', 'https://overpass.kumi.systems/api/interpreter', 'https://overpass.private.coffee/api/interpreter'],
+};
+const bboxFromCenter = (lat, lon, w, h) => { const dlat = h / 2 / M_PER_DEG, dlon = w / 2 / (M_PER_DEG * Math.cos(rad(lat))); return [lon - dlon, lat - dlat, lon + dlon, lat + dlat]; };
+
+async function fetchT(url, { kind = 'blob', ms = 25000, retries = 1, ...opt } = {}) {
+  let last;
+  for (let a = 0; a <= retries; a++) {
+    const ac = new AbortController(), t = setTimeout(() => ac.abort(), ms);
+    try {
+      const r = await fetch(url, { ...opt, signal: ac.signal });
+      if (!r.ok) throw new Error('HTTP ' + r.status);
+      return await (kind === 'json' ? r.json() : r.blob());
+    } catch (e) { last = e.name === 'AbortError' ? new Error('timed out') : e; }
+    finally { clearTimeout(t); }
+  }
+  throw last;
+}
+
+/* ---- terrain: Web-Mercator Terrarium tiles -> uniform lon/lat grid (what the pack format expects) */
+async function liveTerrain(bbox, wm, hm) {
+  const [w, s, e, n] = bbox, z = 15, N = 2 ** z, lat0 = (s + n) / 2;
+  const tX = lon => (lon + 180) / 360 * N, tY = lat => (1 - Math.asinh(Math.tan(rad(lat))) / Math.PI) / 2 * N;
+  const tx0 = Math.floor(tX(w)), ty0 = Math.floor(tY(n)), nx = Math.floor(tX(e)) - tx0 + 1, ny = Math.floor(tY(s)) - ty0 + 1;
+  if (nx * ny > 36) throw new Error('area too large for terrain tiles');
+  const MW = nx * 256, MH = ny * 256, cv = el('canvas', { width: MW, height: MH }), g = cv.getContext('2d', { willReadFrequently: true });
+  const jobs = [];
+  for (let ty = ty0; ty < ty0 + ny; ty++) for (let tx = tx0; tx < tx0 + nx; tx++)
+    jobs.push(fetchT(LIVE_SRC.terrarium.replace('{z}', z).replace('{x}', tx).replace('{y}', ty), { ms: 20000 })
+      .then(b => createImageBitmap(b, { colorSpaceConversion: 'none' })).then(bm => g.drawImage(bm, (tx - tx0) * 256, (ty - ty0) * 256)));
+  await Promise.all(jobs);
+  const d = g.getImageData(0, 0, MW, MH).data, M = new Float32Array(MW * MH);
+  for (let i = 0; i < M.length; i++) M[i] = d[i * 4] * 256 + d[i * 4 + 1] + d[i * 4 + 2] / 256 - 32768;
+  const native = 156543.03392 * Math.cos(rad(lat0)) / N, res = Math.max(native, Math.max(wm, hm) / 600);
+  const gw = Math.max(2, Math.round(wm / res)), gh = Math.max(2, Math.round(hm / res)), elev = new Float32Array(gw * gh);
+  const fxs = new Float32Array(gw);
+  for (let i = 0; i < gw; i++) fxs[i] = clamp((tX(w + i / (gw - 1) * (e - w)) - tx0) * 256 - 0.5, 0, MW - 1.001);
+  for (let j = 0; j < gh; j++) {
+    const fy = clamp((tY(n - j / (gh - 1) * (n - s)) - ty0) * 256 - 0.5, 0, MH - 1.001), y0 = fy | 0, ty = fy - y0;
+    for (let i = 0; i < gw; i++) {
+      const fx = fxs[i], x0 = fx | 0, tx = fx - x0, o = y0 * MW + x0;
+      elev[j * gw + i] = (M[o] * (1 - tx) + M[o + 1] * tx) * (1 - ty) + (M[o + MW] * (1 - tx) + M[o + MW + 1] * tx) * ty;
+    }
+  }
+  return { elev, gw, gh, src: `AWS Terrain Tiles z${z} (~${native.toFixed(0)} m native)` };
+}
+async function encodeTerrarium(elev, gw, gh) {
+  const cv = el('canvas', { width: gw, height: gh }), g = cv.getContext('2d'), im = g.createImageData(gw, gh), o = im.data;
+  let mn = Infinity, mx = -Infinity;
+  for (let i = 0; i < elev.length; i++) {
+    const v = Math.round(elev[i] / 0.05) * 0.05 + 32768, ip = clamp(Math.floor(v), 0, 65535);
+    o[i * 4] = ip >> 8; o[i * 4 + 1] = ip & 255; o[i * 4 + 2] = clamp(Math.floor((v - ip) * 256), 0, 255); o[i * 4 + 3] = 255;
+    if (elev[i] < mn) mn = elev[i]; if (elev[i] > mx) mx = elev[i];
+  }
+  g.putImageData(im, 0, 0);
+  const blob = await new Promise(r => cv.toBlob(r, 'image/png'));
+  return { bytes: new Uint8Array(await blob.arrayBuffer()), min: mn, max: mx };
+}
+
+/* ---- OpenStreetMap vectors (port of dg_course_pack.py: overpass_query / classify / convert_osm / derive_layout) */
+function overpassQuery(bbox) {
+  const [w, s, e, n] = bbox, b = [s, w, n, e].map(v => v.toFixed(6)).join(',');
+  return `[out:json][timeout:40];(
+  way["natural"~"^(wood|scrub|water|wetland|grassland|heath|bare_rock|sand|scree)$"](${b});
+  way["landuse"~"^(forest|grass|meadow|recreation_ground|residential|retail|commercial|industrial|farmland|cemetery)$"](${b});
+  way["waterway"](${b}); way["highway"](${b}); way["building"](${b});
+  way["barrier"~"^(fence|wall|hedge|retaining_wall)$"](${b});
+  way["leisure"~"^(park|pitch|playground|disc_golf_course|golf_course|garden|nature_reserve)$"](${b});
+  way["disc_golf"](${b});
+  relation["natural"~"^(wood|water|wetland)$"](${b}); relation["landuse"="forest"](${b});
+  relation["disc_golf"](${b}); relation["leisure"="disc_golf_course"](${b});
+  node["natural"="tree"](${b}); node["disc_golf"](${b}); node["leisure"="disc_golf_course"](${b});
+);out geom tags;`;
+}
+function classifyOsm(t) {
+  const dg = t.disc_golf;
+  if (dg) {
+    const kind = { hole: 'dg_hole', tee: 'dg_tee', basket: 'dg_basket', out_of_bounds: 'ob', ob: 'ob', drop_zone: 'dg_drop' }[dg];
+    if (kind) return [kind, kind === 'ob' ? 'area' : kind === 'dg_hole' ? 'line' : 'any'];
+  }
+  if (t.leisure === 'disc_golf_course') return ['course', 'area'];
+  const nat = t.natural, lu = t.landuse, lei = t.leisure;
+  if (nat === 'tree') return ['tree', 'point'];
+  if (nat === 'wood' || lu === 'forest') return ['wood', 'area'];
+  if (nat === 'scrub' || nat === 'heath') return ['scrub', 'area'];
+  if (nat === 'water') return ['water', 'area'];
+  if (nat === 'wetland') return ['wetland', 'area'];
+  if ('waterway' in t) return ['waterway', 'line'];
+  if ('building' in t) return ['building', 'area'];
+  if ('highway' in t) return [['path', 'footway', 'track', 'bridleway', 'cycleway', 'steps', 'pedestrian'].includes(t.highway) ? 'path' : 'road', 'line'];
+  if (['fence', 'wall', 'hedge', 'retaining_wall'].includes(t.barrier)) return ['fence', 'line'];
+  if (['residential', 'retail', 'commercial', 'industrial', 'cemetery'].includes(lu)) return ['developed', 'area'];
+  if (['grassland', 'bare_rock', 'sand', 'scree'].includes(nat) || ['grass', 'meadow', 'recreation_ground', 'farmland'].includes(lu)) return ['open', 'area'];
+  if (['park', 'pitch', 'playground', 'garden', 'golf_course', 'nature_reserve'].includes(lei)) return ['park', 'area'];
+  return null;
+}
+function stitchRings(segments) {
+  const same = (a, b) => a[0] === b[0] && a[1] === b[1], rings = [], segs = segments.filter(s => s.length >= 2).map(s => s.slice());
+  while (segs.length) {
+    let ring = segs.shift(), progressed = true;
+    while (!same(ring[0], ring[ring.length - 1]) && progressed) {
+      progressed = false;
+      for (let i = 0; i < segs.length; i++) {
+        const s = segs[i], head = ring[0], tail = ring[ring.length - 1];
+        if (same(s[0], tail)) ring = ring.concat(s.slice(1));
+        else if (same(s[s.length - 1], tail)) ring = ring.concat(s.slice().reverse().slice(1));
+        else if (same(s[s.length - 1], head)) ring = s.slice(0, -1).concat(ring);
+        else if (same(s[0], head)) ring = s.slice().reverse().slice(0, -1).concat(ring);
+        else continue;
+        segs.splice(i, 1); progressed = true; break;
+      }
+    }
+    if (same(ring[0], ring[ring.length - 1]) && ring.length >= 4) rings.push(ring);
+  }
+  return rings;
+}
+function simplifyLine(pts, tol) {          // Douglas-Peucker on lon/lat degrees
+  if (pts.length < 3) return pts;
+  const keep = new Array(pts.length).fill(false); keep[0] = keep[pts.length - 1] = true;
+  const stack = [[0, pts.length - 1]];
+  while (stack.length) {
+    const [i0, i1] = stack.pop(), [x0, y0] = pts[i0], [x1, y1] = pts[i1], dx = x1 - x0, dy = y1 - y0, den = dx * dx + dy * dy;
+    let best = -1, bi = -1;
+    for (let i = i0 + 1; i < i1; i++) {
+      const [px, py] = pts[i]; let d;
+      if (den === 0) d = Math.hypot(px - x0, py - y0);
+      else { const t = Math.max(0, Math.min(1, ((px - x0) * dx + (py - y0) * dy) / den)); d = Math.hypot(px - (x0 + t * dx), py - (y0 + t * dy)); }
+      if (d > best) { best = d; bi = i; }
+    }
+    if (best > tol) { keep[bi] = true; stack.push([i0, bi], [bi, i1]); }
+  }
+  return pts.filter((_, i) => keep[i]);
+}
+function convertOsm(raw) {
+  const tol = 0.5 / M_PER_DEG, rd = p => [Math.round(p[0] * 1e6) / 1e6, Math.round(p[1] * 1e6) / 1e6], feats = [];
+  const KEEP = ['name', 'ref', 'par', 'dist', 'highway', 'surface'], ll = g => g.map(q => [q.lon, q.lat]);
+  for (const e of raw.elements || []) {
+    const tags = e.tags || {}, cl = classifyOsm(tags); if (!cl) continue;
+    const [kind, hint] = cl, props = {}; for (const k of KEEP) if (k in tags) props[k] = tags[k];
+    if (e.type === 'node') feats.push({ k: kind, t: 'n', c: rd([e.lon, e.lat]), p: props });
+    else if (e.type === 'way' && e.geometry) {
+      const pts = ll(e.geometry), closed = pts.length >= 4 && pts[0][0] === pts[pts.length - 1][0] && pts[0][1] === pts[pts.length - 1][1];
+      if (hint === 'area' || (hint === 'any' && closed)) { if (!closed) continue; feats.push({ k: kind, t: 'a', c: [simplifyLine(pts, tol).map(rd)], p: props }); }
+      else feats.push({ k: kind, t: 'l', c: simplifyLine(pts, tol).map(rd), p: props });
+    } else if (e.type === 'relation') {
+      const outer = [], inner = [];
+      for (const m of e.members || []) if (m.type === 'way' && m.geometry) (m.role === 'inner' ? inner : outer).push(ll(m.geometry));
+      const rings = stitchRings(outer).concat(stitchRings(inner));
+      if (rings.length && (hint === 'area' || hint === 'any')) feats.push({ k: kind, t: 'a', c: rings.map(r => simplifyLine(r, tol).map(rd)), p: props });
+    }
+  }
+  return feats;
+}
+function deriveLayout(feats) {
+  const centroid = f => { if (f.t === 'n') return f.c; const r = f.t === 'a' ? f.c[0] : f.c; return [r.reduce((a, p) => a + p[0], 0) / r.length, r.reduce((a, p) => a + p[1], 0) / r.length]; };
+  const dist = (a, b) => Math.hypot((a[0] - b[0]) * Math.cos(rad((a[1] + b[1]) / 2)), a[1] - b[1]) * M_PER_DEG;
+  const tees = feats.filter(f => f.k === 'dg_tee').map(centroid), baskets = feats.filter(f => f.k === 'dg_basket').map(centroid);
+  const near = (pt, pool) => { let b = null, bd = 40; for (const q of pool) { const d = dist(pt, q); if (d < bd) { bd = d; b = q; } } return b || pt; };
+  const out = [];
+  for (const f of feats) {
+    if (f.k !== 'dg_hole' || f.t !== 'l' || f.c.length < 2) continue;
+    const par = parseInt(f.p.par, 10);
+    out.push({ ref: f.p.ref || null, par: par > 0 ? par : null, tee: near(f.c[0], tees), basket: near(f.c[f.c.length - 1], baskets), source: 'osm' });
+  }
+  const num = h => { const v = parseInt(h.ref, 10); return Number.isNaN(v) ? [1, 0] : [0, v]; };
+  return out.sort((a, b) => { const x = num(a), y = num(b); return x[0] - y[0] || x[1] - y[1]; });
+}
+async function liveOsm(bbox) {              // public Overpass servers are often busy: ask all, take the first answer
+  const data = overpassQuery(bbox);
+  try {
+    return await Promise.any(LIVE_SRC.overpass.map(url =>
+      fetchT(url, { kind: 'json', ms: 40000, retries: 0, method: 'POST', body: new URLSearchParams({ data }) }).then(convertOsm)));
+  } catch (e) { throw (e.errors && e.errors[0]) || e; }
+}
+
+/* ---- aerial photo (USGS NAIP, US only). Blank / error responses are rejected. */
+async function liveImagery(bbox, wm, hm) {
+  const res = 0.8, sc = Math.min(1, 2400 / Math.max(wm / res, hm / res)), w = Math.max(2, Math.round(wm / res * sc)), h = Math.max(2, Math.round(hm / res * sc));
+  const qs = new URLSearchParams({ bbox: bbox.map(v => v.toFixed(8)).join(','), bboxSR: '4326', imageSR: '4326', size: `${w},${h}`, format: 'jpg', interpolation: 'RSP_BilinearInterpolation', f: 'image' });
+  let last;
+  for (const svc of LIVE_SRC.naip) {
+    try {
+      const blob = await fetchT(`${svc}?${qs}`, { ms: 45000, retries: 0 });
+      if (!/jpe?g/.test(blob.type)) throw new Error('not an image');
+      const bm = await createImageBitmap(blob), t = el('canvas', { width: 32, height: 32 }), g = t.getContext('2d', { willReadFrequently: true });
+      g.drawImage(bm, 0, 0, 32, 32); const d = g.getImageData(0, 0, 32, 32).data; let s1 = 0, s2 = 0;
+      for (let i = 0; i < d.length; i += 4) { const v = d[i] + d[i + 1] + d[i + 2]; s1 += v; s2 += v * v; }
+      if (Math.sqrt(Math.max(0, s2 / 1024 - (s1 / 1024) ** 2)) / 3 < 3) throw new Error('blank imagery (outside NAIP coverage?)');
+      return { bytes: new Uint8Array(await blob.arrayBuffer()), w: bm.width, h: bm.height, src: 'USGS NAIP' };
+    } catch (e) { last = e; }
+  }
+  throw last;
+}
+
+function writeDgpack(header, blobs) {            // same container as dg_course_pack.py write_pack()
+  const layers = {}; let off = 0;
+  for (const [name, bytes, meta] of blobs) { layers[name] = { ...meta, offset: off, length: bytes.length }; off += bytes.length; }
+  const hb = new TextEncoder().encode(JSON.stringify({ ...header, layers })), out = new Uint8Array(9 + hb.length + off), dv = new DataView(out.buffer);
+  out.set([0x44, 0x47, 0x50, 0x4b], 0); dv.setUint8(4, 1); dv.setUint32(5, hb.length, true); out.set(hb, 9);
+  let p = 9 + hb.length; for (const [, bytes] of blobs) { out.set(bytes, p); p += bytes.length; }
+  return out.buffer;
+}
+
+/** -> { buf, missing:[...] }.  opts: id/name (rebuild in place), allowBlank, note(msg) */
+async function buildLivePack(bbox, { id = null, name = null, allowBlank = true, note = () => {} } = {}) {
+  const [w, s, e, n] = bbox, lat0 = (s + n) / 2, wm = (e - w) * M_PER_DEG * Math.cos(rad(lat0)), hm = (n - s) * M_PER_DEG;
+  const st = { terrain: '…', map: '…', aerial: '…' };
+  const say = () => note(`Building map from free data — terrain ${st.terrain} · map ${st.map} · aerial ${st.aerial}`);
+  const track = (k, p) => p.then(v => { st[k] = '✓'; say(); return v; }, err => { st[k] = '✗'; say(); console.warn('live pack:', k, err); throw err; });
+  say();
+  const [rt, ro, ri] = await Promise.allSettled([track('terrain', liveTerrain(bbox, wm, hm)), track('map', liveOsm(bbox)), track('aerial', liveImagery(bbox, wm, hm))]);
+  const ok = r => r.status === 'fulfilled', missing = [];
+  if (!ok(rt)) missing.push('terrain'); if (!ok(ro)) missing.push('map');
+  if (!allowBlank && missing.length) throw new Error(missing.length === 2 ? 'no data connection' : `could not fetch ${missing[0]} data`);
+
+  let terr = ok(rt) ? rt.value : { elev: new Float32Array(16 * 16), gw: 16, gh: 16, src: 'flat (terrain unavailable)' };
+  const dem = await encodeTerrarium(terr.elev, terr.gw, terr.gh);
+  const feats = ok(ro) ? ro.value : [], holes = deriveLayout(feats);
+  const sources = [terr.src], attribution = ['Terrain: ' + (ok(rt) ? 'AWS Terrain Tiles (USGS 3DEP, SRTM and others)' : 'none (flat)')];
+  const blobs = [['dem', dem.bytes, { mime: 'image/png', encoding: 'terrarium', quant_m: 0.05, width: terr.gw, height: terr.gh, min: dem.min, max: dem.max, source: terr.src }]];
+  if (ok(ri)) {
+    blobs.push(['imagery', ri.value.bytes, { mime: 'image/jpeg', width: ri.value.w, height: ri.value.h, source: ri.value.src }]);
+    sources.push(ri.value.src); attribution.push('Imagery: ' + ri.value.src);
+  }
+  if (ok(ro)) { sources.push('OpenStreetMap via Overpass'); attribution.push('Map data: OpenStreetMap contributors (ODbL)'); }
+  blobs.push(['osm', new TextEncoder().encode(JSON.stringify(feats)), { mime: 'application/json', count: feats.length }]);
+  attribution.push('Built on-device without a course pack');
+
+  // name: nearest mapped disc golf course, else the previous name, else coordinates
+  const cen = [(w + e) / 2, lat0]; let best = null, bd = Infinity;
+  for (const f of feats) if (f.k === 'course' && f.p.name) { const r = f.t === 'a' ? f.c[0] : f.t === 'l' ? f.c : [f.c]; const c = [r.reduce((a, p) => a + p[0], 0) / r.length, r.reduce((a, p) => a + p[1], 0) / r.length]; const d = Math.hypot(c[0] - cen[0], c[1] - cen[1]); if (d < bd) { bd = d; best = f.p.name; } }
+  const nm = best || name || `Course near ${lat0.toFixed(4)}, ${cen[0].toFixed(4)}`;
+  const header = { format: 'dgpack', version: 1, name: nm, created: new Date().toISOString(), id: id || ('live-' + Date.now().toString(36)), live: true, partial: missing.length > 0,
+    bbox, center: [lat0, cen[0]], size_m: [Math.round(wm), Math.round(hm)], sources, attribution, layout: { holes } };
+  return { buf: writeDgpack(header, blobs), missing };
+}
+
+/* ---- finding / offering packs */
+function findStoredPack(lat, lon) {              // a pack already on this device that covers the point (real packs beat live ones)
+  let best = null;
+  for (const p of packIndex()) {
+    const b = p.bbox; if (!b || p.id === 'demo') continue;
+    if (lon >= b[0] && lon <= b[2] && lat >= b[1] && lat <= b[3] && (!best || (best.live && !p.live))) best = p;
+  }
+  return best;
+}
+function parseLL(s) {
+  const m = /^\s*(-?\d+(?:\.\d+)?)\s*[, ]\s*(-?\d+(?:\.\d+)?)\s*$/.exec(s || '');
+  if (!m) return null; const lat = +m[1], lon = +m[2];
+  return Math.abs(lat) <= 90 && Math.abs(lon) <= 180 ? [lat, lon] : null;
+}
+function getLocation() {
+  return new Promise((res, rej) => {
+    if (gps.fix && Date.now() - gps.fix.t < 60000 && gps.fix.acc <= 150) return res({ lat: gps.fix.lat, lon: gps.fix.lon });
+    if (!('geolocation' in navigator)) return rej(new Error('location unavailable (needs HTTPS or localhost) — type lat,lon instead'));
+    startGps();
+    navigator.geolocation.getCurrentPosition(p => res({ lat: p.coords.latitude, lon: p.coords.longitude }),
+      e => rej(new Error(e.code === 1 ? 'location permission denied — type lat,lon instead' : 'no location fix yet — try again outdoors or type lat,lon')),
+      { enableHighAccuracy: true, timeout: 20000, maximumAge: 10000 });
+  });
+}
+
+async function playWithoutPack({ ll = null, rebuild = null } = {}) {
+  if (building) return;
+  building = true; updateBanner();
+  try {
+    let lat, lon, reuse = rebuild;
+    if (rebuild) { lat = (rebuild.bbox[1] + rebuild.bbox[3]) / 2; lon = (rebuild.bbox[0] + rebuild.bbox[2]) / 2; }
+    else if (ll) [lat, lon] = ll;
+    else { toast('Finding your location…', null, null, 30000); ({ lat, lon } = await getLocation()); }
+    if (!rebuild) {
+      const hit = findStoredPack(lat, lon);
+      if (hit && !(hit.live && hit.partial)) { await openStored(hit.id); toast(`Opened saved map: ${hit.name}`); return; }
+      reuse = hit;                                  // a partial no-pack map for this spot: refresh it in place (keeps the round)
+    }
+    const size = clamp(+$('#liveSize').value || 1600, 600, 3000), bbox = reuse ? reuse.bbox : bboxFromCenter(lat, lon, size, size);
+    let built;
+    try { built = await buildLivePack(bbox, { id: reuse && reuse.id, name: reuse && reuse.name, allowBlank: !reuse, note: m => toast(m, null, null, 120000) }); }
+    catch (err) {
+      if (reuse && await openStored(reuse.id)) { toast(`Could not refresh the map (${err.message}) — using the saved one`); return; }
+      throw err;
+    }
+    await openBuffer(built.buf, true);
+    const [x, y] = toLocal(lon, lat); cam.x = x; cam.y = y; cam.span = 220; cam.follow = false; dirty = true; updateGpsChip();
+    toast('Playing without a pack — map built from free data and saved on this device' +
+      (built.missing.length ? ` (no ${built.missing.join(' or ')}: tap ↻ in Course when you have signal)` : ''), null, null, built.missing.length ? 9000 : 5000);
+  } catch (err) { toast('Could not start without a pack: ' + err.message, null, null, 8000); }
+  finally { building = false; updateBanner(); }
+}
+
+function updateBanner() {                        // shown while GPS says we are outside the open map
+  const b = $('#noPack'); if (!b) return;
+  const show = !building && !bannerOff && P && gps.fix && gps.fix.acc <= 200 && fixOutside();
+  b.hidden = !show; if (!show) return;
+  const hit = findStoredPack(gps.fix.lat, gps.fix.lon), go = $('#noPackGo');
+  $('#noPackMsg').textContent = hit ? `A saved map for ${hit.name} covers where you are.` : 'This course map doesn’t cover where you are.';
+  go.textContent = hit ? 'Open it' : 'Play without pack';
+  go.onclick = hit ? () => openStored(hit.id) : () => playWithoutPack();
+}
+$('#noPackX').onclick = () => { bannerOff = true; updateBanner(); };
+$('#liveGo').onclick = () => {
+  const raw = $('#liveLL').value.trim(), ll = raw ? parseLL(raw) : null;
+  if (raw && !ll) { toast('Enter coordinates like 32.7335,-117.1437'); return; }
+  $('#dlgCourse').close(); playWithoutPack({ ll });
+};
 
 /* ============================================================ boot */
 async function boot() {
@@ -1251,7 +1599,8 @@ async function boot() {
     const last = ls.get('dg.v1.last', null);
     try { const rec = last && await idb('readonly', s => s.get(last)); if (rec) { await openBuffer(rec.buffer, false); opened = true; } } catch (e) { console.warn(e); }
   }
-  if (!opened) { openPack(makeDemoPack()); if (!q.get('demo')) toast('Showing a synthetic demo course — tap the course name (top left) to load a real pack'); }
+  if (!opened) { openPack(makeDemoPack()); if (!q.get('demo') && !q.get('live')) toast('Showing a demo course. At a course with no pack?', 'Play without pack', () => playWithoutPack(), 15000); }
+  if (q.get('live')) playWithoutPack({ ll: parseLL(q.get('live')) });
   if (q.get('hole')) gotoHole(parseInt(q.get('hole'), 10) - 1);
   if (navigator.storage && navigator.storage.persist) navigator.storage.persist().catch(() => {});
   if ('serviceWorker' in navigator && /^https?:$/.test(location.protocol)) navigator.serviceWorker.register('dg-score-sw.js').catch(e => console.warn('SW:', e));

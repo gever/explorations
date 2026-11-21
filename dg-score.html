@@ -119,6 +119,10 @@
   tbody tr { cursor:pointer; } tfoot td { font-weight:700; }
   .under { color:#6ee7b7; } .over { color:#fca5a5; }
   label.tog { display:flex; gap:8px; align-items:center; }
+  .par-grid { display:grid; grid-template-columns:repeat(5, 1fr); gap:8px; margin:12px 0; }
+  .par-grid button { padding:16px 0; font-size:1.35rem; font-weight:700; border-radius:12px; background:var(--card2); }
+  .par-grid button.cur { outline:2px solid var(--accent); background:rgba(59,130,246,.22); }
+  .par-grid button:active { filter:brightness(1.25); transform:scale(.97); }
 </style>
 </head>
 <body>
@@ -224,6 +228,23 @@
   <div class="row"><label>Holes&nbsp;<input type="number" id="setHoles" min="1" max="36" style="width:80px;flex:none"></label>
     <button class="b" id="btnClearLayout">Forget learned tees/baskets</button></div>
   <p class="muted" id="aboutPack"></p>
+</dialog>
+
+<!-- Par prompt when marking a new tee -->
+<dialog id="dlgPar">
+  <button class="close" data-close aria-label="Cancel">×</button>
+  <h2 id="parDlgTitle">Hole 1 — Par</h2>
+  <p class="muted" id="parDlgSub"></p>
+  <div class="par-grid" id="parChoices">
+    <button type="button" data-par="2">2</button>
+    <button type="button" data-par="3">3</button>
+    <button type="button" data-par="4">4</button>
+    <button type="button" data-par="5">5</button>
+    <button type="button" data-par="6">6</button>
+  </div>
+  <div class="row" style="justify-content:flex-end;margin-top:8px">
+    <button type="button" class="b" data-close>Cancel</button>
+  </div>
 </dialog>
 
 <script>
@@ -391,9 +412,16 @@ function newRound() {
 }
 function loadCourseState() {
   const st = ls.get('dg.v1.course.' + P.id, null);
-  const src = (st && st.layout && st.layout.holes && st.layout.holes.length) ? st.layout.holes : (P.layout.holes || []);
-  holes = src.map((h, i) => ({ ref: h.ref || String(i + 1), par: h.par || 3, tee: h.tee ? mkPt(h.tee) : null, basket: h.basket ? mkPt(h.basket) : null }));
-  if (!holes.length) for (let i = 0; i < 18; i++) holes.push({ ref: String(i + 1), par: 3, tee: null, basket: null });
+  const packHoles = P.layout.holes || [];
+  const src = (st && st.layout && st.layout.holes && st.layout.holes.length) ? st.layout.holes : packHoles;
+  holes = src.map((h, i) => ({
+    ref: h.ref || String(i + 1),
+    par: h.par || 3,
+    parSet: h.parSet != null ? !!h.parSet : (src === packHoles ? h.par != null : !!h.tee),
+    tee: h.tee ? mkPt(h.tee) : null,
+    basket: h.basket ? mkPt(h.basket) : null,
+  }));
+  if (!holes.length) for (let i = 0; i < 18; i++) holes.push({ ref: String(i + 1), par: 3, parSet: false, tee: null, basket: null });
   round = st && st.round ? st.round : null;
   round = round || newRound();
   for (const k in round.marks) for (const m of round.marks[k]) [m.x, m.y] = toLocal(m.lon, m.lat);
@@ -406,7 +434,7 @@ function save() {
   saveT = setTimeout(() => {
     if (!P) return;
     ls.set('dg.v1.course.' + P.id, {
-      layout: { holes: holes.map(h => ({ ref: h.ref, par: h.par, tee: h.tee ? [h.tee.lon, h.tee.lat] : null, basket: h.basket ? [h.basket.lon, h.basket.lat] : null })) },
+      layout: { holes: holes.map(h => ({ ref: h.ref, par: h.par, parSet: !!h.parSet, tee: h.tee ? [h.tee.lon, h.tee.lat] : null, basket: h.basket ? [h.basket.lon, h.basket.lat] : null })) },
       round: JSON.parse(JSON.stringify(round, (k, v) => (k === 'x' || k === 'y') ? undefined : v)),
     });
     ls.set('dg.v1.last', P.id);
@@ -1014,7 +1042,7 @@ function selectMark(id) {
 function setMarkPos(m, x, y, src, acc) { m.x = x; m.y = y; [m.lon, m.lat] = toLL(x, y); m.ele = elevAt(x, y); m.src = src; m.acc = acc; }
 $('#selHere').onclick = () => { const m = curMarks().find(x => x.id === selected); if (m) { setMarkPos(m, cam.x, cam.y, 'crosshair'); save(); selectMark(m.id); } };
 $('#selMe').onclick = () => { const m = curMarks().find(x => x.id === selected); if (!m) return; if (!fixFresh()) { toast('No good GPS fix yet'); return; } setMarkPos(m, gps.fix.x, gps.fix.y, 'gps', gps.fix.acc); save(); selectMark(m.id); };
-$('#selDel').onclick = () => { const a = curMarks(), i = a.findIndex(x => x.id === selected); if (i >= 0) { a.splice(i, 1); save(); } selectMark(null); };
+$('#selDel').onclick = () => { const a = curMarks(), i = a.findIndex(x => x.id === selected); if (i >= 0) { const [rem] = a.splice(i, 1); clearLearnedTeeIfUnused(round.hole, rem); save(); } selectMark(null); };
 $('#selClose').onclick = () => selectMark(null);
 
 /* ============================================================ marking */
@@ -1030,14 +1058,54 @@ function mkMark(type, pos, extra = {}) {
   const [lon, lat] = toLL(pos.x, pos.y);
   return { id: uid(), type, x: pos.x, y: pos.y, lon, lat, ele: elevAt(pos.x, pos.y), acc: pos.acc || 0, src: pos.src, t: Date.now(), ...extra };
 }
-function addMark(type) {
+let pendingTee = null;
+function promptParForTee(pos, extra) {
+  const h = holes[round.hole];
+  pendingTee = { holeIdx: round.hole, pos, extra };
+  $('#parDlgTitle').textContent = `Hole ${h.ref} — Specify Par`;
+  $('#parDlgSub').textContent = pos.src === 'gps'
+    ? `Select par for this hole (tee at your GPS ±${fmtDist(pos.acc || 0)}).`
+    : 'Select par for this hole (tee at crosshair ✛).';
+  $('#parChoices').querySelectorAll('button').forEach(b => b.classList.toggle('cur', +b.dataset.par === h.par));
+  $('#dlgPar').showModal();
+}
+$('#parChoices').addEventListener('click', e => {
+  const btn = e.target.closest('button[data-par]');
+  if (!btn || !pendingTee) return;
+  const pt = pendingTee; pendingTee = null;
+  $('#dlgPar').close();
+  if (pt.holeIdx !== round.hole) return;
+  const h = holes[pt.holeIdx];
+  h.par = +btn.dataset.par; h.parSet = true;
+  commitMark('tee', pt.pos, pt.extra, false, null);
+});
+$('#dlgPar').addEventListener('close', () => { pendingTee = null; });
+
+function clearLearnedTeeIfUnused(holeIdx, removedMark) {
+  if (!removedMark || removedMark.type !== 'tee') return;
+  const h = holes[holeIdx], packHole = (P.layout.holes || [])[holeIdx];
+  if (!h || !h.tee || (packHole && packHole.tee)) return;
+  const anyTee = round.players.some(p => (round.marks[key(holeIdx, p.id)] || []).some(m => m.type === 'tee'));
+  if (!anyTee) { h.tee = null; h.parSet = !!(packHole && packHole.par != null); }
+}
+
+function addMark(type, extra = {}) {
   const ms = curMarks(), pos = resolvePos(type), h = holes[round.hole];
   if (ms.some(m => m.type === 'basket')) { toast('Hole already finished for this player — use Undo or the next hole'); return; }
   const lastMark = ms[ms.length - 1], afterOb = !!(lastMark && lastMark.type === 'ob');
   if (afterOb && type !== 'shot') { toast('First mark where you are placing the disc for your next shot'); return; }
   const prevFrom = [...ms].reverse().find(isThrowFrom);
   if ((type === 'ob' || type === 'hazard') && !prevFrom) { toast('Mark the tee first'); return; }
-  const m = mkMark(type, pos, afterOb ? { drop: true } : {}); ms.push(m);
+  const { par: explicitPar, ...markExtra } = extra;
+  if (type === 'tee' && (!h.tee || !h.parSet)) {
+    if (explicitPar) { h.par = explicitPar; h.parSet = true; }
+    else { promptParForTee(pos, markExtra); return; }
+  }
+  commitMark(type, pos, markExtra, afterOb, prevFrom);
+}
+function commitMark(type, pos, extra, afterOb, prevFrom) {
+  const ms = curMarks(), h = holes[round.hole];
+  const m = mkMark(type, pos, afterOb ? { drop: true, ...extra } : extra); ms.push(m);
   if (type === 'tee' && !h.tee) { h.tee = { lon: m.lon, lat: m.lat, x: m.x, y: m.y }; }
   if (type === 'basket') { if (!h.basket) h.basket = { lon: m.lon, lat: m.lat, x: m.x, y: m.y }; }
   // after hazard you throw again from the previous lie; after OB the next mark explicitly places the disc for the next shot
@@ -1052,7 +1120,8 @@ function addMark(type) {
 }
 function undo() {
   const ms = curMarks(); if (!ms.length) return;
-  let m = ms.pop(); while (m.auto && ms.length) m = ms.pop();
+  let m = ms.pop(); clearLearnedTeeIfUnused(round.hole, m);
+  while (m.auto && ms.length) { m = ms.pop(); clearLearnedTeeIfUnused(round.hole, m); }
   selected = null; $('#selbar').classList.remove('show'); save(); refreshUI(); toast('Removed last mark');
 }
 function afterHoled() {
@@ -1076,7 +1145,7 @@ $('#actHole').onclick = () => addMark('basket');
 $('#btnUndo').onclick = undo;
 $('#prevHole').onclick = () => gotoHole(round.hole - 1);
 $('#nextHole').onclick = () => gotoHole(round.hole + 1);
-$('#parBtn').onclick = () => { const h = holes[round.hole]; h.par = h.par >= 6 ? 2 : h.par + 1; save(); refreshUI(); };
+$('#parBtn').onclick = () => { const h = holes[round.hole]; h.par = h.par >= 6 ? 2 : h.par + 1; h.parSet = true; save(); refreshUI(); };
 $('#btnPlace').onclick = () => {
   S.placement = S.placement === 'gps' ? 'crosshair' : 'gps'; saveSettings();
   if (S.placement === 'gps') { if (!startGps()) { S.placement = 'crosshair'; toast('GPS unavailable here (needs HTTPS or localhost)'); } }
@@ -1210,7 +1279,7 @@ $('#setExag').oninput = e => { S.exag = +e.target.value; $('#exagVal').textConte
 $('#setTrees').onchange = e => { S.trees = e.target.checked; saveSettings(); dirty = true; };
 $('#setHoles').onchange = e => {
   const n = clamp(parseInt(e.target.value, 10) || holes.length, 1, 36);
-  while (holes.length < n) holes.push({ ref: String(holes.length + 1), par: 3, tee: null, basket: null });
+  while (holes.length < n) holes.push({ ref: String(holes.length + 1), par: 3, parSet: false, tee: null, basket: null });
   holes.length = n; round.hole = Math.min(round.hole, n - 1); save(); refreshUI();
 };
 $('#btnClearLayout').onclick = () => {

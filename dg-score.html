@@ -39,7 +39,7 @@
   #holeNav button { background:var(--card2); width:42px; height:42px; border-radius:50%; font-size:1.1rem; }
   #holeLabel { text-align:center; min-width:96px; line-height:1.1; }
   #holeLabel b { font-size:1.15rem; }
-  #holeLabel small { color:var(--sub); display:block; font-size:.75rem; }
+  #holeLabel small { color:var(--sub); display:block; font-size:.75rem; white-space:nowrap; }
   #holeLabel button { all:unset; cursor:pointer; text-decoration:underline dotted; }
 
   /* stage */
@@ -123,6 +123,11 @@
   .par-grid button { padding:16px 0; font-size:1.35rem; font-weight:700; border-radius:12px; background:var(--card2); }
   .par-grid button.cur { outline:2px solid var(--accent); background:rgba(59,130,246,.22); }
   .par-grid button:active { filter:brightness(1.25); transform:scale(.97); }
+  .holes-grid { display:grid; grid-template-columns:repeat(auto-fit, minmax(64px, 1fr)); gap:8px; margin:12px 0; }
+  .holes-grid button { padding:13px 4px; font-size:1.2rem; font-weight:700; border-radius:12px; background:var(--card2); line-height:1.1; }
+  .holes-grid button small { display:block; font-size:.65rem; font-weight:500; color:var(--sub); margin-top:2px; }
+  .holes-grid button.cur { outline:2px solid var(--accent); background:rgba(59,130,246,.22); }
+  .holes-grid button:active { filter:brightness(1.25); transform:scale(.97); }
 </style>
 </head>
 <body>
@@ -131,7 +136,7 @@
     <button id="btnCourse" class="chip" title="Courses &amp; offline packs">Course ▾</button>
     <div id="holeNav">
       <button id="prevHole" aria-label="Previous hole">◀</button>
-      <div id="holeLabel"><b>Hole 1</b><small>Par <button id="parBtn" title="Tap to change par">3</button></small></div>
+      <div id="holeLabel"><b>Hole 1</b><small>Par <button id="parBtn" title="Tap to change par">3</button> · <button id="holesBtn" title="Tap to set number of holes">18 holes</button></small></div>
       <button id="nextHole" aria-label="Next hole">▶</button>
     </div>
     <button id="btnCard" class="chip">Card</button>
@@ -244,6 +249,24 @@
   </div>
   <div class="row" style="justify-content:flex-end;margin-top:8px">
     <button type="button" class="b" data-close>Cancel</button>
+  </div>
+</dialog>
+
+<!-- New round / number of holes -->
+<dialog id="dlgNewRound">
+  <button class="close" data-close aria-label="Cancel">×</button>
+  <h2 id="newRoundTitle">New round</h2>
+  <p class="muted" id="newRoundSub"></p>
+  <div class="holes-grid" id="holePresets"></div>
+  <div class="row" style="margin-top:10px">
+    <label for="newRoundHoles">Holes</label>
+    <button type="button" class="b" id="holesDec" aria-label="Decrease holes">−</button>
+    <input type="number" id="newRoundHoles" min="1" max="36" inputmode="numeric" style="width:76px;flex:none;text-align:center">
+    <button type="button" class="b" id="holesInc" aria-label="Increase holes">+</button>
+  </div>
+  <div class="row" style="justify-content:flex-end;margin-top:14px">
+    <button type="button" class="b" data-close>Cancel</button>
+    <button type="button" class="b pri" id="newRoundGo">Start round</button>
   </div>
 </dialog>
 
@@ -406,9 +429,21 @@ async function deletePack(id) {
   ls.del('dg.v1.course.' + id);
 }
 
-function newRound() {
+const DEFAULT_HOLES = 18, MAX_HOLES = 36;
+const roundHoleCount = () => clamp((round && round.holeCount) || holes.length || DEFAULT_HOLES, 1, MAX_HOLES);
+function ensureHoleCount(n) {
+  n = clamp(parseInt(n, 10) || DEFAULT_HOLES, 1, MAX_HOLES);
+  while (holes.length < n) holes.push({ ref: String(holes.length + 1), par: 3, parSet: false, tee: null, basket: null });
+  return n;
+}
+function defaultHoleCount() {
+  const packLen = (P && P.layout && P.layout.holes) ? P.layout.holes.length : 0;
+  return clamp(packLen || holes.length || DEFAULT_HOLES, 1, MAX_HOLES);
+}
+function newRound(holeCount) {
   const players = (round && round.players && round.players.length) ? round.players.map(p => ({ id: p.id, name: p.name })) : [{ id: uid(), name: 'Me' }];
-  return { players, active: players[0].id, hole: 0, marks: {}, created: Date.now() };
+  const hc = ensureHoleCount(holeCount != null ? holeCount : defaultHoleCount());
+  return { players, active: players[0].id, hole: 0, holeCount: hc, marks: {}, created: Date.now() };
 }
 function loadCourseState() {
   const st = ls.get('dg.v1.course.' + P.id, null);
@@ -421,11 +456,12 @@ function loadCourseState() {
     tee: h.tee ? mkPt(h.tee) : null,
     basket: h.basket ? mkPt(h.basket) : null,
   }));
-  if (!holes.length) for (let i = 0; i < 18; i++) holes.push({ ref: String(i + 1), par: 3, parSet: false, tee: null, basket: null });
+  if (!holes.length) ensureHoleCount(DEFAULT_HOLES);
   round = st && st.round ? st.round : null;
   round = round || newRound();
+  ensureHoleCount(roundHoleCount());
   for (const k in round.marks) for (const m of round.marks[k]) [m.x, m.y] = toLocal(m.lon, m.lat);
-  round.hole = clamp(round.hole || 0, 0, holes.length - 1);
+  round.hole = clamp(round.hole || 0, 0, roundHoleCount() - 1);
 }
 const mkPt = ll => { const [x, y] = toLocal(ll[0], ll[1]); return { lon: ll[0], lat: ll[1], x, y }; };
 let saveT = 0;
@@ -1132,11 +1168,11 @@ function afterHoled() {
     const order = round.players.map(p => p.id), i = order.indexOf(me.id);
     const next = [...order.slice(i + 1), ...order.slice(0, i)].map(playerById).find(p => pending.includes(p));
     round.active = next.id; toast(`${me.name}: ${st.strokes} (${res}) · ${next.name} is up`);
-  } else if (round.hole < holes.length - 1) toast(`${me.name}: ${st.strokes} (${res}) · hole complete`, 'Next hole ▶', () => gotoHole(round.hole + 1));
+  } else if (round.hole < roundHoleCount() - 1) toast(`${me.name}: ${st.strokes} (${res}) · hole complete`, 'Next hole ▶', () => gotoHole(round.hole + 1));
   else toast(`${me.name}: ${st.strokes} (${res}) · round complete!`, 'Scorecard', () => openCard());
 }
 function gotoHole(i) {
-  round.hole = clamp(i, 0, holes.length - 1); round.active = round.players[0].id; selectMark(null); fitHole(); save(); refreshUI();
+  round.hole = clamp(i, 0, roundHoleCount() - 1); round.active = round.players[0].id; selectMark(null); fitHole(); save(); refreshUI();
 }
 $('#actMark').onclick = () => addMark(curMarks().some(isThrowFrom) ? 'shot' : 'tee');
 $('#actOB').onclick = () => addMark('ob');
@@ -1146,6 +1182,7 @@ $('#btnUndo').onclick = undo;
 $('#prevHole').onclick = () => gotoHole(round.hole - 1);
 $('#nextHole').onclick = () => gotoHole(round.hole + 1);
 $('#parBtn').onclick = () => { const h = holes[round.hole]; h.par = h.par >= 6 ? 2 : h.par + 1; h.parSet = true; save(); refreshUI(); };
+$('#holesBtn').onclick = () => openRoundDialog('edit');
 $('#btnPlace').onclick = () => {
   S.placement = S.placement === 'gps' ? 'crosshair' : 'gps'; saveSettings();
   if (S.placement === 'gps') { if (!startGps()) { S.placement = 'crosshair'; toast('GPS unavailable here (needs HTTPS or localhost)'); } }
@@ -1155,9 +1192,10 @@ $('#btnList').onclick = () => { const l = $('#throwList'); l.hidden = !l.hidden;
 
 /* ============================================================ UI refresh */
 function refreshUI() {
-  const h = holes[round.hole], me = activePlayer(), st = holeStats(round.hole, me.id);
+  const h = holes[round.hole], me = activePlayer(), st = holeStats(round.hole, me.id), nHoles = roundHoleCount();
   $('#holeLabel b').textContent = `Hole ${h.ref}`; $('#parBtn').textContent = h.par;
-  $('#prevHole').disabled = round.hole === 0; $('#nextHole').disabled = round.hole === holes.length - 1;
+  $('#holesBtn').textContent = `${nHoles} ${nHoles === 1 ? 'hole' : 'holes'}`;
+  $('#prevHole').disabled = round.hole === 0; $('#nextHole').disabled = round.hole >= nHoles - 1;
   $('#btnCourse').textContent = P.name + ' ▾';
   $('#btnPlace').textContent = S.placement === 'gps' ? '◎ Shots at me' : '✛ Shots at crosshair';
   const ms = curMarks(), has = ms.some(isThrowFrom), done = ms.some(m => m.type === 'basket');
@@ -1219,7 +1257,8 @@ function renderDock() {
 const fmtDiff = d => d === 0 ? 'E' : d > 0 ? '+' + d : String(d);
 function roundTotals(pid) {
   let strokes = 0, par = 0, hc = 0;
-  holes.forEach((h, i) => { const st = holeStats(i, pid); if (st.holed) { strokes += st.strokes; par += h.par; hc++; } });
+  const n = roundHoleCount();
+  for (let i = 0; i < n; i++) { const st = holeStats(i, pid); if (st.holed) { strokes += st.strokes; par += holes[i].par; hc++; } }
   return { strokes, par, holes: hc, diff: strokes - par };
 }
 
@@ -1228,13 +1267,14 @@ document.querySelectorAll('dialog [data-close]').forEach(b => b.onclick = () => 
 function openCard() {
   const tbl = el('table'), head = el('tr', {}, el('th', {}, 'Hole'), el('th', {}, 'Par'), ...round.players.map(p => el('th', {}, p.name)));
   tbl.append(el('thead', {}, head));
-  const body = el('tbody');
-  holes.forEach((h, i) => {
+  const body = el('tbody'), n = roundHoleCount();
+  for (let i = 0; i < n; i++) {
+    const h = holes[i];
     const tr = el('tr', { className: i === round.hole ? 'cur' : '' }, el('td', {}, h.ref), el('td', {}, String(h.par)),
       ...round.players.map(p => { const st = holeStats(i, p.id); const d = st.strokes - h.par;
         return el('td', { className: st.holed ? (d < 0 ? 'under' : d > 0 ? 'over' : '') : '' }, st.holed ? String(st.strokes) : st.started ? '…' : '·'); }));
     tr.onclick = () => { $('#dlgCard').close(); gotoHole(i); }; body.append(tr);
-  });
+  }
   tbl.append(body);
   const tot = el('tr', {}, el('td', {}, 'Total'), el('td', {}, String(roundTotals(round.players[0].id).par)),
     ...round.players.map(p => { const t = roundTotals(p.id); return el('td', { className: t.diff < 0 ? 'under' : t.diff > 0 ? 'over' : '' }, `${t.strokes} (${fmtDiff(t.diff)})`); }));
@@ -1243,20 +1283,107 @@ function openCard() {
 }
 $('#btnCard').onclick = openCard;
 $('#btnExport').onclick = () => {
+  const roundHoles = holes.slice(0, roundHoleCount());
   const out = { app: 'dg-score', version: 1, exported: new Date().toISOString(), course: { id: P.id, name: P.name, bbox: P.header.bbox }, units: S.units,
-    holes: holes.map(h => ({ ref: h.ref, par: h.par, tee: h.tee && [h.tee.lon, h.tee.lat], basket: h.basket && [h.basket.lon, h.basket.lat] })),
+    holes: roundHoles.map(h => ({ ref: h.ref, par: h.par, tee: h.tee && [h.tee.lon, h.tee.lat], basket: h.basket && [h.basket.lon, h.basket.lat] })),
     players: round.players.map(p => ({ id: p.id, name: p.name, totals: roundTotals(p.id),
-      holes: holes.map((h, i) => ({ hole: h.ref, ...holeStats(i, p.id), marks: (round.marks[key(i, p.id)] || []).map(m => ({ type: m.type, lon: +m.lon.toFixed(7), lat: +m.lat.toFixed(7), ele_m: +m.ele.toFixed(2), acc_m: +(m.acc || 0).toFixed(1), src: m.src, drop: !!m.drop, auto: !!m.auto, t: new Date(m.t).toISOString() })) })) })) };
+      holes: roundHoles.map((h, i) => ({ hole: h.ref, ...holeStats(i, p.id), marks: (round.marks[key(i, p.id)] || []).map(m => ({ type: m.type, lon: +m.lon.toFixed(7), lat: +m.lat.toFixed(7), ele_m: +m.ele.toFixed(2), acc_m: +(m.acc || 0).toFixed(1), src: m.src, drop: !!m.drop, auto: !!m.auto, t: new Date(m.t).toISOString() })) })) })) };
   const a = el('a', { href: URL.createObjectURL(new Blob([JSON.stringify(out, null, 2)], { type: 'application/json' })), download: `dg-round-${slug(P.name)}-${new Date().toISOString().slice(0, 10)}.json` });
   document.body.append(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 2000);
 };
+
+const hasAnyMarks = () => Object.values(round.marks).some(a => a && a.length > 0);
+function maxMarkedHoleIndex() {
+  let max = -1;
+  for (const k in round.marks) if (round.marks[k] && round.marks[k].length) max = Math.max(max, parseInt(k.split('|')[0], 10) || 0);
+  return max;
+}
+function setRoundHoleCount(n) {
+  n = ensureHoleCount(n);
+  round.holeCount = n;
+  round.hole = clamp(round.hole, 0, n - 1);
+  save(); refreshUI();
+  return n;
+}
+let roundDlgMode = 'new';
+function syncRoundHolePicker(val) {
+  const n = clamp(parseInt(val, 10) || roundHoleCount(), 1, MAX_HOLES);
+  $('#holePresets').querySelectorAll('button[data-holes]').forEach(b => b.classList.toggle('cur', +b.dataset.holes === n));
+  $('#holesDec').disabled = n <= 1;
+  $('#holesInc').disabled = n >= MAX_HOLES;
+  if (roundDlgMode === 'edit') {
+    const maxM = maxMarkedHoleIndex();
+    $('#newRoundSub').textContent = maxM >= n
+      ? `Holes ${n + 1}–${maxM + 1} already have marks and will be hidden from the scorecard.`
+      : 'Set the number of holes to play in this round.';
+  }
+}
+function openRoundDialog(mode = 'new') {
+  roundDlgMode = mode;
+  const cur = roundHoleCount(), packLen = (P && P.layout && P.layout.holes) ? P.layout.holes.length : 0;
+  const presets = [...new Set([6, 9, 12, 18, 27, ...(packLen > 0 && packLen <= MAX_HOLES ? [packLen] : [])])].sort((a, b) => a - b);
+  $('#holePresets').replaceChildren(...presets.map(n => {
+    const kids = [String(n)];
+    if (n === packLen) kids.push(el('small', {}, 'course'));
+    return el('button', { type: 'button', dataset: { holes: n } }, ...kids);
+  }));
+  $('#newRoundTitle').textContent = mode === 'new' ? 'New round' : 'Holes in round';
+  $('#newRoundGo').textContent = mode === 'new' ? 'Start round' : 'Apply';
+  if (mode === 'new') {
+    $('#newRoundSub').textContent = hasAnyMarks()
+      ? 'Marks for the current round will be cleared (export first if you want to keep them).'
+      : 'Choose how many holes you are playing.';
+  }
+  $('#newRoundHoles').value = cur;
+  syncRoundHolePicker(cur);
+  $('#dlgNewRound').showModal();
+}
+$('#holePresets').addEventListener('click', e => {
+  const btn = e.target.closest('button[data-holes]');
+  if (!btn) return;
+  const n = +btn.dataset.holes;
+  $('#newRoundHoles').value = n;
+  syncRoundHolePicker(n);
+});
+$('#holesDec').onclick = () => {
+  const n = clamp((parseInt($('#newRoundHoles').value, 10) || roundHoleCount()) - 1, 1, MAX_HOLES);
+  $('#newRoundHoles').value = n;
+  syncRoundHolePicker(n);
+};
+$('#holesInc').onclick = () => {
+  const n = clamp((parseInt($('#newRoundHoles').value, 10) || roundHoleCount()) + 1, 1, MAX_HOLES);
+  $('#newRoundHoles').value = n;
+  syncRoundHolePicker(n);
+};
+$('#newRoundHoles').addEventListener('input', () => {
+  const raw = parseInt($('#newRoundHoles').value, 10);
+  if (raw >= 1 && raw <= MAX_HOLES) syncRoundHolePicker(raw);
+  else $('#holePresets').querySelectorAll('button[data-holes]').forEach(b => b.classList.remove('cur'));
+});
+$('#newRoundHoles').addEventListener('change', () => {
+  const n = clamp(parseInt($('#newRoundHoles').value, 10) || roundHoleCount(), 1, MAX_HOLES);
+  $('#newRoundHoles').value = n;
+  syncRoundHolePicker(n);
+});
+$('#newRoundHoles').addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); $('#newRoundGo').click(); } });
+$('#newRoundGo').onclick = () => {
+  const n = clamp(parseInt($('#newRoundHoles').value, 10) || roundHoleCount(), 1, MAX_HOLES);
+  $('#dlgNewRound').close();
+  if (roundDlgMode === 'new') {
+    round = newRound(n); selectMark(null); gotoHole(0);
+    toast(`Started ${n}-hole round`);
+  } else {
+    setRoundHoleCount(n);
+    toast(`Round set to ${n} ${n === 1 ? 'hole' : 'holes'}`);
+  }
+};
 $('#btnNewRound').onclick = () => {
-  if (!confirm('Start a new round? Marks for the current round will be cleared (export first if you want to keep them).')) return;
-  round = newRound(); selectMark(null); $('#dlgCard').close(); gotoHole(0);
+  $('#dlgCard').close();
+  openRoundDialog('new');
 };
 
 function openSettings() {
-  $('#setUnits').value = S.units; $('#setExag').value = S.exag; $('#exagVal').textContent = S.exag + '×'; $('#setTrees').checked = S.trees; $('#setHoles').value = holes.length;
+  $('#setUnits').value = S.units; $('#setExag').value = S.exag; $('#exagVal').textContent = S.exag + '×'; $('#setTrees').checked = S.trees; $('#setHoles').value = roundHoleCount();
   renderPlayerEdit();
   $('#aboutPack').textContent = `${P.name}: ${Math.round(P.W)} × ${Math.round(P.H)} m, terrain ${P.dw}×${P.dh}, ${P.img ? 'aerial imagery, ' : 'no imagery, '}${P.feats.length} map features. ` +
     ((P.header.sources || []).join('; ') || '') + (P.header.live ? ` — Built on this device without a course pack${P.header.partial ? ' (some data was unavailable; tap ↻ in Course when you have signal)' : ''}. For lidar terrain and a hole layout, build a real pack with python/dg_course_pack.py.` : '');
@@ -1277,15 +1404,11 @@ $('#btnSettings').onclick = openSettings;
 $('#setUnits').onchange = e => { S.units = e.target.value; saveSettings(); refreshUI(); };
 $('#setExag').oninput = e => { S.exag = +e.target.value; $('#exagVal').textContent = S.exag + '×'; saveSettings(); dirty = true; };
 $('#setTrees').onchange = e => { S.trees = e.target.checked; saveSettings(); dirty = true; };
-$('#setHoles').onchange = e => {
-  const n = clamp(parseInt(e.target.value, 10) || holes.length, 1, 36);
-  while (holes.length < n) holes.push({ ref: String(holes.length + 1), par: 3, parSet: false, tee: null, basket: null });
-  holes.length = n; round.hole = Math.min(round.hole, n - 1); save(); refreshUI();
-};
+$('#setHoles').onchange = e => { e.target.value = setRoundHoleCount(parseInt(e.target.value, 10) || roundHoleCount()); };
 $('#btnClearLayout').onclick = () => {
   if (!confirm('Forget learned tee/basket positions and pars for this course?')) return;
   const st = ls.get('dg.v1.course.' + P.id, {}); delete st.layout; ls.set('dg.v1.course.' + P.id, st);
-  const keep = round; loadCourseState(); round = keep; save(); refreshUI(); toast('Layout reset');
+  const keep = round; loadCourseState(); round = keep; ensureHoleCount(roundHoleCount()); round.hole = clamp(round.hole, 0, roundHoleCount() - 1); save(); refreshUI(); toast('Layout reset');
 };
 
 /* ---------- course/pack dialog */
@@ -1675,7 +1798,7 @@ async function boot() {
   if ('serviceWorker' in navigator && /^https?:$/.test(location.protocol)) navigator.serviceWorker.register('dg-score-sw.js').catch(e => console.warn('SW:', e));
   requestAnimationFrame(frame);
 }
-window.__dg = { get P() { return P; }, cam, S, get round() { return round; }, get holes() { return holes; }, addMark, setView, setBase, proj, pickGround, gotoHole, gps, get view() { return view; } };
+window.__dg = { get P() { return P; }, cam, S, get round() { return round; }, get holes() { return holes; }, get roundHoleCount() { return roundHoleCount(); }, addMark, setView, setBase, proj, pickGround, gotoHole, gps, get view() { return view; } };
 boot();
 })();
 </script>

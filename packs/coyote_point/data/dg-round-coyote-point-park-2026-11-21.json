@@ -1,0 +1,816 @@
+{
+  "app": "dg-score",
+  "version": 1,
+  "exported": "2026-11-21T20:53:37.378Z",
+  "course": {
+    "id": "coyote-point-park-202611211837",
+    "name": "Coyote Point Park",
+    "bbox": [
+      -122.33554905845143,
+      37.58250407781765,
+      -122.31285094154858,
+      37.59329592218234
+    ]
+  },
+  "units": "ft",
+  "holes": [
+    {
+      "ref": "1",
+      "par": 3,
+      "tee": [
+        -122.32356816285326,
+        37.58952392462897
+      ],
+      "basket": [
+        -122.32289536488462,
+        37.58982750089003
+      ]
+    },
+    {
+      "ref": "2",
+      "par": 3,
+      "tee": [
+        -122.32328143016656,
+        37.59037964243674
+      ],
+      "basket": [
+        -122.32299789281002,
+        37.59074554091265
+      ]
+    },
+    {
+      "ref": "3",
+      "par": 3,
+      "tee": [
+        -122.3232454091626,
+        37.590951018726855
+      ],
+      "basket": [
+        -122.3223644456182,
+        37.59096975399181
+      ]
+    },
+    {
+      "ref": "4",
+      "par": 3,
+      "tee": [
+        -122.32159189958377,
+        37.59068492970702
+      ],
+      "basket": [
+        -122.3213942880135,
+        37.590088358511004
+      ]
+    },
+    {
+      "ref": "5",
+      "par": 3,
+      "tee": [
+        -122.3209537473616,
+        37.58979835685289
+      ],
+      "basket": [
+        -122.3203445904553,
+        37.58929963029684
+      ]
+    },
+    {
+      "ref": "6",
+      "par": 3,
+      "tee": [
+        -122.32054071291003,
+        37.588854921863295
+      ],
+      "basket": [
+        -122.32128758938306,
+        37.588912708212966
+      ]
+    },
+    {
+      "ref": "7",
+      "par": 3,
+      "tee": [
+        -122.32192974069329,
+        37.58870174924094
+      ],
+      "basket": [
+        -122.32263630852903,
+        37.58868392719893
+      ]
+    },
+    {
+      "ref": "8",
+      "par": 3,
+      "tee": [
+        -122.32285204955006,
+        37.5881971724339
+      ],
+      "basket": [
+        -122.32337009740618,
+        37.58808701358347
+      ]
+    },
+    {
+      "ref": "9",
+      "par": 3,
+      "tee": [
+        -122.32322703169386,
+        37.58846162606311
+      ],
+      "basket": [
+        -122.32265670232708,
+        37.5888345456907
+      ]
+    },
+    {
+      "ref": "10",
+      "par": 3,
+      "tee": null,
+      "basket": null
+    },
+    {
+      "ref": "11",
+      "par": 3,
+      "tee": null,
+      "basket": null
+    },
+    {
+      "ref": "12",
+      "par": 3,
+      "tee": null,
+      "basket": null
+    },
+    {
+      "ref": "13",
+      "par": 3,
+      "tee": null,
+      "basket": null
+    },
+    {
+      "ref": "14",
+      "par": 3,
+      "tee": null,
+      "basket": null
+    },
+    {
+      "ref": "15",
+      "par": 3,
+      "tee": null,
+      "basket": null
+    },
+    {
+      "ref": "16",
+      "par": 3,
+      "tee": null,
+      "basket": null
+    },
+    {
+      "ref": "17",
+      "par": 3,
+      "tee": null,
+      "basket": null
+    },
+    {
+      "ref": "18",
+      "par": 3,
+      "tee": null,
+      "basket": null
+    }
+  ],
+  "players": [
+    {
+      "id": "qhzeexk",
+      "name": "Me",
+      "totals": {
+        "strokes": 32,
+        "par": 27,
+        "holes": 9,
+        "diff": 5
+      },
+      "holes": [
+        {
+          "hole": "1",
+          "throws": 5,
+          "pen": 0,
+          "strokes": 5,
+          "holed": true,
+          "started": true,
+          "marks": [
+            {
+              "type": "tee",
+              "lon": -122.3235682,
+              "lat": 37.5895239,
+              "ele_m": 13.77,
+              "acc_m": 3.1,
+              "src": "gps",
+              "drop": false,
+              "auto": false,
+              "t": "2026-11-21T19:37:37.905Z"
+            },
+            {
+              "type": "shot",
+              "lon": -122.323043,
+              "lat": 37.589694,
+              "ele_m": 14.94,
+              "acc_m": 2.2,
+              "src": "gps",
+              "drop": false,
+              "auto": false,
+              "t": "2026-11-21T19:44:07.394Z"
+            },
+            {
+              "type": "shot",
+              "lon": -122.322973,
+              "lat": 37.5898311,
+              "ele_m": 13.87,
+              "acc_m": 3.9,
+              "src": "gps",
+              "drop": false,
+              "auto": false,
+              "t": "2026-11-21T19:44:47.291Z"
+            },
+            {
+              "type": "shot",
+              "lon": -122.3228414,
+              "lat": 37.5898763,
+              "ele_m": 14.15,
+              "acc_m": 3.7,
+              "src": "gps",
+              "drop": false,
+              "auto": false,
+              "t": "2026-11-21T19:45:25.966Z"
+            },
+            {
+              "type": "shot",
+              "lon": -122.322902,
+              "lat": 37.5898145,
+              "ele_m": 14.49,
+              "acc_m": 6.2,
+              "src": "gps",
+              "drop": false,
+              "auto": false,
+              "t": "2026-11-21T19:45:47.746Z"
+            },
+            {
+              "type": "basket",
+              "lon": -122.3228954,
+              "lat": 37.5898275,
+              "ele_m": 14.28,
+              "acc_m": 4.5,
+              "src": "gps",
+              "drop": false,
+              "auto": false,
+              "t": "2026-11-21T19:45:48.412Z"
+            }
+          ]
+        },
+        {
+          "hole": "2",
+          "throws": 2,
+          "pen": 0,
+          "strokes": 2,
+          "holed": true,
+          "started": true,
+          "marks": [
+            {
+              "type": "tee",
+              "lon": -122.3232814,
+              "lat": 37.5903796,
+              "ele_m": 7.95,
+              "acc_m": 2.4,
+              "src": "gps",
+              "drop": false,
+              "auto": false,
+              "t": "2026-11-21T19:47:33.885Z"
+            },
+            {
+              "type": "shot",
+              "lon": -122.3229745,
+              "lat": 37.5907344,
+              "ele_m": 0.66,
+              "acc_m": 3.4,
+              "src": "gps",
+              "drop": false,
+              "auto": false,
+              "t": "2026-11-21T19:49:16.380Z"
+            },
+            {
+              "type": "basket",
+              "lon": -122.3229979,
+              "lat": 37.5907455,
+              "ele_m": -0.03,
+              "acc_m": 3.4,
+              "src": "gps",
+              "drop": false,
+              "auto": false,
+              "t": "2026-11-21T19:50:24.066Z"
+            }
+          ]
+        },
+        {
+          "hole": "3",
+          "throws": 3,
+          "pen": 0,
+          "strokes": 3,
+          "holed": true,
+          "started": true,
+          "marks": [
+            {
+              "type": "tee",
+              "lon": -122.3232454,
+              "lat": 37.590951,
+              "ele_m": -0.5,
+              "acc_m": 3.7,
+              "src": "gps",
+              "drop": false,
+              "auto": false,
+              "t": "2026-11-21T19:51:15.847Z"
+            },
+            {
+              "type": "shot",
+              "lon": -122.3227157,
+              "lat": 37.5909098,
+              "ele_m": -0.5,
+              "acc_m": 4.7,
+              "src": "gps",
+              "drop": false,
+              "auto": false,
+              "t": "2026-11-21T19:53:26.886Z"
+            },
+            {
+              "type": "shot",
+              "lon": -122.3223587,
+              "lat": 37.5909965,
+              "ele_m": -0.5,
+              "acc_m": 4,
+              "src": "gps",
+              "drop": false,
+              "auto": false,
+              "t": "2026-11-21T19:55:19.083Z"
+            },
+            {
+              "type": "basket",
+              "lon": -122.3223644,
+              "lat": 37.5909698,
+              "ele_m": -0.5,
+              "acc_m": 4.3,
+              "src": "gps",
+              "drop": false,
+              "auto": false,
+              "t": "2026-11-21T19:56:09.667Z"
+            }
+          ]
+        },
+        {
+          "hole": "4",
+          "throws": 3,
+          "pen": 0,
+          "strokes": 3,
+          "holed": true,
+          "started": true,
+          "marks": [
+            {
+              "type": "tee",
+              "lon": -122.3215919,
+              "lat": 37.5906849,
+              "ele_m": 16.92,
+              "acc_m": 3.1,
+              "src": "gps",
+              "drop": false,
+              "auto": false,
+              "t": "2026-11-21T19:58:11.811Z"
+            },
+            {
+              "type": "shot",
+              "lon": -122.3214731,
+              "lat": 37.5904068,
+              "ele_m": 23.9,
+              "acc_m": 4.6,
+              "src": "gps",
+              "drop": false,
+              "auto": false,
+              "t": "2026-11-21T19:59:52.518Z"
+            },
+            {
+              "type": "shot",
+              "lon": -122.3213201,
+              "lat": 37.5901584,
+              "ele_m": 26.2,
+              "acc_m": 2.9,
+              "src": "gps",
+              "drop": false,
+              "auto": false,
+              "t": "2026-11-21T20:01:45.299Z"
+            },
+            {
+              "type": "basket",
+              "lon": -122.3213943,
+              "lat": 37.5900884,
+              "ele_m": 25.63,
+              "acc_m": 2.7,
+              "src": "gps",
+              "drop": false,
+              "auto": false,
+              "t": "2026-11-21T20:01:56.930Z"
+            }
+          ]
+        },
+        {
+          "hole": "5",
+          "throws": 4,
+          "pen": 0,
+          "strokes": 4,
+          "holed": true,
+          "started": true,
+          "marks": [
+            {
+              "type": "tee",
+              "lon": -122.3209537,
+              "lat": 37.5897984,
+              "ele_m": 24.49,
+              "acc_m": 4.7,
+              "src": "gps",
+              "drop": false,
+              "auto": false,
+              "t": "2026-11-21T20:04:19.796Z"
+            },
+            {
+              "type": "shot",
+              "lon": -122.3207451,
+              "lat": 37.5891555,
+              "ele_m": 15.45,
+              "acc_m": 4.5,
+              "src": "gps",
+              "drop": false,
+              "auto": false,
+              "t": "2026-11-21T20:07:33.896Z"
+            },
+            {
+              "type": "shot",
+              "lon": -122.3205586,
+              "lat": 37.5892052,
+              "ele_m": 16.95,
+              "acc_m": 4.1,
+              "src": "gps",
+              "drop": false,
+              "auto": false,
+              "t": "2026-11-21T20:09:02.994Z"
+            },
+            {
+              "type": "shot",
+              "lon": -122.3203445,
+              "lat": 37.5892736,
+              "ele_m": 17.89,
+              "acc_m": 4.3,
+              "src": "gps",
+              "drop": false,
+              "auto": false,
+              "t": "2026-11-21T20:10:25.858Z"
+            },
+            {
+              "type": "basket",
+              "lon": -122.3203452,
+              "lat": 37.5892768,
+              "ele_m": 17.88,
+              "acc_m": 4.7,
+              "src": "gps",
+              "drop": false,
+              "auto": false,
+              "t": "2026-11-21T20:10:28.942Z"
+            }
+          ]
+        },
+        {
+          "hole": "6",
+          "throws": 3,
+          "pen": 0,
+          "strokes": 3,
+          "holed": true,
+          "started": true,
+          "marks": [
+            {
+              "type": "tee",
+              "lon": -122.3205407,
+              "lat": 37.5888549,
+              "ele_m": 9.32,
+              "acc_m": 5.4,
+              "src": "gps",
+              "drop": false,
+              "auto": false,
+              "t": "2026-11-21T20:11:55.431Z"
+            },
+            {
+              "type": "shot",
+              "lon": -122.3211294,
+              "lat": 37.5889778,
+              "ele_m": 15.02,
+              "acc_m": 4.2,
+              "src": "gps",
+              "drop": false,
+              "auto": false,
+              "t": "2026-11-21T20:14:18.049Z"
+            },
+            {
+              "type": "shot",
+              "lon": -122.3212413,
+              "lat": 37.5889178,
+              "ele_m": 15.24,
+              "acc_m": 4.3,
+              "src": "gps",
+              "drop": false,
+              "auto": false,
+              "t": "2026-11-21T20:15:05.265Z"
+            },
+            {
+              "type": "basket",
+              "lon": -122.3212876,
+              "lat": 37.5889127,
+              "ele_m": 16.25,
+              "acc_m": 0,
+              "src": "crosshair",
+              "drop": false,
+              "auto": false,
+              "t": "2026-11-21T20:16:51.786Z"
+            }
+          ]
+        },
+        {
+          "hole": "7",
+          "throws": 4,
+          "pen": 1,
+          "strokes": 5,
+          "holed": true,
+          "started": true,
+          "marks": [
+            {
+              "type": "tee",
+              "lon": -122.3219297,
+              "lat": 37.5887017,
+              "ele_m": 15.52,
+              "acc_m": 2.7,
+              "src": "gps",
+              "drop": false,
+              "auto": false,
+              "t": "2026-11-21T20:17:57.206Z"
+            },
+            {
+              "type": "ob",
+              "lon": -122.322564,
+              "lat": 37.5885986,
+              "ele_m": 13.74,
+              "acc_m": 0,
+              "src": "crosshair",
+              "drop": false,
+              "auto": false,
+              "t": "2026-11-21T20:20:08.651Z"
+            },
+            {
+              "type": "shot",
+              "lon": -122.3224744,
+              "lat": 37.588634,
+              "ele_m": 14.16,
+              "acc_m": 2.8,
+              "src": "gps",
+              "drop": true,
+              "auto": false,
+              "t": "2026-11-21T20:20:48.653Z"
+            },
+            {
+              "type": "shot",
+              "lon": -122.3225716,
+              "lat": 37.5884375,
+              "ele_m": 10.56,
+              "acc_m": 4.7,
+              "src": "gps",
+              "drop": false,
+              "auto": false,
+              "t": "2026-11-21T20:21:57.773Z"
+            },
+            {
+              "type": "shot",
+              "lon": -122.3224938,
+              "lat": 37.5885825,
+              "ele_m": 13.06,
+              "acc_m": 7.2,
+              "src": "gps",
+              "drop": false,
+              "auto": false,
+              "t": "2026-11-21T20:22:45.143Z"
+            },
+            {
+              "type": "basket",
+              "lon": -122.3226363,
+              "lat": 37.5886839,
+              "ele_m": 15.84,
+              "acc_m": 0,
+              "src": "crosshair",
+              "drop": false,
+              "auto": false,
+              "t": "2026-11-21T20:23:17.381Z"
+            }
+          ]
+        },
+        {
+          "hole": "8",
+          "throws": 4,
+          "pen": 0,
+          "strokes": 4,
+          "holed": true,
+          "started": true,
+          "marks": [
+            {
+              "type": "tee",
+              "lon": -122.322852,
+              "lat": 37.5881972,
+              "ele_m": 8.2,
+              "acc_m": 2.8,
+              "src": "gps",
+              "drop": false,
+              "auto": false,
+              "t": "2026-11-21T20:24:49.587Z"
+            },
+            {
+              "type": "shot",
+              "lon": -122.3229739,
+              "lat": 37.5881472,
+              "ele_m": 8.92,
+              "acc_m": 5,
+              "src": "gps",
+              "drop": false,
+              "auto": false,
+              "t": "2026-11-21T20:25:34.673Z"
+            },
+            {
+              "type": "shot",
+              "lon": -122.3232913,
+              "lat": 37.5880541,
+              "ele_m": 10.1,
+              "acc_m": 4.7,
+              "src": "gps",
+              "drop": false,
+              "auto": false,
+              "t": "2026-11-21T20:26:39.425Z"
+            },
+            {
+              "type": "shot",
+              "lon": -122.3234258,
+              "lat": 37.5881143,
+              "ele_m": 11.79,
+              "acc_m": 6.4,
+              "src": "gps",
+              "drop": false,
+              "auto": false,
+              "t": "2026-11-21T20:27:30.128Z"
+            },
+            {
+              "type": "basket",
+              "lon": -122.3233701,
+              "lat": 37.588087,
+              "ele_m": 11.05,
+              "acc_m": 4.4,
+              "src": "gps",
+              "drop": false,
+              "auto": false,
+              "t": "2026-11-21T20:27:55.312Z"
+            }
+          ]
+        },
+        {
+          "hole": "9",
+          "throws": 3,
+          "pen": 0,
+          "strokes": 3,
+          "holed": true,
+          "started": true,
+          "marks": [
+            {
+              "type": "tee",
+              "lon": -122.323227,
+              "lat": 37.5884616,
+              "ele_m": 16.16,
+              "acc_m": 3.1,
+              "src": "gps",
+              "drop": false,
+              "auto": false,
+              "t": "2026-11-21T20:29:36.371Z"
+            },
+            {
+              "type": "shot",
+              "lon": -122.3228545,
+              "lat": 37.5887731,
+              "ele_m": 19.3,
+              "acc_m": 5.7,
+              "src": "gps",
+              "drop": false,
+              "auto": false,
+              "t": "2026-11-21T20:31:28.641Z"
+            },
+            {
+              "type": "shot",
+              "lon": -122.3226475,
+              "lat": 37.5888804,
+              "ele_m": 19.8,
+              "acc_m": 2.6,
+              "src": "gps",
+              "drop": false,
+              "auto": false,
+              "t": "2026-11-21T20:32:20.503Z"
+            },
+            {
+              "type": "basket",
+              "lon": -122.3226567,
+              "lat": 37.5888345,
+              "ele_m": 19.16,
+              "acc_m": 4.7,
+              "src": "gps",
+              "drop": false,
+              "auto": false,
+              "t": "2026-11-21T20:33:17.147Z"
+            }
+          ]
+        },
+        {
+          "hole": "10",
+          "throws": 0,
+          "pen": 0,
+          "strokes": 0,
+          "holed": false,
+          "started": false,
+          "marks": []
+        },
+        {
+          "hole": "11",
+          "throws": 0,
+          "pen": 0,
+          "strokes": 0,
+          "holed": false,
+          "started": false,
+          "marks": []
+        },
+        {
+          "hole": "12",
+          "throws": 0,
+          "pen": 0,
+          "strokes": 0,
+          "holed": false,
+          "started": false,
+          "marks": []
+        },
+        {
+          "hole": "13",
+          "throws": 0,
+          "pen": 0,
+          "strokes": 0,
+          "holed": false,
+          "started": false,
+          "marks": []
+        },
+        {
+          "hole": "14",
+          "throws": 0,
+          "pen": 0,
+          "strokes": 0,
+          "holed": false,
+          "started": false,
+          "marks": []
+        },
+        {
+          "hole": "15",
+          "throws": 0,
+          "pen": 0,
+          "strokes": 0,
+          "holed": false,
+          "started": false,
+          "marks": []
+        },
+        {
+          "hole": "16",
+          "throws": 0,
+          "pen": 0,
+          "strokes": 0,
+          "holed": false,
+          "started": false,
+          "marks": []
+        },
+        {
+          "hole": "17",
+          "throws": 0,
+          "pen": 0,
+          "strokes": 0,
+          "holed": false,
+          "started": false,
+          "marks": []
+        },
+        {
+          "hole": "18",
+          "throws": 0,
+          "pen": 0,
+          "strokes": 0,
+          "holed": false,
+          "started": false,
+          "marks": []
+        }
+      ]
+    }
+  ]
+}
